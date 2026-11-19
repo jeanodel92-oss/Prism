@@ -46,7 +46,10 @@ case "$PROFILE" in
 		echo "build: $GUI/src-tauri/target-drive/release/prism-gui"
 		;;
 	package)
-		cargo build --release --locked --target-dir target-package
+		# custom-protocol: Tauri's production mode (what `tauri build` turns on). Without it Tauri counts the build as
+		# dev and embeds this crate's folder (config_parent), the build machine's home in a published binary (public
+		# site audit SP-05). With no devUrl and no devCsp, nothing else of the window changes.
+		cargo build --release --locked --target-dir target-package --features tauri/custom-protocol
 		echo "build: $GUI/src-tauri/target-package/release/prism-gui"
 		;;
 esac

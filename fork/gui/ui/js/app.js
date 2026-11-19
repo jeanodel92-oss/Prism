@@ -994,7 +994,8 @@ class App {
 	#grow() {
 		const input = $("input");
 		const scroller = $("scroller");
-		const atEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48;
+		// The welcome is read from its top, never pinned at its end (see transcript-list.js, reconcile).
+		const atEnd = $("welcome").hidden && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48;
 		input.style.height = "auto";
 		input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 		// QA-006: a taller composer (Shift+Enter) takes room from the transcript; read at its end, the end stays in

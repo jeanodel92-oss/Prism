@@ -18,6 +18,7 @@ import onboarding, {
 	buildSteps,
 	CONTINUE,
 	computerUseNeeds,
+	currentAnswers,
 	enabledModules,
 	OnboardingWizard,
 	onboardingPath,
@@ -398,6 +399,17 @@ describe("fork: onboarding", () => {
 		);
 	});
 
+	// Handoff « À corriger »: with no answer from the permissions extension, the step preselected "ask"
+	// although the default mode became broad on 2026-11-18.
+	it("preselects the default mode when none is saved, and a saved one as is", () => {
+		const settings = SettingsManager.inMemory();
+		expect(currentAnswers(settings, agentDir, true).permissions).toBe("broad");
+		writeFileSync(join(agentDir, "permissions.json"), JSON.stringify({ mode: "ask" }));
+		expect(currentAnswers(settings, agentDir, true).permissions).toBe("ask");
+		writeFileSync(join(agentDir, "permissions.json"), "{");
+		expect(currentAnswers(settings, agentDir, true).permissions).toBe("broad");
+	});
+
 	// the step showed the default of permissions.json, not the session's own mode,
 	// so confirming "Read only" over a broad session changed nothing.
 	it("/onboarding starts from the session's mode and applies the one confirmed", async () => {
@@ -428,12 +440,13 @@ describe("fork: onboarding", () => {
 				);
 			});
 		};
+		// The step starts on the default mode, broad: one step up is safe.
 		await runOnboarding(
 			[
 				[ENTER],
 				[ENTER],
 				[ENTER],
-				[DOWN, ENTER],
+				[UP, ENTER],
 				[ENTER, DOWN, ENTER, ...toContinue, ENTER],
 				[...toComputerContinue, ENTER],
 				[ENTER],

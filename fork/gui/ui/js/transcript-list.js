@@ -254,7 +254,10 @@ export class TranscriptList {
 			this.bottomSpacer = spacer();
 		}
 		const scroller = this.host.scroller();
-		const following = end || (!target && this.host.following());
+		// An empty transcript has no end to follow: the welcome above it is read from its top, and a long draft that
+		// leaves it less room than it needs must not slide its title out of view
+		// .
+		const following = this.entries.length > 0 && (end || (!target && this.host.following()));
 		let targetIndex = target ? this.entries.indexOf(target.entry) : -1;
 		for (let pass = 0; pass < 4; pass++) {
 			const gap = Number.parseFloat(getComputedStyle(this.root).rowGap) || 0;

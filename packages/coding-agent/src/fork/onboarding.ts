@@ -27,6 +27,12 @@ import { fill, labelled, resolveLanguage, setLanguage, t } from "./i18n/index.ts
 import { hasNativeMenus } from "./interactive-client.ts";
 import { chooseOnboardingAnswers } from "./onboarding-native.ts";
 
+/**
+ * The permission mode when no flag, saved session or config names one.
+ * Kept here, not in permissions.ts, because that module imports this one: one source for both.
+ */
+export const DEFAULT_PERMISSION_MODE = "broad";
+
 /** Event the permissions extension listens to, so the chosen mode applies to this session too. */
 export const PERMISSION_MODE_EVENT = "prism:permission-mode";
 
@@ -448,9 +454,11 @@ export class OnboardingWizard implements Component {
 function readPermissionMode(agentDir: string): string {
 	try {
 		const mode = (JSON.parse(readFileSync(join(agentDir, "permissions.json"), "utf8")) as { mode?: unknown }).mode;
-		return mode === "safe" || mode === "broad" || mode === "unrestricted" ? mode : "ask";
+		return mode === "ask" || mode === "safe" || mode === "broad" || mode === "unrestricted"
+			? mode
+			: DEFAULT_PERMISSION_MODE;
 	} catch {
-		return "ask";
+		return DEFAULT_PERMISSION_MODE;
 	}
 }
 

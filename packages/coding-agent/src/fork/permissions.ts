@@ -60,6 +60,7 @@ import { hasInteractiveClient, hasNativeMenus } from "./interactive-client.ts";
 import { mcpTrust } from "./mcp-trust.ts";
 import { guardedFetch, npmInstallRefusal } from "./npm-guard.ts";
 import {
+	DEFAULT_PERMISSION_MODE,
 	PERMISSION_MODE_EVENT,
 	PERMISSION_MODE_QUERY_EVENT,
 	type PermissionModeQuery,
@@ -360,8 +361,8 @@ export function isWiderMode(mode: Mode, than: Mode): boolean {
 }
 type Tier = "allow" | "ask" | "danger";
 const MODES: Mode[] = ["ask", "safe", "broad", "unrestricted"];
-/** The mode when no flag, saved session or config names one. */
-const FALLBACK_MODE: Mode = "broad";
+/** The mode when no flag, saved session or config names one (onboarding.ts holds the value). */
+const FALLBACK_MODE: Mode = DEFAULT_PERMISSION_MODE;
 
 /** A refusal reason as a sentence: its own final point is kept, never doubled ("(curl).."). */
 const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);

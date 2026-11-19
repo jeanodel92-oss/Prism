@@ -11,7 +11,10 @@ et refuse une version sans section.
 
 ## [Unreleased]
 
+## [1.0.0-fork.12] - 2026-11-19
+
 ### Added
+- L'installateur est signé : `install.sh.minisig` à côté d'`install.sh` sur le site. Le README du dépôt public donne la clé et la commande pour le vérifier avant de le lancer, sans dépendre du site.
 - Fenêtre et app Android : les formules mathématiques des réponses s'affichent mises en forme (KaTeX 0.19.1, chargé seulement quand une réponse en contient). Les mêmes délimiteurs que le terminal sont reconnus (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`), un prix ou une variable comme `$HOME` reste du texte, et une formule invalide s'affiche telle quelle.
 - App Android dans un dépôt F-Droid : ajoutez `https://prism.odelserver.space/fdroid/repo?fingerprint=243AE77A78F2809378D26DA9A5BE865F155D49035A141CEFFE0BC0E0FCCC795C` à F-Droid (ou Droid-ify, Neo Store), ou la même adresse sans `?fingerprint=…` à Obtainium (source « F-Droid Third-Party Repo »), pour recevoir chaque version stable de l'app.
 - `/update`, dans le terminal et la fenêtre (aussi `/settings` › Autres › Rechercher une mise à jour) : vérifie s'il existe une version plus récente de Prism et l'installe à votre demande ; passe aussi au canal canary ou revient au canal stable, et revient à la version précédente. La version en cours continue de tourner ; la nouvelle s'ouvre au lancement suivant.
@@ -21,7 +24,7 @@ et refuse une version sans section.
 - Module navigateur : l'extension installée depuis addons.mozilla.org ou le Chrome Web Store est comparée par son numéro de version ; Prism dit si elle est plus ancienne (le magasin la met à jour) ou plus récente (`/update` met Prism à jour). L'extension passe en 0.1.2.
 - Release : une release stable contient les paquets de l'extension pour addons.mozilla.org et le Chrome Web Store, signés avec le reste ; le serveur de build les envoie aux deux magasins quand leur version est nouvelle.
 - Release : une nouvelle version de l'extension du navigateur peut partir aux magasins avant la version de Prism qui la livre (`fork/scripts/release-extension.sh`), le temps de leur relecture.
-- Canal canary : une nouvelle version canary chaque fois qu'un changement passe tous les tests, pour Linux (terminal et fenêtre ; l'app Android reste aux versions stables). Les canaries sont signées avec leur propre clé, que l'installateur n'accepte que pour elles : une canary ne peut pas se faire passer pour une version stable. Une installation d'avant cette version passe en canary une fois mise à jour.
+- Canal canary : des versions canary aux grandes étapes du développement, une fois tous les tests passés, pour Linux (terminal et fenêtre ; l'app Android reste aux versions stables). Les canaries sont signées avec leur propre clé, que l'installateur n'accepte que pour elles : une canary ne peut pas se faire passer pour une version stable. Une installation d'avant cette version passe en canary une fois mise à jour.
 
 ### Changed
 - Sans mode de permission choisi, Prism démarre en mode large (`broad`) au lieu de « demander » (`ask`) : il travaille dans le projet sans poser de question et demande avant d'en sortir, avant `sudo` et avant un appel dangereux. Le mode choisi à l'accueil ou avec `/perm default` reste prioritaire.
@@ -35,6 +38,10 @@ et refuse une version sans section.
 - Un modèle retiré par son fournisseur disparaît de `/model` sans attendre de mise à jour de Prism : dès que le catalogue de pi.dev du fournisseur, plus récent que celui de Prism, ne le liste plus. Votre modèle par défaut et les modèles nommés dans `models.json` restent. Hors ligne, ou rafraîchissement désactivé dans `/settings`, rien ne change.
 
 ### Fixed
+- Terminal et fenêtre : une variable comme `$APP_CONFIG` ou `$HOME/…` sans `$` de fermeture ne laisse plus le reste du paragraphe brut (gras, code, liens non mis en forme).
+- Fenêtre : dans une nouvelle conversation, un long brouillon ne fait plus sortir de la vue le titre de l'accueil ; l'accueil, plus haut depuis l'encart du téléphone, se lit depuis son début.
+- Accueil : sans mode de permissions enregistré, l'étape « Permissions » présélectionne le mode par défaut, « large », et non plus « demander ».
+- Les binaires publiés (fenêtre, serveur du téléphone, app Android) ne contiennent plus les chemins de la machine qui les a construits, donc plus le nom de son utilisateur ; la release s'arrête si un fichier en contient encore un.
 - Un refus du mode sûr ne finit plus par deux points (« (curl).. »).
 - Fenêtre : chercher des éléments dans une conversation ne passe plus tous les résultats d'un message en arguments d'un seul appel, qui pouvait dépasser la limite de la pile sur un très long message.
 - Fenêtre : une très longue conversation s'ouvre vite et reste légère. Seuls les messages proches de la vue sont dans la page ; à 20 000 messages, la mémoire de la fenêtre passe d'environ 1,2 Gio à environ 320 Mio et l'ouverture d'environ 22 s à environ 2,4 s. La recherche couvre toujours toute la conversation.

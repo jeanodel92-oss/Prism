@@ -134,7 +134,7 @@ done
 	die "maintenance number must be a positive integer, got '$maintenance'"
 [[ -z "$maintenance" || -z "$canary" ]] || die "--maintenance and --canary do not combine: a maintenance release is stable"
 [[ -z "$no_sign" || -n "$canary" ]] || die "--unsigned is for a canary: a stable release is signed here"
-for tool in curl xz sha256sum $([[ -n "$no_sign" ]] || echo minisign); do
+for tool in curl xz sha256sum $([[ -n "$no_sign" ]] || echo minisign) $([[ -n "$canary" ]] || echo unzip); do
 	command -v "$tool" >/dev/null || die "$tool is required"
 done
 if [[ -n "$canary" ]]; then
@@ -152,6 +152,29 @@ if [[ -z "$canary" ]]; then
 fi
 command -v cargo >/dev/null || die "cargo is required"
 command -v cargo-about >/dev/null || die "cargo-about is required: cargo install cargo-about --locked --features cli"
+
+# The build machine's paths stay out of the binaries: rustc and C compilers write source paths (the cargo registry's,
+# this checkout's) into them, and those name the user who built the release.
+# Later prefixes win in rustc, so the broadest comes first. The check before packing (no_build_paths) enforces it.
+cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/build --remap-path-prefix=$cargo_home=/cargo --remap-path-prefix=$ROOT=/prism"
+for flags in CFLAGS CXXFLAGS; do
+	export "$flags=${!flags:-} -ffile-prefix-map=$HOME=/build -ffile-prefix-map=$cargo_home=/cargo -ffile-prefix-map=$ROOT=/prism"
+done
+# Fails when a file under $1 (the archive's tree, or an APK's entries) contains the build machine's home or user name.
+no_build_paths() {
+	local where="$1" user found
+	user="$(id -un)"
+	if [[ -d "$where" ]]; then
+		found="$(grep -r -l -a -F -e "$HOME" -e "/home/$user" "$where" || true)"
+	else
+		found="$(unzip -Z1 "$where" | while IFS= read -r entry; do
+			# Not grep -q: its early exit would fail unzip on SIGPIPE, and pipefail would hide the match.
+			unzip -p "$where" "$entry" | grep -a -F -e "$HOME" -e "/home/$user" >/dev/null && printf '%s\n' "$entry"
+		done || true)"
+	fi
+	[[ -z "$found" ]] || die "$(basename "$where") contains the build machine's home ($HOME): $(head -n 5 <<<"$found" | tr '\n' ' ')"
+}
 
 # Release notes: the version's section of fork/CHANGELOG.md, heading included,
 # up to the next version heading, without trailing blank lines. A canary takes the
@@ -345,6 +368,10 @@ if [[ -z "$canary" ]]; then
 	extension_packages=("prism-firefox-$extension_version.zip" "prism-chromium-$extension_version.zip")
 fi
 
+say "checking that no build path is left in the release"
+no_build_paths "$root"
+[[ -z "$apk" ]] || no_build_paths "$release_dir/$apk"
+
 say "packing $name.tar.gz"
 tar --sort=name --owner=0 --group=0 --numeric-owner -C "$work" -czf "$release_dir/$name.tar.gz" "$name"
 printf '%s\n' "$notes" >"$release_dir/NOTES.md"
@@ -361,6 +388,9 @@ if [[ -z "$canary" ]]; then
 	mkdir -p "$out/releases/android"
 	cp "$release_dir/$apk" "$out/releases/android/prism-android-arm64.apk"
 	cp "$ROOT/fork/scripts/install.sh" "$out/install.sh"
+	# The installer's own signature: a user can check install.sh with the release key published in the public
+	# repository before running it, independently of the site.
+	minisign -S -s "$key" -m "$out/install.sh" -t "prism install.sh $version" >/dev/null
 fi
 
 say "release $version in $out ($(du -h "$release_dir/$name.tar.gz" | cut -f1)${apk:+, APK $(du -h "$release_dir/$apk" | cut -f1)})"

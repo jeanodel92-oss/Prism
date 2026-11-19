@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# builds the canary release of a green commit of `dev`, in the CI of the build server, and leaves it
-# unsigned in OUTBOX, where a signer that alone holds the canary key signs and publishes it.
+# Builds the canary release of a commit, in the CI of the build server, and leaves it unsigned in OUTBOX, where a
+# signer that alone holds the canary key signs and publishes it. Since 2026-11-19 a canary marks a
+# major step: the CI builds one only for a pushed tag canary/<version>, VERSION being this commit's canary version.
 #
 # Version: <upstream>-fork.N.canary.M, N the stable release the commit descends from (its tag prism-v<upstream>-fork.N)
 # and M the number of commits since that tag, so canaries of later commits sort after. Nothing is built when
 # fork/CHANGELOG.md has nothing under [Unreleased]: a canary's notes are that section.
 #
-# usage: fork/scripts/ci-canary.sh OUTBOX
+# usage: fork/scripts/ci-canary.sh --version          print HEAD's canary version (the name of its tag canary/<version>)
+#        fork/scripts/ci-canary.sh OUTBOX [VERSION]   build it; refuse when VERSION is not HEAD's canary version
 set -euo pipefail
 
-outbox=${1:?usage: ci-canary.sh OUTBOX}
+outbox=${1:?usage: ci-canary.sh --version | OUTBOX [VERSION]}
+expected=${2:-}
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 say() { printf 'ci-canary: %s\n' "$*"; }
 die() {
@@ -32,6 +35,12 @@ canary="$(git -C "$ROOT" rev-list --count "$stable_tag..HEAD")"
 # The upstream part is the package's, as release.sh names it.
 package_version="$(node -p 'require(process.argv[1]).version' "$ROOT/packages/coding-agent/package.json")"
 version="${package_version%-fork.*}-fork.$fork_number.canary.$canary"
+if [[ "$outbox" == --version ]]; then
+	printf '%s\n' "$version"
+	exit 0
+fi
+[[ -z "$expected" || "$expected" == "$version" ]] ||
+	die "tag canary/$expected, but this commit's canary is $version: tag it canary/$version"
 
 if ! awk '/^## \[Unreleased\]/ { on = 1; next } on && /^## \[/ { exit } on && NF { found = 1 } END { exit !found }' \
 	"$ROOT/fork/CHANGELOG.md"; then

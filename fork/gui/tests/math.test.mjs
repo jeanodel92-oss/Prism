@@ -75,8 +75,10 @@ test("prices, shell variables and code spans stay text", () => {
 	assert.deepEqual(maths("$5 and $10"), []);
 	assert.deepEqual(maths("echo $HOME"), []);
 	assert.deepEqual(maths("It costs $5"), [], "an open $ before plain text is not pending math");
-	// As in the terminal, the last "$APP_CONFIG" opens a pending formula ("_" looks like math), shown as written.
-	assert.deepEqual(maths("Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG"), [{ type: "latex", text: "APP_CONFIG", pending: true }]);
+	// fork: a lone shell-like name opens no pending formula, which kept the rest of the paragraph raw.
+	assert.deepEqual(maths("Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG"), []);
+	assert.deepEqual(maths("Set $APP_CONFIG to **bold** and `code`."), []);
+	assert.deepEqual(maths("Edit $HOME/.config/x_y.toml"), []);
 });
 
 test("an unknown command is still math: KaTeX refuses it and its source stays", () => {

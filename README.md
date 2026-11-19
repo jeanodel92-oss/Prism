@@ -34,6 +34,16 @@ curl -fsSL https://prism.odelserver.space/install.sh | sh
 The installer checks each release's signature before installing it. The Android app is offered on the website and in
 an F-Droid repository.
 
+To check the installer itself before running it, with [minisign](https://jedisct1.github.io/minisign/) and the
+release key given here (the same as in `fork/scripts/install.sh`), not by the website:
+
+```bash
+curl -fsSLO https://prism.odelserver.space/install.sh
+curl -fsSLO https://prism.odelserver.space/install.sh.minisig
+minisign -Vm install.sh -P RWQHj1LfelCE8N3pmVRt9kJcLo18AA41Gm8c7heF0irUFX2+UNOKpPHf
+sh install.sh
+```
+
 ## Build from source
 
 Requirements: Linux, Node.js 22.19 or newer, npm, git, and `fd` and `ripgrep` on the system for the tests.

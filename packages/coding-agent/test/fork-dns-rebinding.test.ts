@@ -104,7 +104,7 @@ describe("this machine's addresses and names", () => {
 		family === "IPv4"
 			? { address, family, netmask: "255.255.255.0", mac: "00:00:00:00:00:00", internal: false, cidr: null }
 			: { address, family, netmask: "ffff::", mac: "00:00:00:00:00:00", internal: false, cidr: null, scopeid: 2 };
-	const interfaces = { eth0: [nic("192.168.2.208", "IPv4"), nic("fe80::1", "IPv6"), nic("fd7a::1a01", "IPv6")] };
+	const interfaces = { eth0: [nic("192.168.1.20", "IPv4"), nic("fe80::1", "IPv6"), nic("fd7a::1a01", "IPv6")] };
 
 	it.each([
 		"127.0.0.1",
@@ -115,14 +115,14 @@ describe("this machine's addresses and names", () => {
 		"::ffff:127.0.0.1",
 		"::ffff:7f00:1",
 		"::ffff:0.0.0.0",
-		"192.168.2.208",
-		"::ffff:192.168.2.208",
+		"192.168.1.20",
+		"::ffff:192.168.1.20",
 		"fe80::1",
 		"fe80::1%eth0",
 		"fd7a::1a01",
 	])("recognizes %s", (address) => expect(isMachineAddress(address, interfaces)).toBe(true));
 
-	it.each(["192.168.2.209", "10.0.0.1", "8.8.8.8", "fe80::2", "::2", "::ffff:8.8.8.8", "localhost", "invalid"])(
+	it.each(["192.168.1.21", "10.0.0.1", "8.8.8.8", "fe80::2", "::2", "::ffff:8.8.8.8", "localhost", "invalid"])(
 		"tells %s apart",
 		(address) => expect(isMachineAddress(address, interfaces)).toBe(false),
 	);

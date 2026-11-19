@@ -58,6 +58,11 @@ export function tokenizeInlineLatex(source) {
 
 	if (closingIndex < 0) {
 		const pendingSource = source.slice(opening.length);
+		// fork: a shell-like name ($APP_CONFIG, $HOME/...) is not a formula being written; as pending it kept the rest
+		// of the paragraph raw, Markdown and all, even once the reply was finished.
+		if (opening === "$" && /^[A-Z_][A-Z0-9_]+(?![A-Za-z0-9_])/.test(pendingSource)) {
+			return undefined;
+		}
 		if (opening.startsWith("\\") || looksLikePendingDollarMath(pendingSource)) {
 			return { type: "latex", raw: source, text: pendingSource, pending: true };
 		}
