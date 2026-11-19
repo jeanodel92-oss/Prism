@@ -701,6 +701,11 @@ const LAYOUT_MARKER_START = "\u{f0000}";
 const LAYOUT_MARKER_END = "\u{f0001}";
 const LAYOUT_MARKER_PATTERN = /\u{f0000}(\d+)\u{f0001}/gu;
 const TRAILING_LAYOUT_MARKER_PATTERN = /\u{f0000}(\d+)\u{f0001}$/u;
+/**
+ * fork: deeper groups are not rendered (the source is shown as is).
+ * Parsing and layout recurse once per level, and 2000 nested fractions overflowed the stack.
+ */
+const MAX_LATEX_NESTING = 64;
 const PROTECTED_SPACE = "\u{f0002}";
 
 function padLayoutLine(line: string, width: number, centered = false): string {
@@ -843,11 +848,13 @@ class LatexParser {
 	private supported = true;
 	private stackFractions = true;
 	private scriptDepth = 0;
+	private nesting: number;
 
-	constructor(source: string, layoutNodes: LayoutNode[], display: boolean) {
+	constructor(source: string, layoutNodes: LayoutNode[], display: boolean, nesting = 0) {
 		this.source = source;
 		this.layoutNodes = layoutNodes;
 		this.display = display;
+		this.nesting = nesting;
 	}
 
 	render(): string | undefined {
@@ -859,6 +866,20 @@ class LatexParser {
 	}
 
 	private parseSequence(endCharacter?: string): string {
+		if (this.nesting >= MAX_LATEX_NESTING) {
+			this.supported = false;
+			this.position = this.source.length;
+			return "";
+		}
+		this.nesting++;
+		try {
+			return this.parseSequenceBody(endCharacter);
+		} finally {
+			this.nesting--;
+		}
+	}
+
+	private parseSequenceBody(endCharacter?: string): string {
 		let result = "";
 		while (this.position < this.source.length) {
 			const character = this.source[this.position];
@@ -1072,7 +1093,8 @@ class LatexParser {
 		}
 		if (command === "not") {
 			const value = this.parseRequiredArgument(false).trim();
-			const negated = NEGATED_SYMBOLS[value];
+			// fork: own entries only, never what every object inherits.
+			const negated = Object.hasOwn(NEGATED_SYMBOLS, value) ? NEGATED_SYMBOLS[value] : undefined;
 			if (negated !== undefined) {
 				return ` ${negated} `;
 			}
@@ -1087,7 +1109,7 @@ class LatexParser {
 			return this.parseOperator(command, "bracket", true, true);
 		}
 
-		const symbol = SYMBOLS[command];
+		const symbol = Object.hasOwn(SYMBOLS, command) ? SYMBOLS[command] : undefined;
 		if (symbol !== undefined) {
 			if (DISPLAY_LIMIT_SYMBOLS.has(command)) {
 				return this.parseOperator(symbol, "script", true);
@@ -1467,7 +1489,7 @@ class LatexParser {
 	}
 
 	private renderNested(source: string, stackFractions = true): string {
-		const rendered = new LatexParser(source, this.layoutNodes, this.display && stackFractions).render();
+		const rendered = new LatexParser(source, this.layoutNodes, this.display && stackFractions, this.nesting).render();
 		if (rendered === undefined) {
 			this.supported = false;
 			return source;
@@ -1486,6 +1508,9 @@ export interface RenderLatexOptions {
  * Returns undefined when the expression contains unsupported or malformed syntax.
  */
 export function renderLatex(source: string, options: RenderLatexOptions = {}): string | undefined {
+	// fork: layout markers come only from the parser, which numbers a node after the
+	// nodes inside it, so layout never loops. A marker written in the source could point at its own node.
+	if (source.includes(LAYOUT_MARKER_START) || source.includes(LAYOUT_MARKER_END)) return undefined;
 	const layoutNodes: LayoutNode[] = [];
 	const rendered = new LatexParser(source, layoutNodes, options.display === true).render();
 	if (rendered === undefined) {

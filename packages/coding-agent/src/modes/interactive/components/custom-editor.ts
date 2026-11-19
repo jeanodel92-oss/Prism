@@ -1,5 +1,6 @@
 import { Editor, type EditorOptions, type EditorTheme, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import type { StatusIndicator } from "./status-indicator.ts";
 
 export type CustomEditorOptions = EditorOptions & {
@@ -34,6 +35,7 @@ export class CustomEditor extends Editor {
 	}
 
 	protected override renderTopBorder(width: number, hiddenLineCount: number): string {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		if (!this.embedWorkingStatus || !this.workingStatusIndicator || width <= 0) {
 			return super.renderTopBorder(width, hiddenLineCount);
 		}
@@ -42,7 +44,7 @@ export class CustomEditor extends Editor {
 		let statusWidth = visibleWidth(status);
 		if (statusWidth === 0) return super.renderTopBorder(width, hiddenLineCount);
 
-		const overflowLabel = hiddenLineCount > 0 ? ` ↑ ${hiddenLineCount} more ` : undefined;
+		const overflowLabel = hiddenLineCount > 0 ? fill(" ↑ {0} more ", String(hiddenLineCount)) : undefined;
 		const overflowLabelWidth = overflowLabel ? visibleWidth(overflowLabel) : 0;
 		const overflowStart = Math.floor((width - overflowLabelWidth) / 2);
 		const canFitOverflow = () =>

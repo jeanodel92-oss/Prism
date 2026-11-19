@@ -156,6 +156,8 @@ async function createRuntimeHost(options: {
 		fork: vi.fn(async () => ({ cancelled: true, selectedText: "" })),
 		dispose: vi.fn(async () => {}),
 		setRebindSession: vi.fn(),
+		setBeforeSessionInvalidate: vi.fn(),
+		setOnSessionLost: vi.fn(),
 	} as unknown as AgentSessionRuntime;
 
 	return {
@@ -224,7 +226,8 @@ describe("RPC prompt response semantics", () => {
 					command: "prompt",
 					success: false,
 					error: expect.stringContaining(
-						"No API key found for fake-provider.\n\nUse /login to log into a provider via OAuth or API key. See:",
+						// fork: /docs instead of file paths.
+						"No access key is available for fake-provider.\n\nUse /login to connect a model service or server with an account, an API key (an access key), or a server address. /docs providers explains how.",
 					),
 				});
 			});

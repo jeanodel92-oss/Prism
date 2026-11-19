@@ -1,6 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { anthropicOAuth } from "../src/auth/oauth/anthropic.ts";
+import type * as CallbackServerModule from "../src/auth/oauth/callback-server.ts";
 import type { AuthEvent, AuthPrompt } from "../src/auth/types.ts";
+
+// Bind a free port so overlapping test runs do not share Anthropic's fixed callback port.
+const boundCallbackPorts = vi.hoisted(() => [] as string[]);
+vi.mock("../src/auth/oauth/callback-server.ts", async (importOriginal) => {
+	const original = await importOriginal<typeof CallbackServerModule>();
+	return {
+		...original,
+		startOAuthCallbackServer: async (...args: Parameters<typeof original.startOAuthCallbackServer>) => {
+			const server = await original.startOAuthCallbackServer({ ...args[0], port: 0 });
+			boundCallbackPorts.push(new URL(server.redirectUri).port);
+			return server;
+		},
+	};
+});
 
 const neverAbortedSignal = new AbortController().signal;
 const nativeFetch = globalThis.fetch;
@@ -226,8 +241,14 @@ describe.sequential("Anthropic OAuth", () => {
 			signal: neverAbortedSignal,
 			notify: (event) => {
 				if (event.type !== "auth_url") return;
-				const state = new URL(event.url).searchParams.get("state") ?? "";
-				callbackPage = nativeFetch(`http://127.0.0.1:53692/callback?code=browser-code&state=${state}`);
+				const authorize = new URL(event.url);
+				const callback = new URL(authorize.searchParams.get("redirect_uri") ?? "");
+				expect(callback.toString()).toBe("http://localhost:53692/callback");
+				callback.hostname = "127.0.0.1";
+				callback.port = boundCallbackPorts.at(-1) ?? "";
+				callback.searchParams.set("code", "browser-code");
+				callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
+				callbackPage = nativeFetch(callback);
 			},
 			prompt: (prompt) =>
 				prompt.type === "select"

@@ -7,6 +7,8 @@ import {
 	type Provider,
 } from "@earendil-works/pi-ai";
 import { VERSION } from "../config.ts";
+import { retiredModelKeys, withoutRetired } from "../fork/hide-retired-models.ts";
+import { pinRemoteBaseUrls } from "../fork/remote-catalog-pin.ts";
 import { fetchWithRetry } from "../utils/management-http.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 
@@ -62,30 +64,46 @@ export function withRemoteCatalog(
 	provider: Provider,
 	catalogBaseUrl: string = DEFAULT_CATALOG_BASE_URL,
 	localGeneratedAt?: number,
+	// fork: false limits network refreshes to forced ones (`update --models`); a function is read at each refresh.
+	automaticRefresh: boolean | (() => boolean) = true,
+	// given, a fresh catalog hides the built-in models it no longer lists, except these ids
+	// (fork/hide-retired-models.ts); read at each overlay update. Left out, the overlay only adds, as upstream.
+	kept?: () => ReadonlySet<string>,
 ): Provider {
 	let dynamicModels: readonly AnyModel[] = [];
+	let retired: ReadonlySet<string> = new Set();
+	const setDynamicModels = (models: readonly AnyModel[]) => {
+		dynamicModels = models;
+		if (kept) retired = retiredModelKeys(provider.getAllModels?.() ?? provider.getModels(), models, kept());
+	};
 
 	return {
 		...provider,
 		getModels: () =>
 			mergeModels(
-				provider.getModels(),
+				withoutRetired(provider.getModels(), retired),
 				dynamicModels.filter((model) => isModelType(model, "chat")),
 			),
-		getAllModels: () => mergeModels(provider.getAllModels?.() ?? provider.getModels(), dynamicModels),
+		getAllModels: () =>
+			mergeModels(withoutRetired(provider.getAllModels?.() ?? provider.getModels(), retired), dynamicModels),
 		refreshModels: async (context) => {
 			const stored = context.stored;
-			const restored = remoteModels(stored, localGeneratedAt).filter((model) => model.provider === provider.id);
+			const restored = pinRemoteBaseUrls(
+				provider.getAllModels?.() ?? provider.getModels(),
+				remoteModels(stored, localGeneratedAt).filter((model) => model.provider === provider.id),
+			);
 			if (
 				!(await context.publish({
 					update: () => {
-						dynamicModels = restored;
+						setDynamicModels(restored);
 					},
 				}))
 			) {
 				return;
 			}
 			if (!context.allowNetwork || context.signal.aborted) return;
+			const automatic = typeof automaticRefresh === "function" ? automaticRefresh() : automaticRefresh;
+			if (!automatic && !context.force) return;
 			if (
 				!context.force &&
 				stored?.checkedAt !== undefined &&
@@ -146,11 +164,15 @@ export function withRemoteCatalog(
 				lastModified: Number.isNaN(lastModified) ? 0 : lastModified,
 				etag: response.headers.get("etag") ?? undefined,
 			};
-			const published = remoteModels(entry, localGeneratedAt);
+			// pi.dev cannot move a provider to another address (remote-catalog-pin.ts).
+			const published = pinRemoteBaseUrls(
+				provider.getAllModels?.() ?? provider.getModels(),
+				remoteModels(entry, localGeneratedAt),
+			);
 			await context.publish({
 				persist: entry,
 				update: () => {
-					dynamicModels = published;
+					setDynamicModels(published);
 				},
 			});
 		},

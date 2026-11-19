@@ -142,7 +142,7 @@ static bool request_selection(x11_clipboard* clipboard, xcb_atom_t target, prope
         bool received = event->property != XCB_NONE;
         free(event);
         if (!matches) continue;
-        if (!received) return true; // No owner, or the owner does not offer this target.
+        if (!received) return true; // No owner, or the maintainer does not offer this target.
         if (!read_property(clipboard, false, result)) return false;
         break;
     }

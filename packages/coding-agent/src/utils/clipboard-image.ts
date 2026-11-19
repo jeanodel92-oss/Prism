@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { readFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-
+import { imageDecodeRefusal } from "../fork/image-pixel-limit.ts";
 import { runClipboardCommand } from "./clipboard-command.ts";
 import { detectSupportedImageMimeType } from "./mime.ts";
 import { loadPhoton } from "./photon.ts";
@@ -69,6 +69,8 @@ function isSupportedImageMimeType(mimeType: string): boolean {
  * Returns null if conversion is unavailable or fails.
  */
 async function convertToPng(bytes: Uint8Array): Promise<Uint8Array | null> {
+	// fork: never decode a picture whose header declares too many pixels.
+	if (imageDecodeRefusal(bytes)) return null;
 	const photon = await loadPhoton();
 	if (!photon) {
 		return null;

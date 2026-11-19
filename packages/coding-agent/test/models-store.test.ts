@@ -5,6 +5,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import lockfile from "proper-lockfile";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { FileModelsStore } from "../src/core/models-store.ts";
+import { RACY_MS } from "../src/fork/file-cache.ts";
 
 const sharedTempDir = join(tmpdir(), `pi-models-store-shared-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const sharedModelsPath = join(sharedTempDir, "models-store.json");
@@ -19,7 +20,14 @@ afterAll(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.useRealTimers();
 });
+
+// fork: a file changed in the last RACY_MS has no revision and is read again;
+// this moves the clock past that, for the tests that count reloads of an unchanged file.
+function ageFiles(): void {
+	vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + RACY_MS + 1_000 });
+}
 
 function model(provider: string, id: string): Model<"openai-completions"> {
 	return {
@@ -72,6 +80,7 @@ describe("FileModelsStore", () => {
 				two: { models: [model("two", "m2")] },
 			}),
 		);
+		ageFiles();
 		const first = new FileModelsStore(sharedModelsPath);
 		const second = new FileModelsStore(sharedModelsPath);
 		const lockSpy = vi.spyOn(lockfile, "lock");
@@ -91,6 +100,7 @@ describe("FileModelsStore", () => {
 
 		const otherPath = join(sharedTempDir, "other-models-store.json");
 		writeFileSync(otherPath, "{}");
+		ageFiles();
 		const other = new FileModelsStore(otherPath);
 		await expect(other.read("one")).resolves.toBeUndefined();
 		await expect(other.read("one")).resolves.toBeUndefined();

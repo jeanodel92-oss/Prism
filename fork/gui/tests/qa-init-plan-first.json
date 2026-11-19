@@ -1,0 +1,61 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: without a plan, /init offers to write one first in plan mode"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "wait",
+		"selector": "#mode-switches [data-mode='plan'][aria-pressed='false']"
+	},
+	{
+		"do": "type",
+		"text": "/init"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "No plan yet: write one first in plan mode",
+		"timeout": 15000
+	},
+	{
+		"do": "shot",
+		"name": "start"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "No plan yet: write one first in plan mode"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.native-command",
+		"gone": true
+	},
+	{
+		"do": "wait",
+		"selector": "#mode-switches [data-mode='plan'][aria-pressed='true']",
+		"why": "plan mode is on"
+	},
+	{
+		"do": "wait",
+		"selector": "#toasts .toast",
+		"text": "export it (PLAN.md)"
+	},
+	{
+		"do": "absent",
+		"selector": ".msg.user",
+		"text": "/init",
+		"why": "nothing was sent to the model"
+	},
+	{
+		"do": "quit"
+	}
+]

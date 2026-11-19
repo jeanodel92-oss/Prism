@@ -2,11 +2,14 @@
  * Process @file CLI arguments into text content and image attachments
  */
 
-import { access, readFile, stat } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import chalk from "chalk";
 import { resolve } from "path";
 import { resolveReadPath } from "../core/tools/path-utils.ts";
+import { assertNotBinaryFile } from "../fork/binary-file.ts";
+import { readBounded } from "../fork/bounded-read.ts";
+import { documentTextForModel, IMAGE_LIMIT } from "../fork/document-preview.ts";
 import { processImage } from "../utils/image-process.ts";
 import { detectSupportedImageMimeTypeFromFile } from "../utils/mime.ts";
 import { stripBom } from "../utils/text.ts";
@@ -41,6 +44,11 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 
 		// Check if file is empty
 		const stats = await stat(absolutePath);
+		// fork: a FIFO or device is refused before anything opens it and waits.
+		if (!stats.isFile()) {
+			console.error(chalk.red(`Error: ${absolutePath} is not a regular file`));
+			process.exit(1);
+		}
 		if (stats.size === 0) {
 			// Skip empty files
 			continue;
@@ -50,7 +58,15 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 
 		if (mimeType) {
 			// Handle image file
-			const content = await readFile(absolutePath);
+			// fork: no larger than an image `read` loads; a FIFO is refused, not waited on.
+			let content: Buffer;
+			try {
+				content = await readBounded(absolutePath, IMAGE_LIMIT);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(chalk.red(`Error: Could not read file ${absolutePath}: ${message}`));
+				process.exit(1);
+			}
 			const processed = await processImage(content, mimeType, { autoResizeImages });
 
 			if (!processed.ok) {
@@ -74,7 +90,12 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 		} else {
 			// Handle text file
 			try {
-				const content = stripBom(await readFile(absolutePath, "utf-8"));
+				// fork: a PDF, .docx or .odt gives its extracted text, as with `read`; another
+				// binary file is refused instead of sent as noise. A FIFO or device is refused without blocking.
+				const extracted = await documentTextForModel(absolutePath);
+				if (extracted === undefined) await assertNotBinaryFile(absolutePath, absolutePath);
+				const content =
+					extracted ?? stripBom((await readBounded(absolutePath, Number.MAX_SAFE_INTEGER)).toString("utf-8"));
 				text += `<file name="${absolutePath}">\n${content}\n</file>\n`;
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);

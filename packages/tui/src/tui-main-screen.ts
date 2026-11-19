@@ -6,6 +6,16 @@ import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { visibleWidth } from "./utils.ts";
 
 const KITTY_SEQUENCE_PREFIX = "\x1b_G";
+
+/**
+ * fork: applied to the rendered lines a debug dump writes, which show what the user saw,
+ * secrets included; the application masks the secrets it knows. The dumps are private to the user.
+ */
+let debugTextFilter: (text: string) => string = (text) => text;
+
+export function setDebugTextFilter(filter: (text: string) => string): void {
+	debugTextFilter = filter;
+}
 const MAX_RENDER_WRITE_CHARS = 1024 * 1024;
 
 /**
@@ -131,6 +141,13 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private hardwareCursorRow = 0;
 	private maxLinesRendered = 0;
 	private previousViewportTop = 0;
+	// fork: last frame's rows before and after applyLineResets. A row whose input is
+	// unchanged reuses its output string, so the line diff compares it by reference.
+	private resetInput: string[] = [];
+	private resetOutput: string[] = [];
+	// fork: rows that can hold a Kitty image, per frame returned by applyLineResets, so the
+	// image scans below skip the other rows instead of searching every line of every frame.
+	private kittyRows = new WeakMap<string[], number[]>();
 
 	captureRenderState(): TuiMainScreenRenderState {
 		return {
@@ -177,8 +194,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 	private collectKittyImageIds(lines: string[]): Set<number> {
 		const ids = new Set<number>();
-		for (const line of lines) {
-			for (const id of extractKittyImageIds(line)) {
+		for (const row of this.kittyRowsOf(lines)) {
+			for (const id of extractKittyImageIds(lines[row]!)) {
 				ids.add(id);
 			}
 		}
@@ -215,8 +232,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		let expandedFirstChanged = firstChanged;
 		let expandedLastChanged = lastChanged;
 		const expandForLines = (lines: string[]): void => {
-			for (let i = 0; i < lines.length; i++) {
-				if (extractKittyImageIds(lines[i]).length === 0) continue;
+			for (const i of this.kittyRowsOf(lines)) {
+				if (extractKittyImageIds(lines[i]!).length === 0) continue;
 				const blockEnd = i + this.getKittyImageReservedRows(lines, i) - 1;
 				if (i >= firstChanged || (i <= lastChanged && blockEnd >= firstChanged)) {
 					expandedFirstChanged = Math.min(expandedFirstChanged, i);
@@ -242,6 +259,42 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		}
 
 		return this.deleteKittyImages(ids);
+	}
+
+	protected override applyLineResets(lines: string[]): string[] {
+		const input = lines.slice();
+		const changedRows: number[] = [];
+		const kittyRows: number[] = [];
+		const previousKittyRows = new Set(this.kittyRows.get(this.resetOutput));
+		for (let row = 0; row < lines.length; row++) {
+			if (lines[row] === this.resetInput[row]) {
+				lines[row] = this.resetOutput[row]!;
+				if (previousKittyRows.has(row)) kittyRows.push(row);
+			} else {
+				changedRows.push(row);
+				if (lines[row]!.includes(KITTY_SEQUENCE_PREFIX)) kittyRows.push(row);
+			}
+		}
+		const changed = super.applyLineResets(changedRows.map((row) => lines[row]!));
+		for (let index = 0; index < changedRows.length; index++) lines[changedRows[index]!] = changed[index]!;
+		this.resetInput = input;
+		this.resetOutput = lines.slice();
+		this.kittyRows.set(this.resetOutput, kittyRows);
+		this.kittyRows.set(lines, kittyRows);
+		return lines;
+	}
+
+	/** Rows of `lines` that contain a Kitty graphics sequence; the others have no image header. */
+	private kittyRowsOf(lines: string[]): number[] {
+		let rows = this.kittyRows.get(lines);
+		if (rows === undefined) {
+			rows = [];
+			for (let row = 0; row < lines.length; row++) {
+				if (lines[row]!.includes(KITTY_SEQUENCE_PREFIX)) rows.push(row);
+			}
+			this.kittyRows.set(lines, rows);
+		}
+		return rows;
 	}
 
 	protected doRender(): void {
@@ -447,6 +500,21 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		}
 
 		// Differential rendering can only touch what was actually visible.
+		// fork: a full redraw clears the scrollback, which throws a terminal scrolled
+		// back by the user (kitty) to the bottom and drops its selection, e.g. each time a
+		// tool block that scrolled out of view finishes. When no line is removed, leave the
+		// lines above the viewport stale in the scrollback and redraw from the viewport.
+		if (firstChanged < prevViewportTop && newLines.length >= this.previousLines.length) {
+			if (lastChanged < prevViewportTop) {
+				this.positionHardwareCursor(cursorPos, newLines.length);
+				this.previousLines = newLines;
+				this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+				this.previousViewportTop = prevViewportTop;
+				this.previousHeight = height;
+				return;
+			}
+			firstChanged = prevViewportTop;
+		}
 		// If the first changed line is above the previous viewport, we need a full redraw.
 		if (firstChanged < prevViewportTop) {
 			logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop})`);
@@ -527,7 +595,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 					"",
 				].join("\n");
 				fs.mkdirSync(path.dirname(crashLogPath), { recursive: true });
-				fs.writeFileSync(crashLogPath, crashData);
+				fs.writeFileSync(crashLogPath, debugTextFilter(crashData), { mode: 0o600 }); // fork
 
 				// Clean up terminal state before throwing
 				this.stop();
@@ -568,7 +636,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 		if (process.env.PI_TUI_DEBUG === "1") {
 			const debugDir = "/tmp/tui";
-			fs.mkdirSync(debugDir, { recursive: true });
+			fs.mkdirSync(debugDir, { recursive: true, mode: 0o700 }); // fork
 			const debugPath = path.join(debugDir, `render-${Date.now()}-${Math.random().toString(36).slice(2)}.log`);
 			const debugData = [
 				`firstChanged: ${firstChanged}`,
@@ -592,7 +660,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				"=== buffer ===",
 				`[${output.length} chars written in bounded chunks]`,
 			].join("\n");
-			fs.writeFileSync(debugPath, debugData);
+			fs.writeFileSync(debugPath, debugTextFilter(debugData), { mode: 0o600 }); // fork
 		}
 
 		output.flush();

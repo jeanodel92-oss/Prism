@@ -1,6 +1,9 @@
 import { type ExecFileException, execFile, spawnSync } from "child_process";
-import { existsSync, type FSWatcher, readFileSync, type Stats, statSync, unwatchFile, watchFile } from "fs";
+import { existsSync, type FSWatcher, type Stats, statSync, unwatchFile, watchFile } from "fs";
 import { dirname, join, resolve } from "path";
+// fork: Git metadata read without blocking on a FIFO, and bounded.
+import { readSmallTextSync } from "../fork/bounded-read.ts";
+import { hostProgram } from "../fork/host-program.ts";
 import { closeWatcher, FS_WATCH_RETRY_DELAY_MS, watchWithErrorHandler } from "../utils/fs-watch.ts";
 
 export type GitPaths = {
@@ -21,14 +24,14 @@ export function findGitPaths(cwd: string): GitPaths | null {
 			try {
 				const stat = statSync(gitPath);
 				if (stat.isFile()) {
-					const content = readFileSync(gitPath, "utf8").trim();
+					const content = readSmallTextSync(gitPath).trim();
 					if (content.startsWith("gitdir: ")) {
 						const gitDir = resolve(dir, content.slice(8).trim());
 						const headPath = join(gitDir, "HEAD");
 						if (!existsSync(headPath)) return null;
 						const commonDirPath = join(gitDir, "commondir");
 						const commonGitDir = existsSync(commonDirPath)
-							? resolve(gitDir, readFileSync(commonDirPath, "utf8").trim())
+							? resolve(gitDir, readSmallTextSync(commonDirPath).trim())
 							: gitDir;
 						return { repoDir: dir, commonGitDir, headPath };
 					}
@@ -49,7 +52,10 @@ export function findGitPaths(cwd: string): GitPaths | null {
 
 /** Ask git for the current branch. Returns null on detached HEAD or if git is unavailable. */
 function resolveBranchWithGitSync(repoDir: string): string | null {
-	const result = spawnSync("git", ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"], {
+	// fork: Git from PATH, never from where the sandbox writes.
+	const git = hostProgram("git");
+	if (!git) return null;
+	const result = spawnSync(git, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"], {
 		cwd: repoDir,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
@@ -60,9 +66,11 @@ function resolveBranchWithGitSync(repoDir: string): string | null {
 
 /** Ask git for the current branch asynchronously. Returns null on detached HEAD or if git is unavailable. */
 function resolveBranchWithGitAsync(repoDir: string): Promise<string | null> {
+	const git = hostProgram("git");
+	if (!git) return Promise.resolve(null);
 	return new Promise((resolvePromise) => {
 		execFile(
-			"git",
+			git,
 			["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
 			{
 				cwd: repoDir,
@@ -116,11 +124,20 @@ export class FooterDataProvider {
 	private refreshInFlight = false;
 	private refreshPending = false;
 	private disposed = false;
+	/** fork: bumped by setCwd, so a resolution for the previous folder is dropped. */
+	private cwdGeneration = 0;
+	/**
+	 * fork: while the folder is not itself a repository's root, a `.git` appearing in it
+	 * (`git init`, a nested clone) is looked for, so the footer follows the repository the folder now belongs to.
+	 */
+	private discoveryWatcher: FSWatcher | null = null;
+	private discoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(cwd: string) {
 		this.cwd = cwd;
 		this.gitPaths = findGitPaths(cwd);
 		this.setupGitWatcher();
+		this.setupDiscoveryWatcher();
 	}
 
 	/** Current git branch, null if not in repo, "detached" if detached HEAD */
@@ -172,14 +189,17 @@ export class FooterDataProvider {
 		}
 
 		this.cwd = cwd;
+		this.cwdGeneration++;
 		if (this.refreshTimer) {
 			clearTimeout(this.refreshTimer);
 			this.refreshTimer = null;
 		}
 		this.clearGitWatchers();
+		this.clearDiscoveryWatcher();
 		this.cachedBranch = undefined;
 		this.gitPaths = findGitPaths(cwd);
 		this.setupGitWatcher();
+		this.setupDiscoveryWatcher();
 		this.notifyBranchChange();
 	}
 
@@ -191,7 +211,47 @@ export class FooterDataProvider {
 			this.refreshTimer = null;
 		}
 		this.clearGitWatchers();
+		this.clearDiscoveryWatcher();
 		this.branchChangeCallbacks.clear();
+	}
+
+	private clearDiscoveryWatcher(): void {
+		closeWatcher(this.discoveryWatcher);
+		this.discoveryWatcher = null;
+		if (this.discoveryTimer) {
+			clearTimeout(this.discoveryTimer);
+			this.discoveryTimer = null;
+		}
+	}
+
+	private setupDiscoveryWatcher(): void {
+		this.clearDiscoveryWatcher();
+		if (this.disposed || this.gitPaths?.repoDir === this.cwd) return;
+		this.discoveryWatcher = watchWithErrorHandler(
+			this.cwd,
+			(_eventType, filename) => {
+				if (!filename || filename === ".git") this.scheduleDiscovery(0);
+			},
+			() => this.clearDiscoveryWatcher(),
+		);
+	}
+
+	/** Looks for the repository again; `git init` creates `.git` before its HEAD, so a few later tries follow. */
+	private scheduleDiscovery(attempt: number): void {
+		if (this.disposed || this.discoveryTimer) return;
+		this.discoveryTimer = setTimeout(() => {
+			this.discoveryTimer = null;
+			const found = findGitPaths(this.cwd);
+			if (found?.repoDir === this.gitPaths?.repoDir && found?.headPath === this.gitPaths?.headPath) {
+				if (attempt < 20 && existsSync(join(this.cwd, ".git"))) this.scheduleDiscovery(attempt + 1);
+				return;
+			}
+			this.gitPaths = found;
+			this.cachedBranch = undefined;
+			this.setupGitWatcher();
+			this.setupDiscoveryWatcher();
+			this.notifyBranchChange();
+		}, FooterDataProvider.WATCH_DEBOUNCE_MS);
 	}
 
 	private notifyBranchChange(): void {
@@ -219,8 +279,9 @@ export class FooterDataProvider {
 
 		this.refreshInFlight = true;
 		try {
+			const generation = this.cwdGeneration;
 			const nextBranch = await this.resolveGitBranchAsync();
-			if (this.disposed) return;
+			if (this.disposed || generation !== this.cwdGeneration) return;
 			if (this.cachedBranch !== undefined && this.cachedBranch !== nextBranch) {
 				this.cachedBranch = nextBranch;
 				this.notifyBranchChange();
@@ -239,7 +300,7 @@ export class FooterDataProvider {
 	private resolveGitBranchSync(): string | null {
 		try {
 			if (!this.gitPaths) return null;
-			const content = readFileSync(this.gitPaths.headPath, "utf8").trim();
+			const content = readSmallTextSync(this.gitPaths.headPath).trim();
 			if (content.startsWith("ref: refs/heads/")) {
 				const branch = content.slice(16);
 				return branch === ".invalid" ? (resolveBranchWithGitSync(this.gitPaths.repoDir) ?? "detached") : branch;
@@ -253,7 +314,7 @@ export class FooterDataProvider {
 	private async resolveGitBranchAsync(): Promise<string | null> {
 		try {
 			if (!this.gitPaths) return null;
-			const content = readFileSync(this.gitPaths.headPath, "utf8").trim();
+			const content = readSmallTextSync(this.gitPaths.headPath).trim();
 			if (content.startsWith("ref: refs/heads/")) {
 				const branch = content.slice(16);
 				return branch === ".invalid"

@@ -1,22 +1,24 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/types.ts";
-import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
+import { fill, t } from "../../fork/i18n/index.ts"; // fork: display text only
+import { hasInteractiveClient } from "../../fork/interactive-client.ts";
+import { formatBytes, LlamaClient, type LlamaModelInfo, LlamaServerError, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
 import { createLlamaProvider, LLAMA_PROVIDER_ID } from "./provider.ts";
-import { type LlamaUi, runWithProgress, showLlamaUi } from "./ui.ts";
+import { type LlamaUi, llamaErrorMessage, runWithProgress, showLlamaUi } from "./ui.ts";
 
 function modelIsLoaded(model: LlamaModelInfo): boolean {
 	return model.status.value === "loaded" || model.status.value === "sleeping";
 }
 
 function isConnectionError(error: unknown): boolean {
-	if (!(error instanceof Error)) return false;
+	if (!(error instanceof Error) || error instanceof LlamaServerError) return false;
 	const message = `${error.name} ${error.message}`.toLowerCase();
 	return message.includes("fetch failed") || message.includes("timeout") || message.includes("network");
 }
 
 function connectionErrorMessage(error: unknown): string {
-	if (isConnectionError(error)) return "Could not connect to the server.";
-	return error instanceof Error ? error.message : String(error);
+	if (isConnectionError(error)) return t("Could not connect to the server.");
+	return llamaErrorMessage(error);
 }
 
 function parseHuggingFaceModel(value: string): { repository: string; quantization?: string } {
@@ -29,7 +31,7 @@ function parseHuggingFaceModel(value: string): { repository: string; quantizatio
 async function configuredClient(ctx: ExtensionCommandContext): Promise<LlamaClient | undefined> {
 	const result = await ctx.modelRegistry.getProviderAuth(LLAMA_PROVIDER_ID);
 	if (!result) {
-		ctx.ui.notify(`Configure llama.cpp with /login ${LLAMA_PROVIDER_ID}`, "warning");
+		ctx.ui.notify(fill("Configure llama.cpp with /login {0}", LLAMA_PROVIDER_ID), "warning");
 		return undefined;
 	}
 	const configuredUrl = result.env?.LLAMA_BASE_URL;
@@ -73,17 +75,16 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 		const loaded = catalog.filter((model) => model.id !== target.id && modelIsLoaded(model));
 		let replace = false;
 		if (loaded.length > 0) {
-			const choice = await ui.select(`${loaded.length} model${loaded.length === 1 ? " is" : "s are"} loaded`, [
-				"Unload all and load",
-				"Keep loaded and load",
-				"Cancel",
-			]);
-			if (!choice || choice === "Cancel") return;
-			replace = choice === "Unload all and load";
+			const choice = await ui.select(
+				fill(loaded.length === 1 ? "{0} model is loaded" : "{0} models are loaded", String(loaded.length)),
+				[t("Unload all and load"), t("Keep loaded and load"), t("Cancel")],
+			);
+			if (!choice || choice === t("Cancel")) return;
+			replace = choice === t("Unload all and load");
 		}
 
 		const restoreLoaded = async (): Promise<void> => {
-			ctx.ui.notify("Restoring previously loaded models");
+			ctx.ui.notify(t("Restoring previously loaded models"));
 			for (const model of loaded) await client.loadAndWait(model.id, () => {});
 			await syncCatalog(ctx, client);
 		};
@@ -93,10 +94,10 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 
 		try {
 			const result = await runWithProgress(ui, {
-				title: "Loading model",
+				title: t("Loading model"),
 				model: target.id,
-				initialMessage: "Starting…",
-				cancelTitle: "Stop loading?",
+				initialMessage: t("Starting…"),
+				cancelTitle: t("Stop loading?"),
 				cancelMessage: target.id,
 				run: (signal, update) => client.loadAndWait(target.id, update, signal),
 				cancel: () => client.unload(target.id),
@@ -108,7 +109,9 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 			const refreshed = await syncCatalog(ctx, client);
 			const loadedModel = refreshed.find((model) => model.id === target.id);
 			ctx.ui.notify(
-				loadedModel?.status.value === "loaded" ? `Loaded ${target.id}` : `Load started for ${target.id}`,
+				loadedModel?.status.value === "loaded"
+					? fill("Loaded {0}", target.id)
+					: fill("Load started for {0}", target.id),
 			);
 		} catch (error) {
 			if (replace) {
@@ -128,10 +131,10 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 		client: LlamaClient,
 		model: LlamaModelInfo,
 	): Promise<void> => {
-		if (!(await ui.confirm("Unload model?", model.id))) return;
+		if (!(await ui.confirm(t("Unload model?"), model.id))) return;
 		await client.unloadAndWait(model.id);
 		await syncCatalog(ctx, client);
-		ctx.ui.notify(`Unloaded ${model.id}`);
+		ctx.ui.notify(fill("Unloaded {0}", model.id));
 	};
 
 	const downloadModel = async (ctx: ExtensionCommandContext, ui: LlamaUi, client: LlamaClient): Promise<void> => {
@@ -139,52 +142,58 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 		const selected = await ui.searchModels((query, signal) => huggingFace.search(query, signal));
 		if (!selected) return;
 		const parsed = parseHuggingFaceModel(selected);
-		ui.showStatus("Loading model details", parsed.repository);
+		ui.showStatus(t("Loading model details"), parsed.repository);
 		const details = await huggingFace.details(parsed.repository);
 		if (details.gated) {
-			const approval = details.gated === "manual" ? "Manual approval is required" : "Accept the access terms";
+			const approval = t(details.gated === "manual" ? "Manual approval is required" : "Accept the access terms");
 			const choice = await ui.select(
-				`Hugging Face access required\n${details.id}\n\n${approval} at:\nhttps://huggingface.co/${details.id}\n\nThe llama.cpp server needs HF_TOKEN with access.`,
-				["Continue", "Back"],
+				fill(
+					"Hugging Face access required\n{0}\n\n{1} at:\n{2}\n\nThe llama.cpp server needs HF_TOKEN with access.",
+					details.id,
+					approval,
+					`https://huggingface.co/${details.id}`,
+				),
+				[t("Continue"), t("Back")],
 			);
-			if (choice !== "Continue") return;
+			if (choice !== t("Continue")) return;
 		}
 		let quantization = parsed.quantization;
 		if (!quantization && details.quantizations.length > 0) {
 			const options = details.quantizations.map((entry) => {
 				const detail = [
 					entry.size === undefined ? undefined : formatBytes(entry.size),
-					entry.name === "Q4_K_M" ? "recommended" : undefined,
+					entry.name === "Q4_K_M" ? t("recommended") : undefined,
 				]
 					.filter((value): value is string => Boolean(value))
 					.join(" · ");
 				return detail ? `${entry.name} · ${detail}` : entry.name;
 			});
-			const choice = await ui.select(`Select quantization\n${details.id}`, options);
+			const choice = await ui.select(fill("Select quantization\n{0}", details.id), options);
 			if (!choice) return;
 			quantization = details.quantizations[options.indexOf(choice)]?.name;
 			if (!quantization) return;
 		}
 		const model = quantization ? `${details.id}:${quantization}` : details.id;
 		const result = await runWithProgress(ui, {
-			title: "Downloading model",
+			title: t("Downloading model"),
 			model,
-			initialMessage: "Starting…",
-			cancelTitle: "Stop download?",
+			initialMessage: t("Starting…"),
+			cancelTitle: t("Stop download?"),
 			cancelMessage: model,
 			run: (signal, update) => client.downloadAndWait(model, update, signal),
 			cancel: () => client.unload(model),
 		});
 		if (result.cancelled) return;
 		await syncCatalog(ctx, client, result.value);
-		ctx.ui.notify(`Downloaded ${model}`);
+		ctx.ui.notify(fill("Downloaded {0}", model));
 	};
 
 	pi.registerCommand("llama", {
 		description: "Manage llama.cpp router models",
 		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("/llama is available in interactive mode", "warning");
+			// fork: the Prism window shows the same view.
+			if (!hasInteractiveClient(ctx)) {
+				ctx.ui.notify(t("/llama is available in interactive mode"), "warning");
 				return;
 			}
 			const client = await configuredClient(ctx);
@@ -213,7 +222,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 						else if (modelIsLoaded(action.model)) await unloadModel(ctx, ui, client, action.model);
 						else if (action.model.status.value === "unloaded")
 							await loadModel(ctx, ui, client, catalog, action.model);
-						else ctx.ui.notify(`${action.model.id} is ${action.model.status.value}`, "warning");
+						else ctx.ui.notify(fill("Model {0} is {1}", action.model.id, action.model.status.value), "warning");
 					} catch (error) {
 						actionError = error;
 					}
@@ -221,7 +230,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 					if (!refreshed) return;
 					catalog = refreshed;
 					if (actionError && !isConnectionError(actionError)) {
-						ctx.ui.notify(actionError instanceof Error ? actionError.message : String(actionError), "error");
+						ctx.ui.notify(llamaErrorMessage(actionError), "error");
 					}
 				}
 			});

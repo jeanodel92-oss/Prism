@@ -3,7 +3,8 @@
  */
 
 import { getSystemMessageText } from "@earendil-works/pi-ai";
-import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
+import { APP_NAME, getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
+import { APP_DISPLAY_NAME } from "../fork/brand.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 
 export interface BuildSystemPromptOptions {
@@ -109,7 +110,8 @@ function buildRules(
 	}
 
 	for (const name of selectedTools) {
-		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
+		// fork: own entries only; a tool named `toString` must not find Object's method.
+		for (const rule of Object.hasOwn(toolGuidelines, name) ? (toolGuidelines[name] ?? []) : []) addRule(rule);
 	}
 	for (const rule of promptGuidelines) addRule(rule);
 	addRule("Be concise in your responses");
@@ -143,21 +145,19 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	if (customPrompt) {
 		promptSections.preamble = customPrompt;
 	} else {
-		promptSections.preamble =
-			"You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
-		const visibleTools = selectedTools.filter((name) => !!toolSnippets[name]);
+		// fork: not "an expert coding assistant": that persona turned every off-topic
+		// question back to code, and Prism is used for more than software work.
+		promptSections.preamble = `You are an assistant operating inside ${APP_DISPLAY_NAME}, an agent harness on the user's computer. You help with whatever the user asks: questions, writing, their system and files, software. Use your tools (read files, run commands, edit and write files) when the task calls for them; answer plain questions directly.`;
+		const visibleTools = selectedTools.filter((name) => Object.hasOwn(toolSnippets, name) && !!toolSnippets[name]);
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
 		promptSections.tools = `${tools}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.`;
 		promptSections.rules = buildRules(selectedTools, toolGuidelines, promptGuidelines);
-		promptSections.docs = `Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):
-- Main documentation: ${getReadmePath()}
-- Additional docs: ${getDocsPath()}
-- Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
-- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)
-- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
+		// fork: a short permanent pointer; the model lists and reads
+		// the docs on demand instead of carrying a topic index in every request.
+		promptSections.docs = `${APP_DISPLAY_NAME} documentation (read only when the user asks about ${APP_NAME} itself: settings, commands, extensions, SDK, themes, skills, models, TUI):
+- Docs: ${getDocsPath()}, one .md file per topic (list the folder to find it); README: ${getReadmePath()}; examples: ${getExamplesPath()}
+- Resolve docs/... and examples/... there, not in the working directory; read the relevant files completely, with the docs they link to, before answering or implementing`;
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;

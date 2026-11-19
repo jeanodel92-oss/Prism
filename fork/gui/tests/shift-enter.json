@@ -1,0 +1,16 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "wall" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant", "text": "WWWW", "timeout": 30000 },
+	{ "do": "sleep", "ms": 14000 },
+	{ "do": "scrolls", "label": "at the bottom", "maxGap": 2 },
+	{ "do": "edit", "text": "first line\n\n\n", "why": "QA-006: Shift+Enter's line breaks grow the composer" },
+	{ "do": "scrolls", "label": "after three line breaks", "maxGap": 2, "why": "the end of the transcript stays above the composer, not behind it" },
+	{ "do": "shot", "name": "shift-enter-bottom" },
+	{ "do": "scroll-by", "px": -1500, "why": "read higher up: the lines shown stay put when the composer grows" },
+	{ "do": "scrolls", "label": "read higher up", "mark": "up" },
+	{ "do": "edit", "text": "\n" },
+	{ "do": "scrolls", "label": "higher up, one more line break", "sameAs": "up" },
+	{ "do": "quit" }
+]

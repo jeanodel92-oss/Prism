@@ -10,15 +10,17 @@ import {
 	Spacer,
 	Text,
 } from "@earendil-works/pi-tui";
+import { fill, t } from "../../../fork/i18n/index.ts";
 import { getModelSearchText } from "../model-search.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
 
 // EnabledIds: null = all enabled (no filter), string[] = explicit ordered list
-type EnabledIds = string[] | null;
+// the list operations below are exported for the window's screens (scoped-models-native.ts).
+export type EnabledIds = string[] | null;
 
-function isEnabled(enabledIds: EnabledIds, id: string): boolean {
+export function isEnabled(enabledIds: EnabledIds, id: string): boolean {
 	return enabledIds === null || enabledIds.includes(id);
 }
 
@@ -27,14 +29,14 @@ function normalizeEnabled(result: string[], allIds: string[]): EnabledIds {
 	return result.length === allIds.length && result.every((id) => allIds.includes(id)) ? null : result;
 }
 
-function toggle(enabledIds: EnabledIds, allIds: string[], id: string): EnabledIds {
+export function toggle(enabledIds: EnabledIds, allIds: string[], id: string): EnabledIds {
 	if (enabledIds === null) return allIds.filter((modelId) => modelId !== id);
 	const index = enabledIds.indexOf(id);
 	if (index >= 0) return [...enabledIds.slice(0, index), ...enabledIds.slice(index + 1)];
 	return normalizeEnabled([...enabledIds, id], allIds);
 }
 
-function enableAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]): EnabledIds {
+export function enableAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]): EnabledIds {
 	if (enabledIds === null) return null; // Already all enabled
 	const targets = targetIds ?? allIds;
 	const result = [...enabledIds];
@@ -44,7 +46,7 @@ function enableAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[
 	return normalizeEnabled(result, allIds);
 }
 
-function clearAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]): EnabledIds {
+export function clearAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]): EnabledIds {
 	if (enabledIds === null) {
 		return targetIds ? allIds.filter((id) => !targetIds.includes(id)) : [];
 	}
@@ -52,7 +54,7 @@ function clearAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]
 	return enabledIds.filter((id) => !targets.has(id));
 }
 
-function move(enabledIds: EnabledIds, id: string, delta: number): EnabledIds {
+export function move(enabledIds: EnabledIds, id: string, delta: number): EnabledIds {
 	if (enabledIds === null) return null;
 	const list = [...enabledIds];
 	const index = list.indexOf(id);
@@ -64,7 +66,7 @@ function move(enabledIds: EnabledIds, id: string, delta: number): EnabledIds {
 	return result;
 }
 
-function getSortedIds(enabledIds: EnabledIds, allIds: string[]): string[] {
+export function getSortedIds(enabledIds: EnabledIds, allIds: string[]): string[] {
 	if (enabledIds === null) return allIds;
 	const enabledSet = new Set(enabledIds);
 	return [...enabledIds, ...allIds.filter((id) => !enabledSet.has(id))];
@@ -134,9 +136,13 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		// Header
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("accent", theme.bold("Model Configuration")), 0, 0));
+		this.addChild(new Text(theme.fg("accent", theme.bold(t("Model Configuration"))), 0, 0));
 		this.addChild(
-			new Text(theme.fg("muted", `Session-only. ${keyDisplayText("app.models.save")} to save to settings.`), 0, 0),
+			new Text(
+				theme.fg("muted", fill("Session-only. {0} to save to settings.", keyDisplayText("app.models.save"))),
+				0,
+				0,
+			),
 		);
 		this.addChild(new Spacer(1));
 
@@ -152,7 +158,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		// Footer hint
 		this.addChild(new Spacer(1));
 		if (config.refreshStatus) {
-			this.refreshStatusText = new Text(theme.fg("muted", `  ${config.refreshStatus}`), 0, 0);
+			this.refreshStatusText = new Text(theme.fg("muted", `  ${t(config.refreshStatus)}`), 0, 0);
 			this.addChild(this.refreshStatusText);
 		}
 		this.footerText = new Text(this.getFooterText(), 0, 0);
@@ -181,7 +187,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	}
 
 	setRefreshStatus(message: string, kind: "muted" | "success" | "warning"): void {
-		this.refreshStatusText?.setText(theme.fg(kind, `  ${message}`));
+		this.refreshStatusText?.setText(theme.fg(kind, `  ${t(message)}`));
 	}
 
 	private buildItems(): ModelItem[] {
@@ -197,19 +203,20 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		const unavailableCount = this.enabledIds?.filter((id) => !this.modelsById.has(id)).length ?? 0;
 		const allEnabled = this.enabledIds === null;
 		const countText = allEnabled
-			? "all enabled"
-			: `${enabledCount}/${this.allIds.length} enabled${unavailableCount ? ` · ${unavailableCount} unavailable` : ""}`;
+			? t("all enabled")
+			: fill("{0}/{1} enabled", String(enabledCount), String(this.allIds.length)) +
+				(unavailableCount ? fill(" · {0} unavailable", String(unavailableCount)) : "");
 		const parts = [
-			`${keyDisplayText("tui.select.confirm")} toggle`,
-			`${keyDisplayText("app.models.enableAll")} all`,
-			`${keyDisplayText("app.models.clearAll")} clear`,
-			`${keyDisplayText("app.models.toggleProvider")} provider`,
-			`${keyDisplayText("app.models.reorderUp")}/${keyDisplayText("app.models.reorderDown")} reorder`,
-			`${keyDisplayText("app.models.save")} save`,
+			fill("{0} toggle", keyDisplayText("tui.select.confirm")),
+			fill("{0} all", keyDisplayText("app.models.enableAll")),
+			fill("{0} clear", keyDisplayText("app.models.clearAll")),
+			fill("{0} provider", keyDisplayText("app.models.toggleProvider")),
+			fill("{0} reorder", `${keyDisplayText("app.models.reorderUp")}/${keyDisplayText("app.models.reorderDown")}`),
+			fill("{0} save", keyDisplayText("app.models.save")),
 			countText,
 		];
 		return this.isDirty
-			? theme.fg("dim", `  ${parts.join(" · ")} `) + theme.fg("warning", "(unsaved)")
+			? theme.fg("dim", `  ${parts.join(" · ")} `) + theme.fg("warning", t("(unsaved)"))
 			: theme.fg("dim", `  ${parts.join(" · ")}`);
 	}
 
@@ -233,10 +240,11 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	}
 
 	private updateList(): void {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		this.listContainer.clear();
 
 		if (this.filteredItems.length === 0) {
-			this.listContainer.addChild(new Text(theme.fg("muted", "  No matching models"), 0, 0));
+			this.listContainer.addChild(new Text(theme.fg("muted", t("  No matching models")), 0, 0));
 			return;
 		}
 
@@ -252,7 +260,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			const id = item.model?.id ?? item.fullId;
 			const styledId = item.model ? id : theme.strikethrough(id);
 			const modelText = isSelected ? theme.fg("accent", styledId) : styledId;
-			const providerBadge = theme.fg("muted", item.model ? ` [${item.model.provider}]` : " [unavailable]");
+			const providerBadge = theme.fg("muted", item.model ? ` [${item.model.provider}]` : t(" [unavailable]"));
 			const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
 			this.listContainer.addChild(new Text(`${prefix}${status}${modelText}${providerBadge}`, 0, 0));
 		}
@@ -269,7 +277,10 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			this.listContainer.addChild(new Spacer(1));
 			this.listContainer.addChild(
 				new Text(
-					theme.fg("muted", `  ${selected.model ? `Model Name: ${selected.model.name}` : "Model unavailable"}`),
+					theme.fg(
+						"muted",
+						selected.model ? fill("  Model Name: {0}", selected.model.name) : t("  Model unavailable"),
+					),
 					0,
 					0,
 				),

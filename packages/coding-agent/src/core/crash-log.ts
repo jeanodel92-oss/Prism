@@ -1,6 +1,8 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir, VERSION } from "../config.ts";
+import { lastKnownSecrets } from "../fork/secrets/env.ts";
+import { maskValue } from "../fork/secrets/mask.ts";
 import type { Extension } from "./extensions/types.ts";
 import { isSyntheticPath } from "./source-info.ts";
 
@@ -40,8 +42,10 @@ export function readCrashLog(path = crashLogPath()): CrashRecord[] {
 }
 
 function writeCrashLog(records: readonly CrashRecord[], path: string): void {
-	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, `${JSON.stringify(records, null, 2)}\n`);
+	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+	// fork: no known secret in an error's message or stack once on disk. A crashing
+	// process masks with the secrets it already knows, without reading a file or the keyring; the file is private.
+	writeFileSync(path, `${JSON.stringify(maskValue(records, lastKnownSecrets()), null, 2)}\n`, { mode: 0o600 });
 }
 
 type ExtensionStackMetadata = Pick<Extension, "path" | "resolvedPath" | "sourceInfo">;

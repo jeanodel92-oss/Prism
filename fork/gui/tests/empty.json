@@ -1,0 +1,10 @@
+[
+	{ "do": "wait", "selector": "#empty-model", "timeout": 30000 },
+	{ "do": "shot", "name": "e1-no-model" },
+	{ "do": "type", "text": "bonjour" },
+	{ "do": "send" },
+	{ "do": "sleep", "ms": 1500 },
+	{ "do": "absent", "selector": ".msg.user" },
+	{ "do": "shot", "name": "e2-send-without-model" },
+	{ "do": "quit" }
+]

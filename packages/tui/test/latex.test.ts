@@ -506,6 +506,16 @@ R\left(\frac{\pi}{4}\right)
 		assert.strictEqual(renderLatex(String.raw`x + \unknown{y}`), undefined);
 	});
 
+	// fork: Object member names are not symbols.
+	it("treats Object member names as unsupported commands and plain not arguments", () => {
+		for (const name of ["constructor", "toString", "hasOwnProperty", "valueOf", "__proto__"]) {
+			// `\__proto__` reads as `\_` followed by text, not as a command.
+			if (name !== "__proto__") assert.strictEqual(renderLatex(`x + \\${name}`), undefined, name);
+			const negated = renderLatex(`x \\not{${name}} y`);
+			assert.ok(negated !== undefined && !negated.includes("native code"), `${name}: ${negated}`);
+		}
+	});
+
 	it("returns undefined for malformed groups and environments", () => {
 		const malformed = [String.raw`\frac{1}{x`, "x}", String.raw`\begin{matrix}1 & 2`, "x\\"];
 		for (const source of malformed) {

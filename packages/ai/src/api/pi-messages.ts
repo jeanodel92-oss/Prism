@@ -9,6 +9,7 @@
  * models.json custom provider with `"api": "pi-messages"`.
  */
 
+import { SseEventSplitter } from "../fork/sse-lines.ts";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -276,22 +277,17 @@ function createEventConverter(model: Model<"pi-messages">) {
 async function* readPiMessagesEvents(stream: ReadableStream<Uint8Array>): AsyncGenerator<PiMessagesEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
-	let buffer = "";
+	// fork: split in linear time, an event bounded (same defect as AS-032).
+	const events = new SseEventSplitter();
 
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
-			buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-			buffer = buffer.replace(/\r\n/g, "\n");
-
-			let split = buffer.indexOf("\n\n");
-			while (split !== -1) {
-				const event = parsePiMessagesEvent(buffer.slice(0, split));
+			for (const raw of events.push(done ? decoder.decode() : decoder.decode(value, { stream: true }))) {
+				const event = parsePiMessagesEvent(raw);
 				if (event) {
 					yield event;
 				}
-				buffer = buffer.slice(split + 2);
-				split = buffer.indexOf("\n\n");
 			}
 
 			if (done) {
@@ -299,8 +295,9 @@ async function* readPiMessagesEvents(stream: ReadableStream<Uint8Array>): AsyncG
 			}
 		}
 
-		if (buffer.trim()) {
-			const event = parsePiMessagesEvent(buffer);
+		const last = events.end();
+		if (last?.trim()) {
+			const event = parsePiMessagesEvent(last);
 			if (event) {
 				yield event;
 			}

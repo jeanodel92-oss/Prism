@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type ExternalEditorResult, editInExternalEditor } from "../src/modes/interactive/external-editor.ts";
 
 const editorFixturePath = fileURLToPath(new URL("./fixtures/fake-external-editor.mjs", import.meta.url));
@@ -59,5 +59,19 @@ describe("editInExternalEditor", () => {
 		const { result } = await runExternalEditor("--empty");
 
 		expect(result).toEqual({ status: "complete", content: "" });
+	});
+
+	// fork: a temporary file that cannot be made or read back is a failure with
+	// its reason, never an exception thrown at the interface.
+	it("fails with a reason when the prompt file cannot be created or is gone after the editor", async () => {
+		vi.stubEnv("TMPDIR", join(tmpdir(), "pi-missing-tmp-dir", "nested"));
+		try {
+			const unwritable = await editInExternalEditor({ command: "true", content: "x" });
+			expect(unwritable).toMatchObject({ status: "failed", error: expect.stringContaining("ENOENT") });
+		} finally {
+			vi.unstubAllEnvs();
+		}
+		const removed = await editInExternalEditor({ command: "rm", content: "x" });
+		expect(removed).toMatchObject({ status: "failed", error: expect.stringContaining("ENOENT") });
 	});
 });

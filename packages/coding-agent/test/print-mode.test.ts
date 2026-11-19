@@ -139,4 +139,18 @@ describe("runPrintMode", () => {
 		expect(session.extensionRunner.emit).toHaveBeenCalledTimes(1);
 		expect(session.extensionRunner.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
 	});
+
+	// fork: the exit code does not depend on the output format.
+	it("returns non-zero in json mode when the last reply ended in an error or was aborted", async () => {
+		for (const stopReason of ["error", "aborted"] as const) {
+			const runtimeHost = createRuntimeHost(
+				createAssistantMessage({ stopReason, errorMessage: "provider failure" }),
+			);
+			const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+				mode: "json",
+				messages: ["hello"],
+			});
+			expect(exitCode, stopReason).toBe(1);
+		}
+	});
 });

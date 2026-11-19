@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { SyntaxKind } from "typescript/unstable/ast";
 import {
 	isCallExpression,
@@ -13,12 +13,18 @@ import {
 import { API } from "typescript/unstable/sync";
 
 const ignoredDirectories = new Set([".git", "coverage", "dist", "node_modules"]);
+// fork: third-party plugins, published code kept as is (vendor/README.md), forks included.
+const ignoredPaths = new Set([join("packages", "coding-agent", "vendor")]);
 const files = [];
+
+function isInIgnoredPath(path) {
+	return [...ignoredPaths].some((ignored) => relative(resolve(ignored), path).split(/[\\/]/)[0] !== "..");
+}
 
 function collectTypescriptFiles(directory) {
 	for (const entry of readdirSync(directory, { withFileTypes: true })) {
 		if (entry.isDirectory()) {
-			if (!ignoredDirectories.has(entry.name)) {
+			if (!ignoredDirectories.has(entry.name) && !ignoredPaths.has(join(directory, entry.name))) {
 				collectTypescriptFiles(join(directory, entry.name));
 			}
 			continue;
@@ -69,6 +75,8 @@ try {
 
 		function checkSpecifier(node) {
 			if (!isRelativeJavaScriptSpecifier(node.text)) return;
+			// fork: a test may import the published JavaScript of a vendored plugin, which has no .ts source.
+			if (isInIgnoredPath(resolve(dirname(file), node.text))) return;
 			const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
 			failures.push(`${relative(".", file)}:${line + 1}:${character + 1}: ${node.text}`);
 		}

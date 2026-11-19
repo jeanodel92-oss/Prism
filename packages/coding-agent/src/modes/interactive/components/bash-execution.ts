@@ -9,6 +9,7 @@ import {
 	type TruncationResult,
 	truncateTail,
 } from "../../../core/tools/truncate.ts";
+import { fill, t } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { stripAnsi } from "../../../utils/ansi.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -30,6 +31,7 @@ export class BashExecutionComponent extends Container {
 	private contentContainer: Container;
 
 	constructor(command: string, ui: TUI, excludeFromContext = false) {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		super();
 		this.command = command;
 
@@ -56,7 +58,7 @@ export class BashExecutionComponent extends Container {
 			ui,
 			(spinner) => theme.fg(colorKey, spinner),
 			(text) => theme.fg("muted", text),
-			`Running... (${keyText("tui.select.cancel")} to cancel)`, // Plain text for loader
+			fill("Running... ({0} to cancel)", keyText("tui.select.cancel")), // Plain text for loader
 		);
 		this.contentContainer.addChild(this.loader);
 
@@ -117,6 +119,7 @@ export class BashExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		// Apply truncation for LLM context limits (same limits as bash tool)
 		const fullOutput = this.outputLines.join("\n");
 		const contextTruncation = truncateTail(fullOutput, {
@@ -181,21 +184,21 @@ export class BashExecutionComponent extends Container {
 					);
 				} else {
 					statusParts.push(
-						`${theme.fg("muted", `... ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+						`${theme.fg("muted", fill("... {0} more lines (", String(hiddenLineCount)))}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
 					);
 				}
 			}
 
 			if (this.status === "cancelled") {
-				statusParts.push(theme.fg("warning", "(cancelled)"));
+				statusParts.push(theme.fg("warning", t("(cancelled)")));
 			} else if (this.status === "error") {
-				statusParts.push(theme.fg("error", `(exit ${this.exitCode})`));
+				statusParts.push(theme.fg("error", fill("(exit {0})", String(this.exitCode))));
 			}
 
 			// Add truncation warning (context truncation, not preview truncation)
 			const wasTruncated = this.truncationResult?.truncated || contextTruncation.truncated;
 			if (wasTruncated && this.fullOutputPath) {
-				statusParts.push(theme.fg("warning", `Output truncated. Full output: ${this.fullOutputPath}`));
+				statusParts.push(theme.fg("warning", fill("Output truncated. Full output: {0}", this.fullOutputPath)));
 			}
 
 			if (statusParts.length > 0) {

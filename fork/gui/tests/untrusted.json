@@ -1,0 +1,20 @@
+[
+	{ "do": "wait", "selector": "#history-list .session-link", "sidebar": true },
+	{ "do": "click", "selector": "#history-list .session-link", "sidebar": true },
+	{ "do": "wait", "selector": ".md .image-ref" },
+	{ "do": "sleep", "ms": 1500 },
+	{ "do": "absent", "selector": ".md img" },
+	{ "do": "absent", "selector": ".md script" },
+	{ "do": "wait", "selector": ".md .raw", "text": "<script>" },
+	{ "do": "wait", "selector": ".md .link-text", "text": "js" },
+	{ "do": "absent", "selector": ".md a.link", "text": "js" },
+	{ "do": "title", "excludes": "pwned" },
+	{ "do": "shot", "name": "u1-untrusted-markdown" },
+	{ "do": "click", "selector": ".md a.link", "text": "site" },
+	{ "do": "wait", "selector": "#link-url", "text": "https://example.org/" },
+	{ "do": "shot", "name": "u2-link-confirmation" },
+	{ "do": "click", "selector": "#link-dialog button[value=cancel]" },
+	{ "do": "log", "text": "untrusted-ok" },
+	{ "do": "sleep", "ms": 6000 },
+	{ "do": "quit" }
+]

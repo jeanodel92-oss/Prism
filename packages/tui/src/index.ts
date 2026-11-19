@@ -72,6 +72,13 @@ export {
 } from "./components/v-stack.ts";
 // Editor component interface (for custom editors)
 export type { EditorComponent } from "./editor-component.ts";
+// fork
+export {
+	getMarkdownTokenHook,
+	type MarkdownTokenHook,
+	type MarkdownTokenHookContext,
+	setMarkdownTokenHook,
+} from "./fork/markdown-token-hook.ts";
 // Fuzzy matching
 export { type FuzzyMatch, fuzzyFilter, fuzzyMatch } from "./fuzzy.ts";
 // Keybindings
@@ -144,6 +151,7 @@ export {
 	setCapabilities,
 	setCapabilityOverrides,
 	setCellDimensions,
+	setTmuxProgram,
 	type TerminalCapabilities,
 } from "./terminal-image.ts";
 export {
@@ -173,10 +181,17 @@ export {
 	type ViewportTUI,
 } from "./tui.ts";
 export { TuiAltScreen, type TuiAltScreenOptions } from "./tui-alt-screen.ts";
-export { TuiMainScreen, type TuiMainScreenRenderState } from "./tui-main-screen.ts";
+export { setDebugTextFilter, TuiMainScreen, type TuiMainScreenRenderState } from "./tui-main-screen.ts";
 // Utilities
 export {
+	// fork: the editor's completion boundaries, for RPC mode's completion (coding-agent src/fork/autocomplete.ts).
+	autocompleteBoundaryRegex,
+	autocompleteSeparatorRegex,
+	cjkBreakRegex,
 	getOsc8LinkAtColumn,
+	// fork: the display boundary for external text.
+	sanitizeTerminalLabel,
+	sanitizeTerminalText,
 	sliceByColumn,
 	stripTerminalSequences,
 	truncateToWidth,

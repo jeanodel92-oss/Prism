@@ -27,13 +27,17 @@ function getAllModels(): Model<Api>[] {
 
 describe("Anthropic adaptive thinking model metadata", () => {
 	it("marks built-in Anthropic Messages models that use adaptive thinking", () => {
-		const flaggedModels = getAllModels()
+		const allModels = getAllModels();
+		const flaggedModels = allModels
 			.filter((model): model is Model<"anthropic-messages"> => model.api === "anthropic-messages")
 			.filter((model) => model.compat?.forceAdaptiveThinking === true)
 			.map((model) => `${model.provider}/${model.id}`)
 			.sort();
 
-		expect(flaggedModels).toEqual(expect.arrayContaining([...EXPECTED_CURRENT_ADAPTIVE_THINKING_MODELS].sort()));
+		// fork: an expected model its provider has retired is dropped, so the weekly catalog refresh keeps passing.
+		const catalogIds = new Set(allModels.map((model) => `${model.provider}/${model.id}`));
+		const expectedModels = EXPECTED_CURRENT_ADAPTIVE_THINKING_MODELS.filter((modelId) => catalogIds.has(modelId));
+		expect(flaggedModels).toEqual(expect.arrayContaining(expectedModels.sort()));
 		expect(flaggedModels).toEqual(
 			flaggedModels.filter(
 				(modelId) =>

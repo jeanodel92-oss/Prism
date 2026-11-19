@@ -205,7 +205,7 @@ describe("TuiAltScreen", () => {
 		assert.strictEqual(transcript.isFollowingEnd, false);
 
 		// The indicator must not intercept a press on the scrollbar's last column.
-		assert.strictEqual(terminal.getViewport()[3], `${"↓".repeat(29)}┃`);
+		assert.strictEqual(terminal.getViewport()[3], `${"↓".repeat(29)}▂`); // fork: eighth-cell thumb edge
 		terminal.sendInput("\x1b[<0;30;4M");
 		terminal.sendInput("\x1b[<0;30;4m");
 		await terminal.waitForRender();
@@ -950,6 +950,8 @@ describe("TuiAltScreen", () => {
 				[1, 2, 3, 4].flatMap((message) => [`${OSC133_ZONE_START}message ${message}`, "detail"]).join("\n"),
 				0,
 				0,
+				undefined,
+				true,
 			),
 		);
 		tui.start();
@@ -1250,6 +1252,8 @@ describe("TuiAltScreen", () => {
 				`${hyperlink("link", url)}\n\x1b]8;;${belUrl}\x07link\x1b]8;;\x07\n${hyperlink("🙂", emojiUrl)}`,
 				0,
 				0,
+				undefined,
+				true,
 			),
 		);
 		tui.start();

@@ -19,6 +19,7 @@ import {
 	getWordSegmenter,
 	isWhitespaceChar,
 	sliceByColumn,
+	truncateToWidth,
 	visibleWidth,
 } from "../utils.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
@@ -169,13 +170,16 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 			wrapOppIndex = -1;
 		}
 
-		if (gWidth > maxWidth) {
+		// fork: a single grapheme wider than maxWidth (a CJK character
+		// on one column) cannot be split; it gets a line of its own below, instead of recursing on itself forever.
+		const parts = gWidth > maxWidth ? [...graphemeSegmenter.segment(grapheme)] : [];
+		if (parts.length > 1) {
 			// Single atomic segment wider than maxWidth (e.g. paste marker
 			// in a narrow terminal). Re-wrap it at grapheme granularity.
 
 			// The segment remains logically atomic for cursor
 			// movement / editing — the split is purely visual for word-wrap layout.
-			const subChunks = wordWrapLine(grapheme, maxWidth);
+			const subChunks = wordWrapLine(grapheme, maxWidth, parts);
 			for (let j = 0; j < subChunks.length - 1; j++) {
 				const sc = subChunks[j]!;
 				chunks.push({ text: sc.text, startIndex: charIndex + sc.startIndex, endIndex: charIndex + sc.endIndex });
@@ -607,7 +611,9 @@ export class Editor implements Component, Focusable {
 			const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
 
 			// Render the line (no side borders, just horizontal lines above and below)
-			result.push(`${leftPadding}${displayText}${padding}${lineRightPadding}`);
+			const line = `${leftPadding}${displayText}${padding}${lineRightPadding}`;
+			// fork: a grapheme wider than the line, with its cursor, is cut at the width.
+			result.push(visibleWidth(line) > width ? truncateToWidth(line, width, "") : line);
 		}
 
 		// Render bottom border (with scroll indicator if more content below)
@@ -791,6 +797,14 @@ export class Editor implements Component, Focusable {
 				if (selected && this.autocompleteProvider) {
 					this.pushUndoSnapshot();
 					this.lastAction = null;
+					// fork: only a command name is sent at once, as applyCompletion
+					// tells it apart; an absolute path ("Consulte /tmp/proj") is written and the draft stays open.
+					const prefix = this.autocompletePrefix;
+					const line = this.state.lines[this.state.cursorLine] || "";
+					const isCommandName =
+						prefix.startsWith("/") &&
+						line.slice(0, this.state.cursorCol - prefix.length).trim() === "" &&
+						!prefix.slice(1).includes("/");
 					const result = this.autocompleteProvider.applyCompletion(
 						this.state.lines,
 						this.state.cursorLine,
@@ -802,7 +816,7 @@ export class Editor implements Component, Focusable {
 					this.state.cursorLine = result.cursorLine;
 					this.setCursorCol(result.cursorCol);
 
-					if (this.autocompletePrefix.startsWith("/")) {
+					if (isCommandName) {
 						this.cancelAutocomplete();
 						// Fall through to submit
 					} else {
@@ -1087,12 +1101,8 @@ export class Editor implements Component, Focusable {
 	}
 
 	private expandPasteMarkers(text: string): string {
-		let result = text;
-		for (const [pasteId, pasteContent] of this.pastes) {
-			const markerRegex = new RegExp(`\\[paste #${pasteId}( (\\+\\d+ lines|\\d+ chars))?\\]`, "g");
-			result = result.replace(markerRegex, () => pasteContent);
-		}
-		return result;
+		// fork: one pass over the draft, so a marker quoted inside a paste stays text.
+		return text.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup) => this.pastes.get(Number(idGroup)) ?? fullMatch);
 	}
 
 	/**
@@ -1409,22 +1419,29 @@ export class Editor implements Component, Focusable {
 				}
 
 				// Renumber markers with ids greater than the removed one.
-				this.state.lines = this.state.lines.map((line) =>
-					line.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup, suffixGroup) => {
+				const renumber = (text: string) =>
+					text.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup, suffixGroup) => {
 						const x = Number(idGroup);
 						if (x <= targetId) return fullMatch;
 						return `[paste #${x - 1}${suffixGroup}]`;
-					}),
+					});
+				// fork: cut the marker at its own bounds before renumbering ([paste #10]
+				// before it becomes [paste #9], one character shorter), and keep the cursor where the cut is.
+				const before = renumber(line.slice(0, this.state.cursorCol - graphemeLength));
+				const after = renumber(line.slice(this.state.cursorCol));
+				this.state.lines = this.state.lines.map((text, index) =>
+					index === this.state.cursorLine ? before + after : renumber(text),
 				);
+				this.setCursorCol(before.length);
+			} else {
+				line = this.state.lines[this.state.cursorLine] || "";
+
+				const before = line.slice(0, this.state.cursorCol - graphemeLength);
+				const after = line.slice(this.state.cursorCol);
+
+				this.state.lines[this.state.cursorLine] = before + after;
+				this.setCursorCol(this.state.cursorCol - graphemeLength);
 			}
-
-			line = this.state.lines[this.state.cursorLine] || "";
-
-			const before = line.slice(0, this.state.cursorCol - graphemeLength);
-			const after = line.slice(this.state.cursorCol);
-
-			this.state.lines[this.state.cursorLine] = before + after;
-			this.setCursorCol(this.state.cursorCol - graphemeLength);
 		} else if (this.state.cursorLine > 0) {
 			this.pushUndoSnapshot();
 
@@ -2332,7 +2349,17 @@ export class Editor implements Component, Focusable {
 			const snapshotLine = this.state.cursorLine;
 			const snapshotCol = this.state.cursorCol;
 
-			await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options);
+			// fork: a provider that throws or is cancelled ends this request only;
+			// the queue stays resolved for the next one.
+			try {
+				await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options);
+			} catch {
+				if (this.autocompleteAbort === controller) this.autocompleteAbort = undefined;
+				if (requestId === this.autocompleteRequestId && !controller.signal.aborted) {
+					this.cancelAutocomplete();
+					this.tui.requestRender();
+				}
+			}
 		})();
 		await this.autocompleteRequestTask;
 	}

@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CappedLog } from "../../fork/capped-log.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type TruncationResult, truncateTail } from "./truncate.ts";
 
 export interface OutputAccumulatorOptions {
@@ -15,6 +15,8 @@ export interface OutputSnapshot {
 	content: string;
 	truncation: TruncationResult;
 	fullOutputPath?: string;
+	/** fork: why the full output could not be saved. */
+	fullOutputError?: string;
 }
 
 export interface FullOutput {
@@ -55,11 +57,16 @@ export class OutputAccumulator {
 	private completedLines = 0;
 	private totalLines = 0;
 	private currentLineBytes = 0;
+	// fork: the size of the last line ended by a newline.
+	private lastCompletedLineBytes = 0;
 	private hasOpenLine = false;
 	private finished = false;
 
 	private tempFilePath: string | undefined;
-	private tempFileStream: WriteStream | undefined;
+	// fork: capped at 32 MiB, first and last halves kept.
+	private tempFileStream: CappedLog | undefined;
+	// fork: set once the log fails; the output then lives only in the tail.
+	private logError: string | undefined;
 
 	constructor(options: OutputAccumulatorOptions = {}) {
 		this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -76,9 +83,12 @@ export class OutputAccumulator {
 		this.totalRawBytes += data.length;
 		this.appendDecodedText(this.decoder.decode(data, { stream: true }));
 
-		if (this.tempFileStream || this.shouldUseTempFile()) {
+		if (this.logError) {
+			// Only the decoded tail is kept.
+		} else if (this.tempFileStream || this.shouldUseTempFile()) {
 			this.ensureTempFile();
 			this.tempFileStream?.write(data);
+			this.noteLogError();
 		} else if (data.length > 0) {
 			this.rawChunks.push(data);
 		}
@@ -118,10 +128,11 @@ export class OutputAccumulator {
 			this.ensureTempFile();
 		}
 
+		this.noteLogError();
 		return {
 			content: truncation.content,
 			truncation,
-			fullOutputPath: this.tempFilePath,
+			...(this.logError ? { fullOutputError: this.logError } : { fullOutputPath: this.tempFilePath }),
 		};
 	}
 
@@ -132,20 +143,8 @@ export class OutputAccumulator {
 
 		const stream = this.tempFileStream;
 		this.tempFileStream = undefined;
-
-		await new Promise<void>((resolve, reject) => {
-			const onError = (error: Error) => {
-				stream.off("finish", onFinish);
-				reject(error);
-			};
-			const onFinish = () => {
-				stream.off("error", onError);
-				resolve();
-			};
-			stream.once("error", onError);
-			stream.once("finish", onFinish);
-			stream.end();
-		});
+		await stream.end();
+		this.logError ??= stream.error;
 	}
 
 	/**
@@ -154,6 +153,13 @@ export class OutputAccumulator {
 	 * last `maxBytes / 2` bytes around an omission marker.
 	 */
 	async readFullOutput(maxBytes: number): Promise<FullOutput> {
+		if (this.logError) {
+			// The log is missing or incomplete: the kept tail, said to be partial.
+			const bytes = Buffer.from(this.getSnapshotText(), "utf-8");
+			let start = Math.max(0, bytes.length - maxBytes);
+			while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++;
+			return { content: bytes.subarray(start).toString("utf-8"), truncated: true };
+		}
 		if (!this.tempFilePath) {
 			return { content: new TextDecoder().decode(Buffer.concat(this.rawChunks)), truncated: false };
 		}
@@ -183,7 +189,8 @@ export class OutputAccumulator {
 	}
 
 	getLastLineBytes(): number {
-		return this.currentLineBytes;
+		// fork: the last line counted, open or ended by a newline.
+		return this.hasOpenLine ? this.currentLineBytes : this.lastCompletedLineBytes;
 	}
 
 	private appendDecodedText(text: string): void {
@@ -210,6 +217,9 @@ export class OutputAccumulator {
 			this.hasOpenLine = true;
 		} else {
 			this.completedLines += newlines;
+			const previousNewline = newlines > 1 ? text.lastIndexOf("\n", lastNewline - 1) : -1;
+			this.lastCompletedLineBytes =
+				(newlines > 1 ? 0 : this.currentLineBytes) + byteLength(text.slice(previousNewline + 1, lastNewline));
 			const tail = text.slice(lastNewline + 1);
 			this.currentLineBytes = byteLength(tail);
 			this.hasOpenLine = tail.length > 0;
@@ -240,7 +250,10 @@ export class OutputAccumulator {
 		}
 
 		const firstNewline = this.tailText.indexOf("\n");
-		return firstNewline === -1 ? this.tailText : this.tailText.slice(firstNewline + 1);
+		// fork: when the cut line is the last one, its newline only ends it. Keep its end
+		// rather than an empty snapshot that dropped the whole output.
+		if (firstNewline === -1 || firstNewline === this.tailText.length - 1) return this.tailText;
+		return this.tailText.slice(firstNewline + 1);
 	}
 
 	private shouldUseTempFile(): boolean {
@@ -250,14 +263,26 @@ export class OutputAccumulator {
 	}
 
 	private ensureTempFile(): void {
-		if (this.tempFilePath) {
+		if (this.tempFilePath || this.logError) {
 			return;
 		}
-		this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
-		this.tempFileStream = createWriteStream(this.tempFilePath);
+		const path = defaultTempFilePath(this.tempFilePrefix);
+		const log = new CappedLog(path);
+		if (log.error) {
+			this.logError = log.error;
+			this.rawChunks = [];
+			return;
+		}
+		this.tempFilePath = path;
+		this.tempFileStream = log;
 		for (const chunk of this.rawChunks) {
 			this.tempFileStream.write(chunk);
 		}
 		this.rawChunks = [];
+		this.noteLogError();
+	}
+
+	private noteLogError(): void {
+		this.logError ??= this.tempFileStream?.error;
 	}
 }

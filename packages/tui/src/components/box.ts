@@ -1,5 +1,6 @@
+import { fitPadding } from "../fork/fit-padding.ts";
 import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type TuiMouseEvent } from "../tui.ts";
-import { flattenLines, visibleWidth } from "../utils.ts";
+import { flattenLines, truncateToWidth, visibleWidth } from "../utils.ts";
 
 type RenderCache = {
 	childLines: string[];
@@ -73,9 +74,10 @@ export class Box implements Component {
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
-		const contentWidth = Math.max(1, event.width - this.paddingX * 2);
+		const paddingX = fitPadding(event.width, this.paddingX); // prism-fork
+		const contentWidth = Math.max(1, event.width - paddingX * 2);
 		const contentY = event.y - this.paddingY;
-		const contentX = event.x - this.paddingX;
+		const contentX = event.x - paddingX;
 		if (contentY < 0 || contentX < 0 || contentX >= contentWidth) return undefined;
 
 		const mouseChildren =
@@ -103,8 +105,10 @@ export class Box implements Component {
 			return [];
 		}
 
-		const contentWidth = Math.max(1, width - this.paddingX * 2);
-		const leftPad = " ".repeat(this.paddingX);
+		// prism-fork: the padding never takes the content's last column; applyBg clips what is still too wide.
+		const paddingX = fitPadding(width, this.paddingX);
+		const contentWidth = Math.max(1, width - paddingX * 2);
+		const leftPad = " ".repeat(paddingX);
 
 		// Render all children. Keep the child lines unpadded: children usually return the same string
 		// objects every frame, so the cache check below is a cheap identity comparison per line.
@@ -158,7 +162,11 @@ export class Box implements Component {
 	}
 
 	private applyBg(line: string, width: number): string {
-		const visLen = visibleWidth(line);
+		let visLen = visibleWidth(line);
+		if (visLen > width) {
+			line = truncateToWidth(line, width, "");
+			visLen = visibleWidth(line);
+		}
 		const padNeeded = Math.max(0, width - visLen);
 		const padded = line + " ".repeat(padNeeded);
 		// Already padded to width, so apply the background directly instead of measuring the line again.

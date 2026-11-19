@@ -4,7 +4,9 @@
 
 import * as Diff from "diff";
 import { constants } from "fs";
-import { access, readFile } from "fs/promises";
+import { access } from "fs/promises";
+import { readBounded } from "../../fork/bounded-read.ts";
+import { MAX_EDITABLE_FILE_SIZE } from "../../fork/regular-file.ts";
 import { splitBom } from "../../utils/text.ts";
 import { resolveToCwd } from "./path-utils.ts";
 
@@ -222,7 +224,9 @@ export function fuzzyFindText(content: string, oldText: string): FuzzyMatchResul
 	const fuzzyOldText = normalizeForFuzzyMatch(oldText);
 	const fuzzyIndex = fuzzyContent.indexOf(fuzzyOldText);
 
-	if (fuzzyIndex === -1) {
+	// fork: a text that normalizes to nothing (a tab, trailing spaces) matches nothing,
+	// not the empty string at offset 0.
+	if (fuzzyIndex === -1 || fuzzyOldText.length === 0) {
 		return {
 			found: false,
 			index: -1,
@@ -244,10 +248,18 @@ export function fuzzyFindText(content: string, oldText: string): FuzzyMatchResul
 	};
 }
 
-function countOccurrences(content: string, oldText: string): number {
-	const fuzzyContent = normalizeForFuzzyMatch(content);
-	const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-	return fuzzyContent.split(fuzzyOldText).length - 1;
+/**
+ * fork: counted where the match was found (exact text, or normalized when the
+ * match was fuzzy), and overlapping occurrences too: "aba" is in "ababa" twice. A text that normalizes to nothing no
+ * longer counts each character boundary.
+ */
+function countOccurrences(content: string, oldText: string, usedFuzzyMatch: boolean): number {
+	const haystack = usedFuzzyMatch ? normalizeForFuzzyMatch(content) : content;
+	const needle = usedFuzzyMatch ? normalizeForFuzzyMatch(oldText) : oldText;
+	if (needle.length === 0) return 0;
+	let count = 0;
+	for (let index = haystack.indexOf(needle); index !== -1; index = haystack.indexOf(needle, index + 1)) count++;
+	return count;
 }
 
 function getNotFoundError(path: string, editIndex: number, totalEdits: number): Error {
@@ -325,7 +337,7 @@ export function applyEditsToNormalizedContent(
 			throw getNotFoundError(path, i, normalizedEdits.length);
 		}
 
-		const occurrences = countOccurrences(replacementBaseContent, edit.oldText);
+		const occurrences = countOccurrences(replacementBaseContent, edit.oldText, matchResult.usedFuzzyMatch);
 		if (occurrences > 1) {
 			throw getDuplicateError(path, i, normalizedEdits.length, occurrences);
 		}
@@ -527,8 +539,8 @@ export async function computeEditsDiff(
 			return { error: `Could not edit file: ${path}. ${errorMessage}.` };
 		}
 
-		// Read the file
-		const rawContent = await readFile(absolutePath, "utf-8");
+		// fork: the preview reads like the tool: no FIFO, no device, nothing over its limit.
+		const rawContent = (await readBounded(absolutePath, MAX_EDITABLE_FILE_SIZE)).toString("utf-8");
 
 		// Strip BOM before matching (LLM won't include invisible BOM in oldText)
 		const { text: content } = splitBom(rawContent);

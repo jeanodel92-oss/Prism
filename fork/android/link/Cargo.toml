@@ -1,0 +1,15 @@
+[package]
+name = "prism-link"
+version = "0.1.0"
+description = "Prism's phone link (fork.11 J0 prototype): pinned mutual TLS and QR pairing between the PC and the phone"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+
+# TLS stack approved by the maintainer on 2026-11-12.
+[dependencies]
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = "=0.14.10"
+ring = "=0.17.14"
+# `svg` (no extra crate): the PC window draws the pairing code.
+qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }

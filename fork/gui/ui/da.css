@@ -1,0 +1,1471 @@
+/* Prism's art direction over the structure of style.css: glass over light. Colours are
+   the theme's roles; only the logo, the opening and the work indicator carry the spectrum (da-site.md § 3.3). */
+
+:root {
+	--glass: color-mix(in srgb, var(--bg) 62%, transparent);
+	--glass-strong: color-mix(in srgb, var(--surface) 80%, transparent);
+	--edge-light: color-mix(in srgb, var(--ink) 9%, transparent);
+	--settle: cubic-bezier(0.2, 0, 0, 1);
+	--spectrum-red: #8a4a42;
+	--spectrum-green: #5f8a70;
+	--spectrum-blue: #4a5f92;
+	--spectrum-violet: #74548a;
+	--scene-still: url("site/still-4.webp");
+	/* What lies over the glass casts a shadow into it: deep on the night page, a breath on paper. */
+	--shadow-far: rgb(0 0 0 / 0.5);
+	--shadow-near: rgb(0 0 0 / 0.35);
+	--tint: color-mix(in srgb, var(--ink) 5%, transparent);
+	--tint-strong: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+:root[data-appearance="light"] {
+	--shadow-far: rgb(38 38 34 / 0.16);
+	--shadow-near: rgb(38 38 34 / 0.1);
+	--edge-light: rgb(255 255 255 / 0.7);
+}
+
+:root[data-scene="1"] {
+	--scene-still: url("site/still-1.webp");
+}
+
+/* ------------------------------------------------------------- the background */
+
+/* The chosen scene, out of focus and dim: light to read beside, never behind a sharp edge. */
+.backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.backdrop::before {
+	content: "";
+	position: absolute;
+	inset: -2rem;
+	background: var(--scene-still) 70% 58% / cover no-repeat;
+	filter: blur(9px);
+	opacity: 0.4;
+}
+
+/* While the agent works, the light in the glass rises; opacity only, nothing to lay out or repaint. */
+.backdrop-glow {
+	position: absolute;
+	inset: 0;
+	background:
+		radial-gradient(38rem 15rem at 88% 62%, color-mix(in srgb, var(--spectrum-violet) 22%, transparent), transparent),
+		radial-gradient(44rem 13rem at 30% 66%, color-mix(in srgb, var(--ink) 7%, transparent), transparent);
+	opacity: 0;
+	transition: opacity 1.2s var(--settle);
+}
+
+body[data-working="true"] .backdrop-glow {
+	opacity: 1;
+	animation: breathe 5s ease-in-out infinite;
+}
+
+@keyframes breathe {
+	50% {
+		opacity: 0.55;
+	}
+}
+
+.app {
+	position: relative;
+	z-index: 1;
+}
+
+/* The welcome's light runs under the whole window: the sidebar and the bars are glass over it, it is not cut at their
+   edge. Where the sidebar lies over the main area (narrow, collapsed), the main area is already the whole window. */
+.scene {
+	top: 0;
+	bottom: 0;
+	left: calc(-1 * var(--sidebar));
+	overflow: hidden;
+	filter: blur(2px);
+}
+
+.scene.still {
+	background-image: var(--scene-still);
+}
+
+body.sidebar-collapsed .scene {
+	left: 0;
+}
+
+.sidebar {
+	position: relative;
+	z-index: 2;
+}
+
+/* The sidebar folds away and comes back: the column slides, its content keeps its width and is cut by the edge
+   instead of wrapping on the way; it is hidden from the keyboard once folded. */
+.app {
+	transition: grid-template-columns 280ms var(--settle);
+}
+
+.side-panel > * {
+	min-width: calc(var(--panel) - 1.5rem);
+}
+
+.side-panel {
+	transition: visibility 0s;
+}
+
+body.sidebar-collapsed .side-panel {
+	transition: visibility 0s 280ms;
+}
+
+@media (min-width: 761px) {
+	/* The light under the window stays where it is while the sidebar folds over it. */
+	.scene,
+	body.sidebar-collapsed .scene {
+		position: fixed;
+		left: 0;
+	}
+}
+
+@media (max-width: 760px) {
+	.scene {
+		left: 0;
+	}
+
+	.app {
+		transition: none;
+	}
+
+	.side-panel > * {
+		min-width: 0;
+	}
+
+	/* The overlay holds the rail and its panel, whatever the wide window had folded. */
+	body.sidebar-collapsed .side-panel {
+		visibility: inherit;
+	}
+
+	/* Here the sidebar is an overlay on the transcript: as solid as style.css has it, sliding in from the edge with
+	   its shadow on what it covers. */
+	.sidebar {
+		position: fixed;
+		z-index: 5;
+		background: var(--bg);
+		box-shadow: 1.2rem 0 3rem -1rem var(--shadow-far);
+		transform: translateX(calc(-100% - 3rem));
+		transition:
+			transform 260ms var(--settle),
+			visibility 0s 260ms;
+	}
+
+	/* The notices lie above the whole window; open, the sidebar is what the user is looking at. */
+	body.sidebar-open .toasts {
+		visibility: hidden;
+	}
+
+	body.sidebar-open .sidebar {
+		transform: none;
+		transition:
+			transform 260ms var(--settle),
+			visibility 0s;
+	}
+}
+
+/* ------------------------------------------------------------------ the glass */
+
+/* Animate one progress value: direct opacity/filter/transform animations flickered in WebKitGTK. */
+@property --arrival {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 1;
+}
+
+.sidebar,
+.topbar,
+.statusbar {
+	background: var(--glass);
+	-webkit-backdrop-filter: blur(22px);
+	backdrop-filter: blur(22px);
+}
+
+.topbar {
+	box-shadow: inset 0 -1px 0 var(--edge-light);
+	border-bottom-color: transparent;
+}
+
+.statusbar {
+	box-shadow: inset 0 1px 0 var(--edge-light);
+	border-top-color: transparent;
+}
+
+.sidebar {
+	box-shadow: inset -1px 0 0 var(--edge-light);
+	border-right-color: transparent;
+}
+
+/* What scrolls dissolves into the bars instead of being cut by them. */
+.scroller {
+	-webkit-mask-image: linear-gradient(to bottom, transparent, #000 1.1rem, #000 calc(100% - 1.1rem), transparent);
+	mask-image: linear-gradient(to bottom, transparent, #000 1.1rem, #000 calc(100% - 1.1rem), transparent);
+}
+
+.panel:not(.view-measure) {
+	position: relative;
+	transition: none;
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(26px);
+	backdrop-filter: blur(26px);
+	box-shadow:
+		0 1.1rem 3rem -0.4rem var(--shadow-far),
+		inset 0 1px 0 var(--edge-light);
+	opacity: var(--arrival);
+	transform: translateY(calc(7px * (1 - var(--arrival))));
+	animation: panel-in 190ms var(--settle);
+}
+
+@keyframes panel-in {
+	from {
+		--arrival: 0;
+	}
+}
+
+.completion {
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(26px);
+	backdrop-filter: blur(26px);
+	opacity: var(--arrival);
+	transform: translateY(calc(7px * (1 - var(--arrival))));
+	animation: panel-in 130ms var(--settle);
+}
+
+/* ------------------------------------------------------------------ the panels */
+
+/* A panel's head is its title in ink and what it is about in ink 3, over a hairline; its body lists in light. */
+.panel-head {
+	min-height: 2.6rem;
+	padding-left: 0.95rem;
+	border-bottom-color: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+.panel-title {
+	font-weight: 500;
+	letter-spacing: -0.005em;
+}
+
+.panel-close {
+	width: 1.9rem;
+	min-width: 1.9rem;
+	border-color: transparent;
+	color: var(--ink-3);
+	transition:
+		color var(--ease),
+		background-color var(--ease);
+}
+
+.panel-close:hover:not(:disabled) {
+	border-color: transparent;
+	background: var(--tint-strong);
+	color: var(--ink);
+}
+
+.panel:focus-within {
+	border-color: var(--line-strong);
+}
+
+/* A list's rows: light under the pointer, the chosen one lit with a rule of ink; never a box. */
+.listbox li {
+	transition:
+		background-color var(--ease),
+		border-color var(--ease);
+}
+
+.listbox li:not(.disabled):not(.listbox-empty):hover {
+	background: var(--tint);
+}
+
+.listbox li.selected {
+	background: var(--tint-strong);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+}
+
+/* Fields are cut into the glass: darker than it, their edge lit by the focus, as the composer's. */
+.field,
+.panel select {
+	border-color: var(--line-strong);
+	background-color: color-mix(in srgb, var(--bg) 55%, transparent);
+	box-shadow: inset 0 1px 2px color-mix(in srgb, #000 18%, transparent);
+	transition:
+		border-color var(--ease),
+		box-shadow var(--ease);
+}
+
+:root[data-appearance="light"] .field,
+:root[data-appearance="light"] .panel select {
+	background-color: color-mix(in srgb, #fff 55%, transparent);
+	box-shadow: inset 0 1px 2px rgb(38 38 34 / 0.08);
+}
+
+.field:focus,
+.panel select:focus-visible {
+	outline: none;
+	border-color: var(--ink-3);
+	box-shadow: 0 0 0 3px var(--tint);
+}
+
+/* Secondary buttons in the glass: a face of light under the pointer, not only an outline. */
+.panel button:not(.primary):not(.option):not(.panel-close):hover:not(:disabled),
+dialog button:not(.primary):hover:not(:disabled) {
+	background: var(--tint);
+}
+
+.perm-mode {
+	transition:
+		border-color var(--ease),
+		background-color var(--ease),
+		box-shadow var(--ease);
+}
+
+.perm-mode:not(.current):hover {
+	background: var(--tint);
+}
+
+/* ---------------------------------------------------------------- the composer */
+
+/* One slab of glass holds the draft and its controls, as the terminal's editor holds its bottom line: drawn under
+   both, so neither the field nor the row reads as a box of its own. Its edge lights up while the draft has focus. */
+.composer::before,
+.composer::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 1rem;
+	bottom: 0.6rem;
+	left: 1rem;
+	border-radius: 3px;
+	pointer-events: none;
+}
+
+.composer::before {
+	z-index: -1;
+	border: 1px solid var(--line-strong);
+	background: color-mix(in srgb, var(--surface-2) 74%, transparent);
+	-webkit-backdrop-filter: blur(18px);
+	backdrop-filter: blur(18px);
+	box-shadow:
+		inset 0 1px 0 var(--edge-light),
+		0 1.2rem 2.8rem -1.4rem var(--shadow-far);
+	transition:
+		border-color var(--ease),
+		box-shadow var(--ease);
+}
+
+.composer:focus-within::before {
+	border-color: var(--ink-3);
+	box-shadow:
+		inset 0 1px 0 var(--edge-light),
+		0 0 0 3px var(--tint),
+		0 1.2rem 2.8rem -1.4rem var(--shadow-far);
+}
+
+.slab {
+	position: relative;
+}
+
+.composer textarea,
+.composer textarea:focus {
+	padding: 0.8rem 0.95rem 0.35rem;
+	border: 0;
+	background: transparent;
+}
+
+.composer-row {
+	padding: 0.1rem 0.4rem 0.4rem;
+}
+
+/* The work indicator: light running along the edge of the glass, dark red behind it and dark blue ahead, as on the
+   terminal's editor rule. With animations off it stands still in the middle. */
+.work-rule {
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 0;
+	z-index: 1;
+	height: 1px;
+	overflow: hidden;
+	opacity: 0;
+	transition: opacity 400ms var(--settle);
+	pointer-events: none;
+}
+
+.composer[data-busy="true"] .work-rule {
+	opacity: 1;
+}
+
+.work-rule i {
+	display: block;
+	width: 34%;
+	height: 100%;
+	background: linear-gradient(90deg, transparent, var(--spectrum-red) 30%, #fff 58%, var(--spectrum-blue) 78%, transparent);
+	transform: translateX(97%);
+}
+
+.composer[data-busy="true"] .work-rule i {
+	animation: run 2.3s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes run {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(300%);
+	}
+}
+
+/* The edge of the glass catches the pointer's light, as the site's ridge does (light.js places it). */
+.composer::after,
+.panel:not(.view-measure)::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: var(--radius);
+	padding: 1px;
+	background: radial-gradient(11rem at var(--lx, -30rem) var(--ly, -30rem), color-mix(in srgb, var(--ink) 55%, transparent), transparent);
+	-webkit-mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask-composite: exclude;
+	pointer-events: none;
+}
+
+/* The composer's edge is its slab's, inset by the column's padding: the light is placed from the composer's corner. */
+.composer::after {
+	inset: 0 1rem 0.6rem;
+	z-index: 2;
+	border-radius: 3px;
+	background: radial-gradient(11rem at calc(var(--lx, -30rem) - 1rem) var(--ly, -30rem), color-mix(in srgb, var(--ink) 55%, transparent), transparent);
+}
+
+:root[data-motion="off"] .composer::after,
+:root[data-motion="off"] .panel::after {
+	display: none;
+}
+
+/* ------------------------------------------------------------------ the buttons */
+
+button.primary {
+	position: relative;
+	overflow: hidden;
+}
+
+/* A glint crosses the main action when the pointer arrives. */
+button.primary:not(:disabled)::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(105deg, transparent 35%, color-mix(in srgb, var(--bg) 22%, transparent) 50%, transparent 65%);
+	transform: translateX(-110%);
+	pointer-events: none;
+}
+
+button.primary:not(:disabled):hover::after {
+	transform: translateX(110%);
+	transition: transform 520ms var(--settle);
+}
+
+button:active:not(:disabled) {
+	transform: translateY(0.5px);
+}
+
+/* The composer's action: ink inverted when there is something to send; with nothing to send, its outline only, not
+   a grey block; while the agent works, Stop is an outline with the square of a stop. */
+#send {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-width: 5rem;
+	min-height: 2rem;
+	padding: 0 0.9rem;
+	font-weight: 500;
+}
+
+#send:disabled {
+	opacity: 1;
+	border-color: var(--line-strong);
+	background: transparent;
+	color: var(--ink-3);
+	cursor: default;
+}
+
+#send:not(.primary)::before {
+	content: "";
+	flex: none;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 1px;
+	background: currentColor;
+}
+
+#send:not(.primary):not(:disabled) {
+	border-color: var(--ink-3);
+	background: var(--tint);
+}
+
+#send:not(.primary):hover:not(:disabled) {
+	border-color: var(--ink);
+	background: var(--tint-strong);
+}
+
+/* The model and the reasoning level: what is chosen in ink, a box of light under the pointer. */
+.picker {
+	transition:
+		color var(--ease),
+		border-color var(--ease),
+		background-color var(--ease);
+}
+
+.picker:hover:not(:disabled),
+.picker[aria-expanded="true"] {
+	border-color: transparent;
+	background: var(--tint-strong);
+}
+
+/* Plan, Goal and Files: a lit pill when on, its dot glowing; a quiet label when off. */
+.mode-switch {
+	border-radius: 999px;
+	transition:
+		color var(--ease),
+		background-color var(--ease),
+		box-shadow var(--ease);
+}
+
+.mode-switch:hover:not(:disabled) {
+	border-color: transparent;
+	background: var(--tint);
+	color: var(--ink-2);
+}
+
+.mode-switch[aria-pressed="true"] {
+	background: var(--tint-strong);
+	box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.mode-switch[aria-pressed="true"] .dot {
+	text-shadow: 0 0 0.45rem color-mix(in srgb, var(--ink) 70%, transparent);
+}
+
+/* ----------------------------------------------------------------- the controls */
+
+/* A box cut in the glass; ticked, a square of ink sits in it, as the mode switches' dot does (style.css). */
+input[type="checkbox"] {
+	-webkit-appearance: none;
+	appearance: none;
+	flex: none;
+	width: 0.95rem;
+	height: 0.95rem;
+	margin: 0;
+	border: 1px solid var(--ink-3);
+	border-radius: var(--radius);
+	background: color-mix(in srgb, var(--surface) 60%, transparent);
+	box-shadow: inset 0 0 0 0.2rem transparent;
+	vertical-align: -0.15em;
+	cursor: pointer;
+	transition:
+		border-color var(--ease),
+		background-color var(--ease),
+		box-shadow var(--ease);
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+	border-color: var(--ink-2);
+}
+
+input[type="checkbox"]:checked {
+	border-color: var(--ink);
+	background: var(--ink);
+	box-shadow: inset 0 0 0 0.2rem var(--surface);
+}
+
+input[type="checkbox"]:focus-visible {
+	outline: 2px solid var(--ink-2);
+	outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+/* The chosen tab and the current mode stand out of the glass by their lit edge; the mode by a rule of ink too. */
+.segmented button {
+	transition:
+		color var(--ease),
+		border-color var(--ease),
+		background-color var(--ease);
+}
+
+.segmented button:hover:not([aria-checked="true"]) {
+	border-color: var(--line-strong);
+	color: var(--ink);
+}
+
+.segmented button[aria-checked="true"] {
+	box-shadow: inset 0 1px 0 var(--edge-light);
+}
+
+.perm-mode.current {
+	box-shadow:
+		inset 0 1px 0 var(--edge-light),
+		inset 2px 0 0 var(--ink-2);
+}
+
+.perm-mode:not(.current):hover {
+	border-color: var(--line-strong);
+}
+
+::selection {
+	background: color-mix(in srgb, var(--ink) 24%, transparent);
+}
+
+/* ------------------------------------------------------------------ the sidebar */
+
+.rail-mark .mark {
+	width: 1.8rem;
+	height: 1.44rem;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+	overflow: visible;
+	fill: none;
+	stroke: var(--ink);
+	stroke-width: 1.6;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+
+/* The opening, once (da-site.md § 4.3): the beam is drawn, the edges light up from where it enters, the fan opens and
+   falls back to its dark value. Then nothing moves. */
+.mark-beam,
+.mark-glass {
+	stroke-dasharray: 1;
+}
+
+.mark-beam {
+	animation: draw 320ms var(--settle) both;
+}
+
+.mark-glass {
+	animation: draw 520ms 220ms var(--settle) both;
+}
+
+.mark-fan {
+	stroke-width: 1.1;
+	opacity: 0.75;
+	animation: fan 900ms 480ms var(--settle) both;
+	transform-origin: 24px 19.5px;
+}
+
+.mark-fan:nth-of-type(1) {
+	stroke: var(--spectrum-red);
+}
+
+.mark-fan:nth-of-type(2) {
+	stroke: var(--spectrum-green);
+}
+
+.mark-fan:nth-of-type(3) {
+	stroke: var(--spectrum-violet);
+}
+
+@keyframes draw {
+	from {
+		stroke-dashoffset: 1;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+@keyframes fan {
+	0% {
+		opacity: 0;
+		transform: scaleX(0);
+		filter: brightness(2.2);
+	}
+	55% {
+		opacity: 1;
+		transform: scaleX(1);
+		filter: brightness(2.2);
+	}
+}
+
+.side-view {
+	gap: 1.1rem;
+}
+
+/* The rail is a second pane of the same glass, separated by a hairline of light. */
+.rail {
+	border-right-color: transparent;
+	box-shadow: inset -1px 0 0 var(--edge-light);
+}
+
+/* The icon of the view shown carries the light of the conversation shown in its list. */
+.rail-button {
+	transition:
+		color var(--ease),
+		background-color var(--ease),
+		box-shadow var(--ease);
+}
+
+.rail-button:hover:not(:disabled) {
+	background: var(--tint);
+}
+
+.rail-button.current {
+	background: var(--tint-strong);
+	box-shadow:
+		inset 2px 0 0 var(--ink),
+		inset 0 1px 0 var(--edge-light);
+}
+
+.sidebar h2.side-title::after {
+	content: none;
+}
+
+/* A new conversation is an action, not a field: a sign, a lit face, and its label in ink. */
+#new-session {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	min-height: 2.25rem;
+	padding: 0 0.75rem;
+	border-color: var(--line-strong);
+	background: var(--tint);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+	font-weight: 500;
+}
+
+#new-session::before {
+	content: "";
+	flex: none;
+	width: 0.7rem;
+	height: 0.7rem;
+	background:
+		linear-gradient(currentColor, currentColor) center / 100% 1.5px no-repeat,
+		linear-gradient(currentColor, currentColor) center / 1.5px 100% no-repeat;
+	transition: transform var(--ease);
+}
+
+#new-session:hover:not(:disabled) {
+	border-color: var(--ink-3);
+	background: var(--tint-strong);
+}
+
+#new-session:hover:not(:disabled)::before {
+	transform: rotate(90deg);
+}
+
+.sidebar h2 {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+/* The section's name and a hairline to the edge, as the turn's end in the transcript. */
+.sidebar h2::after {
+	content: "";
+	flex: 1;
+	border-top: 1px solid var(--line);
+}
+
+/* A row is one target: its name, its state and its close button share the light that marks it. */
+.session-list li {
+	gap: 0.1rem;
+	transition:
+		background-color var(--ease),
+		box-shadow var(--ease);
+}
+
+.session-list li:not(.muted):hover {
+	background: var(--tint);
+}
+
+.session-list li.current {
+	background: var(--tint-strong);
+	box-shadow:
+		inset 2px 0 0 var(--ink),
+		inset 0 1px 0 var(--edge-light);
+}
+
+.session-list .session-link,
+.session-list .session-link:hover,
+.session-list li.current .session-link {
+	border-color: transparent;
+	background: none;
+	transition: color var(--ease);
+}
+
+.session-list .state.half {
+	animation: pulse 1.8s ease-in-out infinite;
+}
+
+.session-list .close {
+	min-width: 1.6rem;
+	min-height: 1.6rem;
+	margin-right: 0.2rem;
+	border-color: transparent;
+	color: var(--ink-3);
+	transition:
+		opacity var(--ease),
+		color var(--ease),
+		background-color var(--ease);
+}
+
+.session-list .close:hover:not(:disabled) {
+	border-color: transparent;
+	background: var(--tint-strong);
+	color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ the welcome */
+
+/* The prism and its beam above, the words under them. */
+.welcome {
+	/* Less the column's paddings, or the empty scroller would scroll. */
+	min-height: calc(100cqh - 3.5rem);
+	padding-bottom: 1.4rem;
+}
+
+.welcome h2 {
+	font-size: clamp(1.9rem, 4.4vw, 2.7rem);
+	font-weight: 500;
+	letter-spacing: -0.03em;
+}
+
+.welcome > *,
+.empty-model > * {
+	opacity: var(--arrival);
+	filter: blur(calc(3px * (1 - var(--arrival))));
+	animation: focus-in 520ms var(--settle) both;
+}
+
+.welcome > :nth-child(2) {
+	animation-delay: 90ms;
+}
+
+.welcome > :nth-child(3) {
+	animation-delay: 160ms;
+}
+
+/* The one action of an empty window: an outline on the glass, aligned with the words above it. */
+#choose-project {
+	margin-top: 1.1rem;
+	padding: 0 0.85rem;
+	border-color: var(--line-strong);
+	background: var(--tint);
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+	color: var(--ink);
+}
+
+#choose-project:hover:not(:disabled) {
+	border-color: var(--ink-3);
+	background: var(--tint-strong);
+}
+
+/* ---------------------------------------------------------------- the transcript */
+
+:root[data-theme="prism"] .stage:has(#welcome[hidden]) {
+	background: rgb(0 0 0 / 0.14);
+}
+
+/* What arrives comes into focus; a session opened or switched to fades in whole. The transcript's height never moves
+   for it. */
+.enter {
+	opacity: var(--arrival);
+	filter: blur(calc(3px * (1 - var(--arrival))));
+	animation: focus-in 260ms var(--settle) both;
+}
+
+@keyframes focus-in {
+	from {
+		--arrival: 0;
+	}
+}
+
+#transcript-slot > * {
+	opacity: var(--arrival);
+	animation: fade-in 170ms var(--settle);
+}
+
+@keyframes fade-in {
+	from {
+		--arrival: 0;
+	}
+}
+
+.msg.user .bubble {
+	padding: 0.6rem 0.95rem;
+	border-color: color-mix(in srgb, var(--ink) 7%, transparent);
+	border-radius: 3px;
+	background: var(--tint-strong);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+}
+
+/* A Mermaid diagram (diagram.js): its drawing on the same pane as code, at its own size, never wider than the reply. */
+figure.diagram {
+	margin: 0;
+	padding: 0.85rem;
+	overflow-x: auto;
+	text-align: center;
+	border: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+figure.diagram img {
+	max-width: 100%;
+	height: auto;
+}
+
+/* Code: a pane of darker glass, its language and its copy action quiet on the rim until the pointer comes. */
+figure.code {
+	border-color: color-mix(in srgb, var(--ink) 9%, transparent);
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--surface) 82%, transparent);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+}
+
+:root[data-appearance="light"] figure.code {
+	background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+figure.code figcaption {
+	border-bottom-color: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+figure.code figcaption button {
+	opacity: 0.55;
+	transition:
+		opacity var(--ease),
+		border-color var(--ease),
+		color var(--ease);
+}
+
+figure.code:hover figcaption button,
+figure.code figcaption button:focus-visible {
+	opacity: 1;
+}
+
+.md code {
+	border-color: transparent;
+	background: var(--tint-strong);
+}
+
+/* Tables ruled as the site's lists: hairlines between rows, the head in ink 2 over a stronger rule, no grid. */
+.md table {
+	font-variant-numeric: tabular-nums;
+}
+
+.md th,
+.md td {
+	border-width: 0 0 1px;
+	border-color: var(--line);
+}
+
+.md th {
+	border-bottom-color: var(--line-strong);
+	background: none;
+	color: var(--ink-2);
+	font-size: 0.82rem;
+	font-weight: 500;
+}
+
+.md th:first-child,
+.md td:first-child {
+	padding-left: 0;
+}
+
+.md tbody tr {
+	transition: background-color var(--ease);
+}
+
+.md tbody tr:hover {
+	background: var(--tint);
+}
+
+.md blockquote {
+	border-left-width: 2px;
+	border-left-color: var(--line-strong);
+}
+
+.md hr {
+	border-top-color: var(--line);
+}
+
+/* Tools: a line of light, not a card (gui-da-raffinement.md § 1): state, name, target, and what they say under a rail. */
+.tool {
+	border: 0;
+	background: none;
+}
+
+.tool > header {
+	padding-inline: 0.25rem;
+	border-radius: var(--radius);
+	transition: background-color var(--ease);
+}
+
+.tool > header[role="button"]:hover {
+	background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.tool-output,
+.tool-dialog {
+	margin: 0.1rem 0 0.2rem 0.5rem;
+	padding: 0.15rem 0 0.15rem 0.85rem;
+	border-top: 0;
+	border-left: 1px solid var(--line-strong);
+}
+
+.tool[data-status="awaiting"] {
+	border: 0;
+}
+
+.tool[data-status="awaiting"] .tool-dialog {
+	border-left-color: var(--ink);
+}
+
+.tool.user-bash.excluded {
+	border: 0;
+	opacity: 0.7;
+}
+
+.tool[data-status="running"] .state {
+	box-shadow: 0 0 0.5rem color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+/* The question reads as the terminal's selector: one line per answer, the first marked (gui-da-raffinement.md § 2). */
+/* A question waiting for the user stands out of the transcript: a pane of light behind it, the rail in ink. */
+.tool-dialog .dialog {
+	padding: 0.2rem 0;
+	background: none;
+}
+
+.tool[data-status="awaiting"] .tool-dialog {
+	margin-top: 0.35rem;
+	padding: 0.65rem 0.6rem 0.55rem 0.95rem;
+	border-left-width: 2px;
+	border-radius: 0 3px 3px 0;
+	background: var(--tint);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+	opacity: var(--arrival);
+	transform: translateY(calc(4px * (1 - var(--arrival))));
+	animation: focus-in 260ms var(--settle) both;
+}
+
+.dialog .dialog-title {
+	font-weight: 600;
+}
+
+/* A warning that pauses the agent: the rail and the title in the
+   warning colour, a warm pane behind it. */
+.tool[data-status="awaiting"] .tool-dialog:has(.dialog.warning) {
+	border-left-color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 9%, var(--tint));
+}
+
+.dialog.warning .dialog-title {
+	color: var(--warning);
+	font-size: 1.1rem;
+	letter-spacing: 0.02em;
+}
+
+.tool-dialog .dialog-actions,
+.panel .dialog-actions {
+	flex-direction: column;
+	flex-wrap: nowrap;
+	gap: 1px;
+}
+
+.dialog .option {
+	justify-content: flex-start;
+	width: 100%;
+	border-color: transparent;
+	background: none;
+	text-align: left;
+	transition:
+		background-color var(--ease),
+		box-shadow var(--ease);
+}
+
+.dialog .option:hover:not(:disabled),
+.dialog .option:focus-visible {
+	border-color: transparent;
+	background: color-mix(in srgb, var(--ink) 8%, transparent);
+	box-shadow: inset 2px 0 0 var(--ink);
+}
+
+.dialog .option.first {
+	border-color: transparent;
+	box-shadow: inset 2px 0 0 var(--ink-2);
+}
+
+/* ------------------------------------------------------------------ the dialogs */
+
+/* Settings and the link check: a pane of glass over a veiled window, arriving as the panels do. */
+dialog {
+	padding: 1.35rem 1.5rem 1.2rem;
+	border-color: var(--line-strong);
+	border-radius: 3px;
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(26px);
+	backdrop-filter: blur(26px);
+	box-shadow:
+		0 1.6rem 4rem -0.6rem var(--shadow-far),
+		inset 0 1px 0 var(--edge-light);
+}
+
+dialog[open] {
+	opacity: var(--arrival);
+	transform: translateY(calc(8px * (1 - var(--arrival))));
+	animation: panel-in 220ms var(--settle);
+}
+
+dialog::backdrop {
+	background: color-mix(in srgb, var(--bg) 45%, transparent);
+	-webkit-backdrop-filter: blur(5px);
+	backdrop-filter: blur(5px);
+}
+
+dialog h2 {
+	margin-bottom: 1.1rem;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+}
+
+dialog .dialog-actions {
+	flex-direction: row;
+}
+
+dialog .dialog-actions button {
+	min-width: 6rem;
+}
+
+.field-row select {
+	min-width: 10rem;
+}
+
+/* Settings: nearly the whole window, its sections on the left (the window's, then the engine's domains), the
+   section's settings on the right, one row per setting as the window's own (settings-dialog.js). */
+#settings {
+	width: min(72rem, calc(100vw - 4rem));
+	height: min(50rem, calc(100vh - 4rem));
+	max-width: none;
+	max-height: none;
+	padding: 0;
+	overflow: hidden;
+}
+
+.settings-shell {
+	display: grid;
+	grid-template-columns: 15rem minmax(0, 1fr);
+	height: 100%;
+	min-height: 0;
+}
+
+.settings-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-height: 0;
+	padding: 1.35rem 0.75rem;
+	border-right: 1px solid var(--line);
+	overflow-y: auto;
+}
+
+.settings-nav h2 {
+	margin: 0 0.6rem 0.9rem;
+}
+
+.settings-sections {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.settings-sections:not(:empty) {
+	margin-top: 0.5rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid var(--line);
+}
+
+.settings-section {
+	justify-content: flex-start;
+	width: 100%;
+	padding: 0.45rem 0.6rem;
+	border: 0;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--ink-2);
+	text-align: left;
+	box-shadow: none;
+}
+
+.settings-section[aria-current="true"] {
+	background: color-mix(in srgb, var(--ink) 9%, transparent);
+	color: var(--ink);
+}
+
+/* the search across every setting, and the domain of each result. */
+.settings-search {
+	width: 100%;
+	margin: 0 0 0.6rem;
+}
+.native-menu-group {
+	display: block;
+	color: var(--ink-3);
+	font-size: 0.7rem;
+	letter-spacing: 0.02em;
+}
+/* a module's state (unavailable, not for this model) after its name, as the terminal shows it. */
+.native-menu-state {
+	margin-left: 0.5em;
+	color: var(--warning);
+	font-size: 0.8rem;
+}
+
+/* the Simple │ Advanced switch under the dialog's title. */
+.settings-mode {
+	margin: 0 0 0.6rem;
+}
+
+.settings-pane {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+}
+
+.settings-pane-title {
+	margin: 0;
+	padding: 1.5rem 1.75rem 0.35rem;
+	font-size: 1.05rem;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+}
+
+.settings-body {
+	flex: 1;
+	min-height: 0;
+	padding: 0.5rem 1.75rem 1.25rem;
+	overflow-y: auto;
+}
+
+.settings-window,
+.settings-engine .native-menu {
+	max-width: 46rem;
+}
+
+.settings-window {
+	display: flex;
+	flex-direction: column;
+}
+
+.settings-window .field-row,
+.settings-engine .native-menu-field {
+	padding: 0.65rem 0;
+	border-bottom: 1px solid var(--line);
+}
+
+.settings-window .info {
+	margin-top: 1rem;
+	padding-top: 0;
+	border-top: 0;
+}
+
+.settings-pane > .dialog-actions {
+	margin: 0;
+	padding: 0.8rem 1.75rem 1.1rem;
+	border-top: 1px solid var(--line);
+}
+
+/* A narrow window: the sections above the settings, on as many lines as they need. */
+@media (max-width: 760px) {
+	#settings {
+		width: calc(100vw - 1.5rem);
+		height: calc(100vh - 1.5rem);
+	}
+
+	.settings-shell {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+
+	.settings-nav,
+	.settings-sections {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.settings-nav {
+		max-height: 40vh;
+		padding: 0.9rem 1rem 0.6rem;
+		border-right: 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.settings-nav h2 {
+		flex-basis: 100%;
+		margin: 0 0 0.4rem;
+	}
+
+	.settings-sections:not(:empty) {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: 0;
+	}
+
+	.settings-section {
+		width: auto;
+	}
+
+	.settings-pane-title,
+	.settings-body,
+	.settings-pane > .dialog-actions {
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+}
+
+/* ------------------------------------------------------- the welcome under a panel */
+
+/* A panel opened over the welcome takes the light: the words step back and the scene recedes halfway, so the panel
+   never sits on a title cut by its edge. */
+@property --veil {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 1;
+}
+
+.welcome {
+	--veil: 1;
+	opacity: var(--veil);
+	transition: --veil 320ms var(--settle);
+}
+
+/* The panel shortens the scroller at once and the words, set at its bottom, rise above it: they go at once too, and
+   fade back only once the panel is gone and they are in place again (QA 2026-11-04: they rose while fading). */
+.main:has(.surface.open .panel:not(.view-measure)) .welcome {
+	--veil: 0;
+	pointer-events: none;
+	transition: none;
+}
+
+.main:has(.welcome:not([hidden])):has(.surface.open .panel:not(.view-measure)) > .scene {
+	--shown: 0.45;
+}
+
+/* ------------------------------------------------------------------ the notices */
+
+.toast {
+	border: 0;
+	border-left: 2px solid var(--ink-3);
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(22px);
+	backdrop-filter: blur(22px);
+	box-shadow:
+		0 0.7rem 2rem -0.3rem var(--shadow-far),
+		inset 0 1px 0 var(--edge-light);
+	opacity: var(--arrival);
+	transform: translateX(calc(10px * (1 - var(--arrival))));
+	animation: toast-in 240ms var(--settle);
+}
+
+@keyframes toast-in {
+	from {
+		--arrival: 0;
+	}
+}
+
+.toast.error {
+	border-left-color: var(--error);
+}
+
+.toast.warning {
+	border-left-color: var(--warning);
+}
+
+/* ---------------------------------------------------------------- the status bar */
+
+/* The context as a hairline that fills, under its figure. */
+/* The footer's chips light up under the pointer like the rest of the glass. */
+.statusbar button {
+	transition:
+		color var(--ease),
+		background-color var(--ease);
+}
+
+.statusbar button:hover:not(:disabled),
+.statusbar button:focus-visible {
+	border-color: transparent;
+	background: var(--tint-strong);
+}
+
+.context-gauge {
+	position: relative;
+}
+
+.context-gauge::after {
+	content: "";
+	position: absolute;
+	right: 0.3rem;
+	bottom: 0.1rem;
+	left: 0.3rem;
+	height: 1px;
+	background: linear-gradient(90deg, var(--ink-2) var(--fill, 0%), var(--line) var(--fill, 0%));
+}
+
+.context-gauge[data-high]::after {
+	background: linear-gradient(90deg, var(--warning) var(--fill, 0%), var(--line) var(--fill, 0%));
+}
+
+/* ------------------------------------------------------------------ preferences */
+
+@media (prefers-reduced-motion: reduce) {
+	.backdrop-glow,
+	.work-rule i,
+	.enter,
+	.panel,
+	.toast,
+	.completion,
+	.welcome > *,
+	.mark-beam,
+	.mark-glass,
+	.mark-fan,
+	.tool[data-status="awaiting"] .tool-dialog,
+	dialog[open] {
+		animation: none !important;
+	}
+
+	.app,
+	.sidebar,
+	.side-panel,
+	.welcome {
+		transition: none !important;
+	}
+}
+
+@media (prefers-contrast: more) {
+	.sidebar,
+	.topbar,
+	.statusbar,
+	.panel:not(.view-measure),
+	.toast,
+	.completion {
+		background: var(--bg);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+}

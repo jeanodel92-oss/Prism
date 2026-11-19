@@ -1,19 +1,28 @@
 import * as os from "node:os";
+import { sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import { getCapabilities, getImageDimensions, hyperlink, imageFallback } from "@earendil-works/pi-tui";
+import {
+	getCapabilities,
+	getImageDimensions,
+	hyperlink,
+	imageFallback,
+	sanitizeTerminalLabel,
+} from "@earendil-works/pi-tui";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { resolvePath } from "../../utils/paths.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
 
+/**
+ * fork: a path for display only. `~` stands for the home folder itself, not for a
+ * folder whose name starts like it (/home/alice-backup). without a terminal control.
+ */
 export function shortenPath(path: unknown): string {
 	if (typeof path !== "string") return "";
 	const home = os.homedir();
-	if (path.startsWith(home)) {
-		return `~${path.slice(home.length)}`;
-	}
-	return path;
+	const inHome = home !== "" && (path === home || path.startsWith(home.endsWith(sep) ? home : `${home}${sep}`));
+	return sanitizeTerminalLabel(inHome ? `~${path.slice(home.length)}` : path);
 }
 
 export function linkPath(styledText: string, rawPath: string, cwd: string): string {

@@ -1,0 +1,7 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "open-sessions", "count": 2 },
+	{ "do": "never-shown", "selector": "#banner", "click": "#open-list li.current .close", "ms": 2000, "why": "QA of fork.10: closing a conversation flashed an error for a moment" },
+	{ "do": "count", "selector": "#open-list li", "count": 1 },
+	{ "do": "quit" }
+]

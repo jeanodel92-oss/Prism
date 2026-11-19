@@ -39,10 +39,9 @@ export class CustomMessageComponent extends Container {
 	}
 
 	setExpanded(expanded: boolean): void {
-		if (this._expanded !== expanded) {
-			this._expanded = expanded;
-			this.rebuild();
-		}
+		// fork: reapply to the renderer even after a local click at the same global state.
+		this._expanded = expanded;
+		this.rebuild();
 	}
 
 	setOutputPad(outputPad: number): void {

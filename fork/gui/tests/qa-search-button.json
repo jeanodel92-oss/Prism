@@ -1,0 +1,21 @@
+[
+	{ "do": "log", "text": "Owner's QA of fork.11: the conversation's search has a magnifier in the top bar, and ctrl+f opens it as in the terminal." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']" },
+	{ "do": "click", "selector": "#search-button" },
+	{ "do": "wait", "selector": "#search:not([hidden]) #search-input" },
+	{ "do": "focused", "selector": "#search-input" },
+	{ "do": "type", "selector": "#search-input", "text": "point" },
+	{ "do": "wait", "selector": "#search-result", "text": "/" },
+	{ "do": "shot", "name": "search-button" },
+	{ "do": "key", "selector": "#search-input", "key": "Escape" },
+	{ "do": "absent", "selector": "#search:not([hidden])" },
+	{ "do": "key", "selector": "#input", "key": "f", "mods": { "ctrlKey": true }, "why": "tui.altScreen.search: ctrl+f" },
+	{ "do": "wait", "selector": "#search:not([hidden])" },
+	{ "do": "focused", "selector": "#search-input" },
+	{ "do": "log", "text": "qa-search-button-ok" },
+	{ "do": "quit" }
+]

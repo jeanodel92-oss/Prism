@@ -6,6 +6,7 @@ import type {
 	ResponseStreamEvent,
 } from "openai/resources/responses/responses.js";
 
+import { SseEventSplitter } from "../fork/sse-lines.ts";
 import { clampThinkingLevel } from "../models.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
@@ -56,7 +57,7 @@ const BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
 // The Codex backend accepts zstd-compressed request bodies on the SSE responses
-// endpoint (the same endpoint the official Codex client compresses against).
+// endpoint.
 const REQUEST_COMPRESSION_ZSTD_LEVEL = 3;
 const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 const WEBSOCKET_MESSAGE_TOO_BIG_CLOSE_CODE = 1009;
@@ -215,7 +216,7 @@ function loadNodeZlib(): typeof NodeZlib | null {
 // Returns the zstd-compressed body bytes, or null when compression is
 // unavailable (browser/Vite builds). Callers fall back to sending the
 // uncompressed JSON when this returns null.
-function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
+function compressRequestBodyZstd(bodyJson: string): Uint8Array<ArrayBuffer> | null {
 	const zlib = loadNodeZlib();
 	if (!zlib || typeof zlib.zstdCompressSync !== "function") {
 		return null;
@@ -224,7 +225,8 @@ function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
 		const compressed = zlib.zstdCompressSync(bodyJson, {
 			params: { [zlib.constants.ZSTD_c_compressionLevel]: REQUEST_COMPRESSION_ZSTD_LEVEL },
 		});
-		return new Uint8Array(compressed.buffer, compressed.byteOffset, compressed.byteLength);
+		// A copy owns a plain ArrayBuffer, which fetch accepts as a body under every lib.
+		return new Uint8Array(compressed);
 	} catch {
 		return null;
 	}
@@ -380,7 +382,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 			if (compressedBody) {
 				sseHeaders.set("content-encoding", "zstd");
 			}
-			const sseBody: Uint8Array | string = compressedBody ?? bodyJson;
+			const sseBody: Uint8Array<ArrayBuffer> | string = compressedBody ?? bodyJson;
 
 			// Fetch with retry logic for rate limits and transient errors
 			let response: Response | undefined;
@@ -801,7 +803,8 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
-	let buffer = "";
+	// fork: split in linear time, an event bounded (same defect as AS-032).
+	const events = new SseEventSplitter();
 	const onAbort = () => {
 		void reader.cancel().catch(() => {});
 	};
@@ -816,15 +819,12 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 			if (signal?.aborted) {
 				throw new Error("Request was aborted");
 			}
-			buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+			const chunks = events.push(done ? decoder.decode() : decoder.decode(value, { stream: true }));
 			// Treat EOF as terminating the residual SSE frame.
-			if (done && buffer.trim()) buffer += "\n\n";
+			const last = done ? events.end() : undefined;
+			if (last?.trim()) chunks.push(last);
 
-			let idx = buffer.indexOf("\n\n");
-			while (idx !== -1) {
-				const chunk = buffer.slice(0, idx);
-				buffer = buffer.slice(idx + 2);
-
+			for (const chunk of chunks) {
 				const dataLines = chunk
 					.split("\n")
 					.filter((l) => l.startsWith("data:"))
@@ -842,7 +842,6 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 						}
 					}
 				}
-				idx = buffer.indexOf("\n\n");
 			}
 
 			if (done) break;

@@ -1,5 +1,22 @@
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" aria-hidden="true"><path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z"/><path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z"/><path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z"/></svg>`;
 
+// fork: the harness may brand this local page (name in the title, logo). the bundle
+// emits each OAuth flow as a self-contained file with its own copy of this module, so the brand lives on
+// globalThis, where every copy reads it; a module variable left the ChatGPT page with pi's logo.
+const BRAND = Symbol.for("pi.oauthPageBrand");
+type Brand = { name?: string; logoSvg: string };
+const brandOf = (): Brand => (globalThis as Record<symbol, Brand | undefined>)[BRAND] ?? { logoSvg: LOGO_SVG };
+
+/** Sets the name shown in the page title and the logo of the local OAuth callback page. */
+export function setOAuthPageBrand(next: { name: string; logoSvg: string }): void {
+	(globalThis as Record<symbol, Brand | undefined>)[BRAND] = next;
+}
+
+/** fork: the harness name set with setOAuthPageBrand, for the agent name a provider shows. */
+export function getOAuthBrandName(): string | undefined {
+	return brandOf().name || undefined;
+}
+
 function escapeHtml(value: string): string {
 	return value
 		.replaceAll("&", "&amp;")
@@ -10,7 +27,8 @@ function escapeHtml(value: string): string {
 }
 
 function renderPage(options: { title: string; heading: string; message: string; details?: string }): string {
-	const title = escapeHtml(options.title);
+	const brand = brandOf();
+	const title = escapeHtml(brand.name ? `${brand.name} · ${options.title}` : options.title);
 	const heading = escapeHtml(options.heading);
 	const message = escapeHtml(options.message);
 	const details = options.details ? escapeHtml(options.details) : undefined;
@@ -82,7 +100,7 @@ function renderPage(options: { title: string; heading: string; message: string; 
 </head>
 <body>
   <main>
-    <div class="logo">${LOGO_SVG}</div>
+    <div class="logo">${brand.logoSvg}</div>
     <h1>${heading}</h1>
     <p>${message}</p>
     ${details ? `<div class="details">${details}</div>` : ""}

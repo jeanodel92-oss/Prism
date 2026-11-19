@@ -1,0 +1,15 @@
+[
+	{ "do": "log", "text": "Cancel on a permission question: the engine's answer is a refusal, as Escape in the terminal's selector" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "call write {\"path\":\"cancelled.txt\",\"content\":\"no\"}" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog" },
+	{ "do": "sleep", "ms": 500 },
+	{ "do": "click", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Cancel" },
+	{ "do": "wait", "selector": ".tool[data-status='error']", "text": "was cancelled or not answered", "why": "the engine blocks the action and tells the model why" },
+	{ "do": "wait", "selector": ".msg.assistant + .turn-summary", "timeout": 30000 },
+	{ "do": "absent", "selector": ".tool[data-status='done']" },
+	{ "do": "shot", "name": "q1-cancelled" },
+	{ "do": "log", "text": "question-cancel-ok" },
+	{ "do": "quit" }
+]

@@ -18,11 +18,19 @@ import {
 	type CacheWarmingMode,
 	type DefaultProjectTrust,
 	type FullscreenExitOutput,
+	type InterfaceMode,
 	type MermaidRenderingMode,
 	type QuietStartup,
 	type TuiMode,
 	type WarningSettings,
 } from "../../../core/settings-manager.ts";
+// fork: self-persisting threshold submenu, using the current model's real limits.
+import { createCompactionThresholdSetting } from "../../../fork/compaction-threshold-setting.ts";
+import { t } from "../../../fork/i18n/index.ts";
+import { interfaceWording } from "../../../fork/interface-mode.ts";
+import { groupSettingsByDomain, type SettingsDomainExtras, shown } from "../../../fork/settings-domains.ts";
+import { paged, withPage } from "../../../fork/settings-pages.ts";
+import { SettingsView } from "../../../fork/settings-view.ts";
 import {
 	getSettingsListTheme,
 	parseAutoThemeSetting,
@@ -32,7 +40,7 @@ import {
 } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
-import { SelectSubmenu, SteppedSubmenu, type SteppedSubmenuStep } from "./settings-submenu.ts";
+import { SelectSubmenu, type SteppedSubmenuStep } from "./settings-submenu.ts";
 
 const MODEL_PICKER_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 46 };
 
@@ -57,6 +65,7 @@ const DEFAULT_PROJECT_TRUST_BY_LABEL = new Map(
 );
 
 export interface SettingsConfig {
+	interfaceMode: InterfaceMode;
 	autoCompact: boolean;
 	defaultModel: string;
 	currentModel?: Model<any>;
@@ -98,6 +107,8 @@ export interface SettingsConfig {
 	fullscreenCopyOnSelect: boolean;
 	fullscreenWheelScrollLines: WheelScrollLines;
 	warnings: WarningSettings;
+	/** fork: built-in extensions and web search, for the domain view. */
+	domainExtras?: SettingsDomainExtras;
 }
 
 export interface SettingsCallbacks {
@@ -143,6 +154,28 @@ export interface SettingsCallbacks {
 /**
  * A submenu component for selecting from a list of options.
  */
+/** the warnings' rows, also drawn by the Prism window (its page of the Warnings setting). */
+function warningItems(state: WarningSettings): SettingItem[] {
+	return [
+		{
+			id: "anthropic-extra-usage",
+			label: "Anthropic extra usage",
+			description:
+				"Warn when using an Anthropic subscription may incur extra charges. This warning does not block extra charges.",
+			currentValue: (state.anthropicExtraUsage ?? true) ? "true" : "false",
+			values: ["true", "false"],
+		},
+	];
+}
+
+function changeWarning(state: WarningSettings, id: string, newValue: string): WarningSettings {
+	switch (id) {
+		case "anthropic-extra-usage":
+			return { ...state, anthropicExtraUsage: newValue === "true" };
+	}
+	return state;
+}
+
 class WarningSettingsSubmenu extends Container {
 	private settingsList: SettingsList;
 	private state: WarningSettings;
@@ -152,27 +185,19 @@ class WarningSettingsSubmenu extends Container {
 
 		this.state = { ...warnings };
 
-		const items: SettingItem[] = [
-			{
-				id: "anthropic-extra-usage",
-				label: "Anthropic extra usage",
-				description: "Warn when Anthropic subscription auth may use paid extra usage",
-				currentValue: (this.state.anthropicExtraUsage ?? true) ? "true" : "false",
-				values: ["true", "false"],
-			},
-		];
+		const items = warningItems(this.state);
 
 		this.settingsList = new SettingsList(
-			items,
+			items.map((item) => ({
+				...item,
+				label: t(item.label),
+				description: item.description ? t(item.description) : undefined,
+			})),
 			Math.min(items.length, 10),
 			getSettingsListTheme(),
 			(id, newValue) => {
-				switch (id) {
-					case "anthropic-extra-usage":
-						this.state = { ...this.state, anthropicExtraUsage: newValue === "true" };
-						onChange({ ...this.state });
-						break;
-				}
+				this.state = changeWarning(this.state, id, newValue);
+				onChange({ ...this.state });
 			},
 			onCancel,
 		);
@@ -307,7 +332,11 @@ class ThemeSubmenu extends Container {
 		this.mode = "single";
 		const menu = new SelectSubmenu(
 			"Theme",
-			"Select a theme, or choose automatic to follow terminal appearance.",
+			// fork: how themes and the terminal's own background interact.
+			"Automatic follows the terminal: its light theme on a light terminal, its dark theme on a dark one. " +
+				"A fixed theme made for the other background also sets the terminal's background while Prism runs, " +
+				"and restores it on exit. Terminals that cannot change their background keep it: " +
+				"then pick a theme made for it, or automatic.",
 			singleModeThemeItems(this.availableThemes, this.singleTheme),
 			this.singleTheme,
 			(value) => {
@@ -332,10 +361,10 @@ class ThemeSubmenu extends Container {
 	private showAutomaticMenu(): void {
 		this.mode = "automatic";
 		const content = new Container();
-		content.addChild(new Text(theme.bold(theme.fg("accent", "Automatic Theme")), 0, 0));
+		content.addChild(new Text(theme.bold(theme.fg("accent", t("Automatic Theme"))), 0, 0));
 		content.addChild(new Spacer(1));
-		content.addChild(new Text(theme.fg("muted", "Choose themes for terminal light and dark appearance."), 0, 0));
-		content.addChild(new Text(theme.fg("muted", "Light/dark detection requires terminal support."), 0, 0));
+		content.addChild(new Text(theme.fg("muted", t("Choose themes for terminal light and dark appearance.")), 0, 0));
+		content.addChild(new Text(theme.fg("muted", t("Light/dark detection requires terminal support.")), 0, 0));
 		content.addChild(new Spacer(1));
 
 		const items: SettingItem[] = [
@@ -392,7 +421,11 @@ class ThemeSubmenu extends Container {
 		];
 
 		const settingsList = new SettingsList(
-			items,
+			items.map((item) => ({
+				...item,
+				label: t(item.label),
+				description: item.description ? t(item.description) : undefined,
+			})),
 			Math.min(items.length, 10),
 			getSettingsListTheme(),
 			(id) => {
@@ -460,534 +493,559 @@ class ThemeSubmenu extends Container {
 /**
  * Main settings selector component.
  */
+/**
+ * the settings and their change handler, built from the operations' values and callbacks
+ * (settings-operations.ts): the terminal draws them below, the Prism window as native screens.
+ */
+export function settingsItems(
+	config: SettingsConfig,
+	callbacks: SettingsCallbacks,
+): { items: SettingItem[]; onChange: (id: string, newValue: string) => void } {
+	const supportsImages = getCapabilities().images;
+	const followUpKey = keyDisplayText("app.message.followUp");
+	const interfaceMode = config.interfaceMode;
+	const cycleThinkingKey = keyDisplayText("app.thinking.cycle");
+	let currentWarnings = { ...config.warnings };
+	const currentModelThinkingLevels = { ...config.modelThinkingLevels };
+	const defaultModelByValue = new Map(config.availableDefaultModels.map((model) => [modelSettingKey(model), model]));
+	const currentDefaultModelKey = defaultModelByValue.has(config.defaultModel) ? config.defaultModel : undefined;
+	const currentModelKey = config.currentModel ? modelSettingKey(config.currentModel) : undefined;
+
+	const items: SettingItem[] = [
+		{
+			id: "autocompact",
+			label: "Auto-compact conversation",
+			description:
+				"Automatically summarize older messages when the conversation nears the model's limit. Recent messages stay in full; older details may be lost in the summary.",
+			currentValue: config.autoCompact ? "true" : "false",
+			values: ["true", "false"],
+		},
+		{
+			id: "steering-mode",
+			label: interfaceWording(interfaceMode, "Messages sent while working", "Steering (messages while working)"),
+			description:
+				"Press Enter while the agent is working to guide its next steps. 'one-at-a-time': send one message, then wait for a response. 'all': send the waiting messages together.",
+			currentValue: config.steeringMode,
+			values: ["one-at-a-time", "all"],
+		},
+		{
+			id: "follow-up-mode",
+			label: interfaceWording(interfaceMode, "Messages sent after the task", "Follow-up (messages after working)"),
+			description: `Press ${followUpKey} to save a message for after the current task. 'one-at-a-time': send one message, then wait for a response. 'all': send the waiting messages together.`,
+			currentValue: config.followUpMode,
+			values: ["one-at-a-time", "all"],
+		},
+		{
+			id: "transport",
+			label: "Connection method",
+			description:
+				"Choose how to connect when the service offers a choice. SSE receives updates over HTTP; WebSocket uses a two-way connection.",
+			currentValue: config.transport,
+			values: ["sse", "websocket", "websocket-cached", "auto"],
+		},
+		{
+			id: "http-idle-timeout",
+			label: "HTTP response wait limit",
+			description:
+				"How long an HTTP request can wait without receiving data. This is not a limit on the whole reply. Disable it if your local model pauses longer than the selected limit.",
+			currentValue: formatHttpIdleTimeoutMs(config.httpIdleTimeoutMs),
+			values: HTTP_IDLE_TIMEOUT_CHOICES.map((choice) => choice.label),
+		},
+		{
+			id: "cache-warming-mode",
+			label: "Cache warming",
+			description:
+				"Send extra requests to keep previously sent text cached for reuse. These requests may cost money. 'off': disabled; 'streaming': while working; 'idle': also between tasks, while estimated savings justify it.",
+			currentValue: config.cacheWarmingMode,
+			values: [...CACHE_WARMING_MODES],
+		},
+		{
+			id: "hide-thinking",
+			label: "Hide thinking",
+			description: "Hide thinking blocks in replies. This changes the display, not how much the model thinks.",
+			currentValue: config.hideThinkingBlock ? "true" : "false",
+			values: ["true", "false"],
+		},
+		{
+			id: "mermaid-rendering",
+			label: "Mermaid diagrams",
+			description: "Render Mermaid code blocks as Unicode diagrams",
+			currentValue: config.mermaidRenderingMode,
+			values: ["off", "final", "streaming"],
+		},
+		{
+			id: "cache-miss-notices",
+			label: "Cache miss notices",
+			description: "Show transcript notices for cache costs and provider recovery diagnostics",
+			currentValue: config.showCacheMissNotices ? "true" : "false",
+			values: ["true", "false"],
+		},
+		{
+			id: "collapse-changelog",
+			label: "Collapse changelog",
+			description: "Show condensed changelog after updates",
+			currentValue: config.collapseChangelog ? "true" : "false",
+			values: ["true", "false"],
+		},
+		{
+			id: "quiet-startup",
+			label: "Quiet startup",
+			description: "Disable verbose printing at startup (header: keep only the startup header)",
+			currentValue: String(config.quietStartup),
+			values: ["true", "header", "false"],
+		},
+		// fork: install telemetry is always off (core/telemetry.ts), so its toggle is not shown.
+		{
+			id: "default-project-trust",
+			label: "Trust for new project folders",
+			description:
+				"When no saved choice or extension decides, choose whether to trust the folder. Trust allows its settings to load, missing project packages to be installed, and its extensions to run code.",
+			currentValue: DEFAULT_PROJECT_TRUST_LABELS[config.defaultProjectTrust],
+			values: Object.values(DEFAULT_PROJECT_TRUST_LABELS),
+		},
+		{
+			id: "double-escape-action",
+			label: "Double-escape action",
+			description: "Action when pressing Escape twice with empty editor",
+			currentValue: config.doubleEscapeAction,
+			values: ["tree", "fork", "none"],
+		},
+		{
+			id: "tree-filter-mode",
+			label: "Tree filter mode",
+			description: "Default filter when opening /tree",
+			currentValue: config.treeFilterMode,
+			values: ["default", "no-tools", "user-only", "labeled-only", "all"],
+		},
+		{
+			id: "warnings",
+			label: "Warnings",
+			description: "Enable or disable individual warnings",
+			currentValue: "configure",
+			submenu: (_currentValue, done) =>
+				new WarningSettingsSubmenu(
+					currentWarnings,
+					(warnings) => {
+						currentWarnings = warnings;
+						callbacks.onWarningsChange(warnings);
+					},
+					() => done(),
+				),
+			// the same rows and change for the Prism window.
+			...withPage((_currentValue, done) => ({
+				kind: "rows",
+				title: "Warnings",
+				description: "Enable or disable individual warnings",
+				items: warningItems(currentWarnings).map(shown),
+				onChange: (id, value) => {
+					currentWarnings = changeWarning(currentWarnings, id, value);
+					callbacks.onWarningsChange(currentWarnings);
+				},
+				onClose: () => done(),
+			})),
+		},
+		{
+			id: "model-thinking",
+			label: "Thinking level for each model",
+			description: `Choose each model's default thinking level before answering. Higher thinking levels may take longer and cost more. Press ${cycleThinkingKey} to change it for the current session.`,
+			currentValue: modelThinkingOverridesSummary(currentModelThinkingLevels),
+			// a page, which the Prism window draws too.
+			...paged((_currentValue, done) => {
+				const steps: SteppedSubmenuStep[] = [
+					{
+						key: "model",
+						title: "Per-Model Thinking Level",
+						description: "Select a model to configure",
+						options: () => {
+							const sorted = [...config.availableDefaultModels].sort((a, b) => {
+								const aKey = modelSettingKey(a);
+								const bKey = modelSettingKey(b);
+								if (aKey === currentModelKey) return -1;
+								if (bKey === currentModelKey) return 1;
+								if (aKey === currentDefaultModelKey) return -1;
+								if (bKey === currentDefaultModelKey) return 1;
+								return a.provider.localeCompare(b.provider);
+							});
+							const items: SelectItem[] = sorted.map((model) => {
+								const key = modelSettingKey(model);
+								const override = currentModelThinkingLevels[key];
+								return {
+									value: key,
+									label: modelItemLabel(model),
+									description: override ?? undefined,
+								};
+							});
+							if (items.length === 0) {
+								items.push({
+									value: "__none__",
+									label: "No models available",
+									description: "Log in to a provider or configure an API key first",
+								});
+							}
+							return items;
+						},
+						preselect: () => currentModelKey ?? currentDefaultModelKey,
+						searchable: true,
+						layout: MODEL_PICKER_LAYOUT,
+					},
+					{
+						key: "level",
+						title: (ctx) => {
+							const m = defaultModelByValue.get(ctx.model);
+							return `Thinking Level for ${m ? modelDisplayLabel(m) : ctx.model}`;
+						},
+						description: "Select default thinking level for this model",
+						options: (ctx) => {
+							const model = defaultModelByValue.get(ctx.model);
+							if (!model) return [];
+							const levels = (model.reasoning ? getSupportedThinkingLevels(model) : ["off"]) as ThinkingLevel[];
+							const activeLevel = currentModelThinkingLevels[ctx.model];
+							const items: SelectItem[] = levels.map((level) => ({
+								value: level,
+								label: `${level === activeLevel ? "✓ " : "  "}${t(level)}`,
+								description: THINKING_DESCRIPTIONS[level],
+							}));
+							if (currentModelThinkingLevels[ctx.model] !== undefined) {
+								items.push({
+									value: CLEAR_OVERRIDE_VALUE,
+									label: "  (clear override)",
+									description: `Revert to global default (${config.thinkingLevel})`,
+								});
+							}
+							return items;
+						},
+						preselect: (ctx) => currentModelThinkingLevels[ctx.model],
+					},
+				];
+
+				const summary = () => modelThinkingOverridesSummary(currentModelThinkingLevels);
+
+				return {
+					kind: "steps",
+					steps,
+					onComplete: (selections) => {
+						const model = defaultModelByValue.get(selections.model);
+						if (!model) return;
+						if (selections.level === CLEAR_OVERRIDE_VALUE) {
+							callbacks.onModelThinkingLevelRemove(model.provider, model.id);
+							delete currentModelThinkingLevels[selections.model];
+						} else {
+							callbacks.onModelThinkingLevelChange(model.provider, model.id, selections.level as ThinkingLevel);
+							currentModelThinkingLevels[selections.model] = selections.level as ThinkingLevel;
+						}
+					},
+					onCancel: () => {
+						done(summary());
+					},
+					stepsOptions: { loop: true },
+				};
+			}),
+		},
+		{
+			id: "tui-mode",
+			label: "Screen layout",
+			description:
+				"'regular': use the terminal's normal scrolling history. 'fullscreen': use a separate full-screen view.",
+			currentValue: config.tuiMode,
+			values: ["regular", "fullscreen"],
+		},
+		{
+			id: "fullscreen-exit-output",
+			label: "Fullscreen exit output",
+			description:
+				"On leaving full-screen mode, 'transcript' prints the conversation in the terminal; 'resume-hint' prints only how to reopen the session.",
+			currentValue: config.fullscreenExitOutput,
+			values: ["transcript", "resume-hint"],
+		},
+		{
+			id: "fullscreen-scrollbar",
+			label: "Fullscreen scrollbar",
+			description: "Scrollbar behavior in fullscreen mode; has no effect in regular mode",
+			currentValue: config.fullscreenScrollbar,
+			values: ["auto", "always", "hidden"],
+		},
+		{
+			id: "fullscreen-copy-on-select",
+			label: "Fullscreen copy on select",
+			description: "Automatically copy selected text in fullscreen mode; disable to copy selections with Ctrl+X",
+			currentValue: config.fullscreenCopyOnSelect ? "true" : "false",
+			values: ["true", "false"],
+		},
+		{
+			id: "fullscreen-wheel-scroll-lines",
+			label: "Fullscreen wheel scrolling",
+			description:
+				"Lines per mouse-wheel event in fullscreen mode; 'auto' speeds up fast wheel spins where the terminal does not",
+			currentValue: String(config.fullscreenWheelScrollLines),
+			values: [
+				"auto",
+				...[...new Set([1, 2, 3, 5, 10, config.fullscreenWheelScrollLines])]
+					.filter((lines) => lines !== "auto")
+					.sort((a, b) => a - b)
+					.map(String),
+			],
+		},
+		{
+			id: "theme",
+			label: "Theme",
+			description: "Color theme. Automatic follows the terminal's light or dark background", // fork (V2.5)
+			currentValue: config.currentTheme,
+			submenu: (currentValue, done) =>
+				new ThemeSubmenu(currentValue, config.terminalTheme, config.availableThemes, callbacks, done),
+		},
+	];
+
+	// Only show image toggle if terminal supports it
+	if (supportsImages) {
+		// Insert after autocompact
+		items.splice(1, 0, {
+			id: "show-images",
+			label: "Show images",
+			description: "Render images inline in terminal",
+			currentValue: config.showImages ? "true" : "false",
+			values: ["true", "false"],
+		});
+		items.splice(2, 0, {
+			id: "image-width-cells",
+			label: "Image width",
+			description: "Preferred inline image width in terminal cells",
+			currentValue: String(config.imageWidthCells),
+			values: ["60", "80", "120"],
+		});
+	}
+
+	// Image auto-resize toggle (always available, affects both attached and read images)
+	items.splice(supportsImages ? 3 : 1, 0, {
+		id: "auto-resize-images",
+		label: "Auto-resize images",
+		description: "Resize large images to 2000x2000 max for better model compatibility",
+		currentValue: config.autoResizeImages ? "true" : "false",
+		values: ["true", "false"],
+	});
+
+	// Block images toggle (always available, insert after auto-resize-images)
+	const autoResizeIndex = items.findIndex((item) => item.id === "auto-resize-images");
+	items.splice(autoResizeIndex + 1, 0, {
+		id: "block-images",
+		label: "Block images",
+		description: "Do not send images to the model's service or server.",
+		currentValue: config.blockImages ? "true" : "false",
+		values: ["true", "false"],
+	});
+
+	// Skill commands toggle (insert after block-images)
+	const blockImagesIndex = items.findIndex((item) => item.id === "block-images");
+	items.splice(blockImagesIndex + 1, 0, {
+		id: "skill-commands",
+		label: "Skill commands",
+		description: "Add /skill:name commands to open skills: saved instructions for specific tasks.",
+		currentValue: config.enableSkillCommands ? "true" : "false",
+		values: ["true", "false"],
+	});
+
+	// Hardware cursor toggle (insert after skill-commands)
+	const skillCommandsIndex = items.findIndex((item) => item.id === "skill-commands");
+	items.splice(skillCommandsIndex + 1, 0, {
+		id: "show-hardware-cursor",
+		label: "Show hardware cursor",
+		description: "Show the terminal cursor while still positioning it for IME support",
+		currentValue: config.showHardwareCursor ? "true" : "false",
+		values: ["true", "false"],
+	});
+
+	// Editor padding toggle (insert after show-hardware-cursor)
+	const hardwareCursorIndex = items.findIndex((item) => item.id === "show-hardware-cursor");
+	items.splice(hardwareCursorIndex + 1, 0, {
+		id: "editor-padding",
+		label: "Editor padding",
+		description: "Horizontal padding for input editor (0-3)",
+		currentValue: String(config.editorPaddingX),
+		values: ["0", "1", "2", "3"],
+	});
+
+	// Output padding toggle (insert after editor-padding)
+	const editorPaddingIndex = items.findIndex((item) => item.id === "editor-padding");
+	items.splice(editorPaddingIndex + 1, 0, {
+		id: "output-padding",
+		label: "Output padding",
+		description: "Horizontal padding for user messages, assistant messages, and thinking",
+		currentValue: String(config.outputPad),
+		values: ["0", "1"],
+	});
+
+	// Autocomplete max visible toggle (insert after output-padding)
+	const outputPaddingIndex = items.findIndex((item) => item.id === "output-padding");
+	items.splice(outputPaddingIndex + 1, 0, {
+		id: "autocomplete-max-visible",
+		label: "Autocomplete max items",
+		description: "Max visible items in autocomplete dropdown (3-20)",
+		currentValue: String(config.autocompleteMaxVisible),
+		values: ["3", "5", "7", "10", "15", "20"],
+	});
+
+	// Clear on shrink toggle (insert after autocomplete-max-visible)
+	const autocompleteIndex = items.findIndex((item) => item.id === "autocomplete-max-visible");
+	items.splice(autocompleteIndex + 1, 0, {
+		id: "clear-on-shrink",
+		label: "Clear on shrink",
+		description: "Clear empty rows when content shrinks (may cause flicker)",
+		currentValue: config.clearOnShrink ? "true" : "false",
+		values: ["true", "false"],
+	});
+
+	// Terminal progress toggle (insert after clear-on-shrink)
+	const clearOnShrinkIndex = items.findIndex((item) => item.id === "clear-on-shrink");
+	items.splice(clearOnShrinkIndex + 1, 0, {
+		id: "terminal-progress",
+		label: "Terminal progress",
+		description: "Show task progress in the terminal's tab bar, if supported (OSC 9;4).",
+		currentValue: config.showTerminalProgress ? "true" : "false",
+		values: ["true", "false"],
+	});
+
+	const onChange = (id: string, newValue: string) => {
+		switch (id) {
+			case "autocompact":
+				callbacks.onAutoCompactChange(newValue === "true");
+				break;
+			case "show-images":
+				callbacks.onShowImagesChange(newValue === "true");
+				break;
+			case "image-width-cells":
+				callbacks.onImageWidthCellsChange(parseInt(newValue, 10));
+				break;
+			case "auto-resize-images":
+				callbacks.onAutoResizeImagesChange(newValue === "true");
+				break;
+			case "block-images":
+				callbacks.onBlockImagesChange(newValue === "true");
+				break;
+			case "skill-commands":
+				callbacks.onEnableSkillCommandsChange(newValue === "true");
+				break;
+			case "steering-mode":
+				callbacks.onSteeringModeChange(newValue as "all" | "one-at-a-time");
+				break;
+			case "follow-up-mode":
+				callbacks.onFollowUpModeChange(newValue as "all" | "one-at-a-time");
+				break;
+			case "transport":
+				callbacks.onTransportChange(newValue as Transport);
+				break;
+			case "http-idle-timeout": {
+				const choice = HTTP_IDLE_TIMEOUT_CHOICES.find((item) => item.label === newValue);
+				if (choice) {
+					callbacks.onHttpIdleTimeoutMsChange(choice.timeoutMs);
+				}
+				break;
+			}
+			case "cache-warming-mode":
+				callbacks.onCacheWarmingModeChange(newValue as CacheWarmingMode);
+				break;
+			case "hide-thinking":
+				callbacks.onHideThinkingBlockChange(newValue === "true");
+				break;
+			case "mermaid-rendering":
+				callbacks.onMermaidRenderingModeChange(newValue as MermaidRenderingMode);
+				break;
+			case "cache-miss-notices":
+				callbacks.onShowCacheMissNoticesChange(newValue === "true");
+				break;
+			case "collapse-changelog":
+				callbacks.onCollapseChangelogChange(newValue === "true");
+				break;
+			case "quiet-startup":
+				callbacks.onQuietStartupChange(newValue === "header" ? "header" : newValue === "true");
+				break;
+			case "install-telemetry":
+				callbacks.onEnableInstallTelemetryChange(newValue === "true");
+				break;
+			case "default-project-trust": {
+				const defaultProjectTrust = DEFAULT_PROJECT_TRUST_BY_LABEL.get(newValue);
+				if (defaultProjectTrust) {
+					callbacks.onDefaultProjectTrustChange(defaultProjectTrust);
+				}
+				break;
+			}
+			case "double-escape-action":
+				callbacks.onDoubleEscapeActionChange(newValue as "fork" | "tree");
+				break;
+			case "tree-filter-mode":
+				callbacks.onTreeFilterModeChange(newValue as "default" | "no-tools" | "user-only" | "labeled-only" | "all");
+				break;
+			case "show-hardware-cursor":
+				callbacks.onShowHardwareCursorChange(newValue === "true");
+				break;
+			case "editor-padding":
+				callbacks.onEditorPaddingXChange(parseInt(newValue, 10));
+				break;
+			case "output-padding":
+				callbacks.onOutputPadChange(newValue === "0" ? 0 : 1);
+				break;
+			case "autocomplete-max-visible":
+				callbacks.onAutocompleteMaxVisibleChange(parseInt(newValue, 10));
+				break;
+			case "clear-on-shrink":
+				callbacks.onClearOnShrinkChange(newValue === "true");
+				break;
+			case "terminal-progress":
+				callbacks.onShowTerminalProgressChange(newValue === "true");
+				break;
+			case "tui-mode":
+				callbacks.onTuiModeChange(newValue as TuiMode);
+				break;
+			case "fullscreen-exit-output":
+				callbacks.onFullscreenExitOutputChange(newValue as FullscreenExitOutput);
+				break;
+			case "fullscreen-scrollbar":
+				callbacks.onFullscreenScrollbarChange(newValue as ScrollViewScrollbar);
+				break;
+			case "fullscreen-copy-on-select":
+				callbacks.onFullscreenCopyOnSelectChange(newValue === "true");
+				break;
+			case "fullscreen-wheel-scroll-lines":
+				callbacks.onFullscreenWheelScrollLinesChange(newValue === "auto" ? "auto" : parseInt(newValue, 10));
+				break;
+			case "theme":
+				callbacks.onThemeChange(newValue);
+				break;
+		}
+	};
+
+	// fork: /settings grouped by domain when the interactive mode passes its extras.
+	// fork: next to Auto-compact, also in the searchable list.
+	if (config.domainExtras?.compactionSettings) {
+		items.splice(1, 0, createCompactionThresholdSetting(config.domainExtras.compactionSettings, config.currentModel));
+	}
+	return { items, onChange };
+}
+
 export class SettingsSelectorComponent extends Container {
-	private settingsList: SettingsList;
+	private settingsList: SettingsList | SettingsView; // fork
 
 	constructor(config: SettingsConfig, callbacks: SettingsCallbacks) {
 		super();
 
-		const supportsImages = getCapabilities().images;
-		const followUpKey = keyDisplayText("app.message.followUp");
-		const cycleThinkingKey = keyDisplayText("app.thinking.cycle");
-		let currentWarnings = { ...config.warnings };
-		const currentModelThinkingLevels = { ...config.modelThinkingLevels };
-		const defaultModelByValue = new Map(
-			config.availableDefaultModels.map((model) => [modelSettingKey(model), model]),
-		);
-		const currentDefaultModelKey = defaultModelByValue.has(config.defaultModel) ? config.defaultModel : undefined;
-		const currentModelKey = config.currentModel ? modelSettingKey(config.currentModel) : undefined;
-
-		const items: SettingItem[] = [
-			{
-				id: "autocompact",
-				label: "Auto-compact",
-				description: "Automatically compact context when it gets too large",
-				currentValue: config.autoCompact ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
-				id: "steering-mode",
-				label: "Steering mode",
-				description:
-					"Enter while streaming queues steering messages. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.",
-				currentValue: config.steeringMode,
-				values: ["one-at-a-time", "all"],
-			},
-			{
-				id: "follow-up-mode",
-				label: "Follow-up mode",
-				description: `${followUpKey} queues follow-up messages until agent stops. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.`,
-				currentValue: config.followUpMode,
-				values: ["one-at-a-time", "all"],
-			},
-			{
-				id: "transport",
-				label: "Transport",
-				description: "Preferred transport for providers that support multiple transports",
-				currentValue: config.transport,
-				values: ["sse", "websocket", "websocket-cached", "auto"],
-			},
-			{
-				id: "http-idle-timeout",
-				label: "HTTP idle timeout",
-				description:
-					"Maximum idle gap while waiting for HTTP headers or body chunks. Disable for local models that pause longer than five minutes.",
-				currentValue: formatHttpIdleTimeoutMs(config.httpIdleTimeoutMs),
-				values: HTTP_IDLE_TIMEOUT_CHOICES.map((choice) => choice.label),
-			},
-			{
-				id: "cache-warming-mode",
-				label: "Cache warming",
-				description:
-					"off; streaming while the agent runs; idle also between runs while continuation stays profitable",
-				currentValue: config.cacheWarmingMode,
-				values: [...CACHE_WARMING_MODES],
-			},
-			{
-				id: "hide-thinking",
-				label: "Hide thinking",
-				description: "Hide thinking blocks in assistant responses",
-				currentValue: config.hideThinkingBlock ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
-				id: "mermaid-rendering",
-				label: "Mermaid diagrams",
-				description: "Render Mermaid code blocks as Unicode diagrams",
-				currentValue: config.mermaidRenderingMode,
-				values: ["off", "final", "streaming"],
-			},
-			{
-				id: "cache-miss-notices",
-				label: "Cache miss notices",
-				description: "Show transcript notices for cache costs and provider recovery diagnostics",
-				currentValue: config.showCacheMissNotices ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
-				id: "collapse-changelog",
-				label: "Collapse changelog",
-				description: "Show condensed changelog after updates",
-				currentValue: config.collapseChangelog ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
-				id: "quiet-startup",
-				label: "Quiet startup",
-				description: "Disable verbose printing at startup (header: keep only the startup header)",
-				currentValue: String(config.quietStartup),
-				values: ["true", "header", "false"],
-			},
-			{
-				id: "install-telemetry",
-				label: "Install telemetry",
-				description: "Send an anonymous version/update ping after changelog-detected updates",
-				currentValue: config.enableInstallTelemetry ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
-				id: "default-project-trust",
-				label: "Default project trust",
-				description: "Fallback behavior when no extension or saved trust decision decides project trust",
-				currentValue: DEFAULT_PROJECT_TRUST_LABELS[config.defaultProjectTrust],
-				values: Object.values(DEFAULT_PROJECT_TRUST_LABELS),
-			},
-			{
-				id: "double-escape-action",
-				label: "Double-escape action",
-				description: "Action when pressing Escape twice with empty editor",
-				currentValue: config.doubleEscapeAction,
-				values: ["tree", "fork", "none"],
-			},
-			{
-				id: "tree-filter-mode",
-				label: "Tree filter mode",
-				description: "Default filter when opening /tree",
-				currentValue: config.treeFilterMode,
-				values: ["default", "no-tools", "user-only", "labeled-only", "all"],
-			},
-			{
-				id: "warnings",
-				label: "Warnings",
-				description: "Enable or disable individual warnings",
-				currentValue: "configure",
-				submenu: (_currentValue, done) =>
-					new WarningSettingsSubmenu(
-						currentWarnings,
-						(warnings) => {
-							currentWarnings = warnings;
-							callbacks.onWarningsChange(warnings);
-						},
-						() => done(),
-					),
-			},
-			{
-				id: "model-thinking",
-				label: "Default thinking level per model",
-				description: `Override the default thinking level for specific models. ${cycleThinkingKey} cycles in-session.`,
-				currentValue: modelThinkingOverridesSummary(currentModelThinkingLevels),
-				submenu: (_currentValue, done) => {
-					const steps: SteppedSubmenuStep[] = [
-						{
-							key: "model",
-							title: "Per-Model Thinking Level",
-							description: "Select a model to configure",
-							options: () => {
-								const sorted = [...config.availableDefaultModels].sort((a, b) => {
-									const aKey = modelSettingKey(a);
-									const bKey = modelSettingKey(b);
-									if (aKey === currentModelKey) return -1;
-									if (bKey === currentModelKey) return 1;
-									if (aKey === currentDefaultModelKey) return -1;
-									if (bKey === currentDefaultModelKey) return 1;
-									return a.provider.localeCompare(b.provider);
-								});
-								const items: SelectItem[] = sorted.map((model) => {
-									const key = modelSettingKey(model);
-									const override = currentModelThinkingLevels[key];
-									return {
-										value: key,
-										label: modelItemLabel(model),
-										description: override ?? undefined,
-									};
-								});
-								if (items.length === 0) {
-									items.push({
-										value: "__none__",
-										label: "No models available",
-										description: "Log in to a provider or configure an API key first",
-									});
-								}
-								return items;
-							},
-							preselect: () => currentModelKey ?? currentDefaultModelKey,
-							searchable: true,
-							layout: MODEL_PICKER_LAYOUT,
-						},
-						{
-							key: "level",
-							title: (ctx) => {
-								const m = defaultModelByValue.get(ctx.model);
-								return `Thinking Level for ${m ? modelDisplayLabel(m) : ctx.model}`;
-							},
-							description: "Select default thinking level for this model",
-							options: (ctx) => {
-								const model = defaultModelByValue.get(ctx.model);
-								if (!model) return [];
-								const levels = (
-									model.reasoning ? getSupportedThinkingLevels(model) : ["off"]
-								) as ThinkingLevel[];
-								const activeLevel = currentModelThinkingLevels[ctx.model];
-								const items: SelectItem[] = levels.map((level) => ({
-									value: level,
-									label: `${level === activeLevel ? "✓ " : "  "}${level}`,
-									description: THINKING_DESCRIPTIONS[level],
-								}));
-								if (currentModelThinkingLevels[ctx.model] !== undefined) {
-									items.push({
-										value: CLEAR_OVERRIDE_VALUE,
-										label: "  (clear override)",
-										description: `Revert to global default (${config.thinkingLevel})`,
-									});
-								}
-								return items;
-							},
-							preselect: (ctx) => currentModelThinkingLevels[ctx.model],
-						},
-					];
-
-					const summary = () => modelThinkingOverridesSummary(currentModelThinkingLevels);
-
-					return new SteppedSubmenu(
-						steps,
-						(selections) => {
-							const model = defaultModelByValue.get(selections.model);
-							if (!model) return;
-							if (selections.level === CLEAR_OVERRIDE_VALUE) {
-								callbacks.onModelThinkingLevelRemove(model.provider, model.id);
-								delete currentModelThinkingLevels[selections.model];
-							} else {
-								callbacks.onModelThinkingLevelChange(
-									model.provider,
-									model.id,
-									selections.level as ThinkingLevel,
-								);
-								currentModelThinkingLevels[selections.model] = selections.level as ThinkingLevel;
-							}
-						},
-						() => {
-							done(summary());
-						},
-						{ loop: true },
-					);
-				},
-			},
-			{
-				id: "tui-mode",
-				label: "TUI mode",
-				description: "Interface layout; regular mode uses the terminal's normal scrollback",
-				currentValue: config.tuiMode,
-				values: ["regular", "fullscreen"],
-			},
-			{
-				id: "fullscreen-exit-output",
-				label: "Fullscreen exit output",
-				description: "Print the transcript or only a session resume hint when exiting fullscreen mode",
-				currentValue: config.fullscreenExitOutput,
-				values: ["transcript", "resume-hint"],
-			},
-			{
-				id: "fullscreen-scrollbar",
-				label: "Fullscreen scrollbar",
-				description: "Scrollbar behavior in fullscreen mode; has no effect in regular mode",
-				currentValue: config.fullscreenScrollbar,
-				values: ["auto", "always", "hidden"],
-			},
-			{
-				id: "fullscreen-copy-on-select",
-				label: "Fullscreen copy on select",
-				description: "Automatically copy selected text in fullscreen mode; disable to copy selections with Ctrl+X",
-				currentValue: config.fullscreenCopyOnSelect ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
-				id: "fullscreen-wheel-scroll-lines",
-				label: "Fullscreen wheel scrolling",
-				description:
-					"Lines per mouse-wheel event in fullscreen mode; 'auto' speeds up fast wheel spins where the terminal does not",
-				currentValue: String(config.fullscreenWheelScrollLines),
-				values: [
-					"auto",
-					...[...new Set([1, 2, 3, 5, 10, config.fullscreenWheelScrollLines])]
-						.filter((lines) => lines !== "auto")
-						.sort((a, b) => a - b)
-						.map(String),
-				],
-			},
-			{
-				id: "theme",
-				label: "Theme",
-				description: "Color theme for the interface",
-				currentValue: config.currentTheme,
-				submenu: (currentValue, done) =>
-					new ThemeSubmenu(currentValue, config.terminalTheme, config.availableThemes, callbacks, done),
-			},
-		];
-
-		// Only show image toggle if terminal supports it
-		if (supportsImages) {
-			// Insert after autocompact
-			items.splice(1, 0, {
-				id: "show-images",
-				label: "Show images",
-				description: "Render images inline in terminal",
-				currentValue: config.showImages ? "true" : "false",
-				values: ["true", "false"],
-			});
-			items.splice(2, 0, {
-				id: "image-width-cells",
-				label: "Image width",
-				description: "Preferred inline image width in terminal cells",
-				currentValue: String(config.imageWidthCells),
-				values: ["60", "80", "120"],
-			});
-		}
-
-		// Image auto-resize toggle (always available, affects both attached and read images)
-		items.splice(supportsImages ? 3 : 1, 0, {
-			id: "auto-resize-images",
-			label: "Auto-resize images",
-			description: "Resize large images to 2000x2000 max for better model compatibility",
-			currentValue: config.autoResizeImages ? "true" : "false",
-			values: ["true", "false"],
-		});
-
-		// Block images toggle (always available, insert after auto-resize-images)
-		const autoResizeIndex = items.findIndex((item) => item.id === "auto-resize-images");
-		items.splice(autoResizeIndex + 1, 0, {
-			id: "block-images",
-			label: "Block images",
-			description: "Prevent images from being sent to LLM providers",
-			currentValue: config.blockImages ? "true" : "false",
-			values: ["true", "false"],
-		});
-
-		// Skill commands toggle (insert after block-images)
-		const blockImagesIndex = items.findIndex((item) => item.id === "block-images");
-		items.splice(blockImagesIndex + 1, 0, {
-			id: "skill-commands",
-			label: "Skill commands",
-			description: "Register skills as /skill:name commands",
-			currentValue: config.enableSkillCommands ? "true" : "false",
-			values: ["true", "false"],
-		});
-
-		// Hardware cursor toggle (insert after skill-commands)
-		const skillCommandsIndex = items.findIndex((item) => item.id === "skill-commands");
-		items.splice(skillCommandsIndex + 1, 0, {
-			id: "show-hardware-cursor",
-			label: "Show hardware cursor",
-			description: "Show the terminal cursor while still positioning it for IME support",
-			currentValue: config.showHardwareCursor ? "true" : "false",
-			values: ["true", "false"],
-		});
-
-		// Editor padding toggle (insert after show-hardware-cursor)
-		const hardwareCursorIndex = items.findIndex((item) => item.id === "show-hardware-cursor");
-		items.splice(hardwareCursorIndex + 1, 0, {
-			id: "editor-padding",
-			label: "Editor padding",
-			description: "Horizontal padding for input editor (0-3)",
-			currentValue: String(config.editorPaddingX),
-			values: ["0", "1", "2", "3"],
-		});
-
-		// Output padding toggle (insert after editor-padding)
-		const editorPaddingIndex = items.findIndex((item) => item.id === "editor-padding");
-		items.splice(editorPaddingIndex + 1, 0, {
-			id: "output-padding",
-			label: "Output padding",
-			description: "Horizontal padding for user messages, assistant messages, and thinking",
-			currentValue: String(config.outputPad),
-			values: ["0", "1"],
-		});
-
-		// Autocomplete max visible toggle (insert after output-padding)
-		const outputPaddingIndex = items.findIndex((item) => item.id === "output-padding");
-		items.splice(outputPaddingIndex + 1, 0, {
-			id: "autocomplete-max-visible",
-			label: "Autocomplete max items",
-			description: "Max visible items in autocomplete dropdown (3-20)",
-			currentValue: String(config.autocompleteMaxVisible),
-			values: ["3", "5", "7", "10", "15", "20"],
-		});
-
-		// Clear on shrink toggle (insert after autocomplete-max-visible)
-		const autocompleteIndex = items.findIndex((item) => item.id === "autocomplete-max-visible");
-		items.splice(autocompleteIndex + 1, 0, {
-			id: "clear-on-shrink",
-			label: "Clear on shrink",
-			description: "Clear empty rows when content shrinks (may cause flicker)",
-			currentValue: config.clearOnShrink ? "true" : "false",
-			values: ["true", "false"],
-		});
-
-		// Terminal progress toggle (insert after clear-on-shrink)
-		const clearOnShrinkIndex = items.findIndex((item) => item.id === "clear-on-shrink");
-		items.splice(clearOnShrinkIndex + 1, 0, {
-			id: "terminal-progress",
-			label: "Terminal progress",
-			description: "Show OSC 9;4 progress indicators in the terminal tab bar",
-			currentValue: config.showTerminalProgress ? "true" : "false",
-			values: ["true", "false"],
-		});
-
 		// Add borders
 		this.addChild(new DynamicBorder());
-
-		this.settingsList = new SettingsList(
-			items,
-			10,
-			getSettingsListTheme(),
-			(id, newValue) => {
-				switch (id) {
-					case "autocompact":
-						callbacks.onAutoCompactChange(newValue === "true");
-						break;
-					case "show-images":
-						callbacks.onShowImagesChange(newValue === "true");
-						break;
-					case "image-width-cells":
-						callbacks.onImageWidthCellsChange(parseInt(newValue, 10));
-						break;
-					case "auto-resize-images":
-						callbacks.onAutoResizeImagesChange(newValue === "true");
-						break;
-					case "block-images":
-						callbacks.onBlockImagesChange(newValue === "true");
-						break;
-					case "skill-commands":
-						callbacks.onEnableSkillCommandsChange(newValue === "true");
-						break;
-					case "steering-mode":
-						callbacks.onSteeringModeChange(newValue as "all" | "one-at-a-time");
-						break;
-					case "follow-up-mode":
-						callbacks.onFollowUpModeChange(newValue as "all" | "one-at-a-time");
-						break;
-					case "transport":
-						callbacks.onTransportChange(newValue as Transport);
-						break;
-					case "http-idle-timeout": {
-						const choice = HTTP_IDLE_TIMEOUT_CHOICES.find((item) => item.label === newValue);
-						if (choice) {
-							callbacks.onHttpIdleTimeoutMsChange(choice.timeoutMs);
-						}
-						break;
-					}
-					case "cache-warming-mode":
-						callbacks.onCacheWarmingModeChange(newValue as CacheWarmingMode);
-						break;
-					case "hide-thinking":
-						callbacks.onHideThinkingBlockChange(newValue === "true");
-						break;
-					case "mermaid-rendering":
-						callbacks.onMermaidRenderingModeChange(newValue as MermaidRenderingMode);
-						break;
-					case "cache-miss-notices":
-						callbacks.onShowCacheMissNoticesChange(newValue === "true");
-						break;
-					case "collapse-changelog":
-						callbacks.onCollapseChangelogChange(newValue === "true");
-						break;
-					case "quiet-startup":
-						callbacks.onQuietStartupChange(newValue === "header" ? "header" : newValue === "true");
-						break;
-					case "install-telemetry":
-						callbacks.onEnableInstallTelemetryChange(newValue === "true");
-						break;
-					case "default-project-trust": {
-						const defaultProjectTrust = DEFAULT_PROJECT_TRUST_BY_LABEL.get(newValue);
-						if (defaultProjectTrust) {
-							callbacks.onDefaultProjectTrustChange(defaultProjectTrust);
-						}
-						break;
-					}
-					case "double-escape-action":
-						callbacks.onDoubleEscapeActionChange(newValue as "fork" | "tree");
-						break;
-					case "tree-filter-mode":
-						callbacks.onTreeFilterModeChange(
-							newValue as "default" | "no-tools" | "user-only" | "labeled-only" | "all",
-						);
-						break;
-					case "show-hardware-cursor":
-						callbacks.onShowHardwareCursorChange(newValue === "true");
-						break;
-					case "editor-padding":
-						callbacks.onEditorPaddingXChange(parseInt(newValue, 10));
-						break;
-					case "output-padding":
-						callbacks.onOutputPadChange(newValue === "0" ? 0 : 1);
-						break;
-					case "autocomplete-max-visible":
-						callbacks.onAutocompleteMaxVisibleChange(parseInt(newValue, 10));
-						break;
-					case "clear-on-shrink":
-						callbacks.onClearOnShrinkChange(newValue === "true");
-						break;
-					case "terminal-progress":
-						callbacks.onShowTerminalProgressChange(newValue === "true");
-						break;
-					case "tui-mode":
-						callbacks.onTuiModeChange(newValue as TuiMode);
-						break;
-					case "fullscreen-exit-output":
-						callbacks.onFullscreenExitOutputChange(newValue as FullscreenExitOutput);
-						break;
-					case "fullscreen-scrollbar":
-						callbacks.onFullscreenScrollbarChange(newValue as ScrollViewScrollbar);
-						break;
-					case "fullscreen-copy-on-select":
-						callbacks.onFullscreenCopyOnSelectChange(newValue === "true");
-						break;
-					case "fullscreen-wheel-scroll-lines":
-						callbacks.onFullscreenWheelScrollLinesChange(newValue === "auto" ? "auto" : parseInt(newValue, 10));
-						break;
-					case "theme":
-						callbacks.onThemeChange(newValue);
-						break;
-				}
-			},
-			callbacks.onCancel,
-			{ enableSearch: true },
-		);
+		const { items, onChange } = settingsItems(config, callbacks);
+		const grouped = config.domainExtras ? groupSettingsByDomain(items, onChange, config.domainExtras) : undefined;
+		// fork: the grouped settings are drawn by the Prism settings view.
+		this.settingsList = grouped
+			? new SettingsView(grouped, {
+					onClose: callbacks.onCancel,
+					rows: config.domainExtras?.rows ?? (() => 40),
+					domain: config.domainExtras?.startDomain,
+					item: config.domainExtras?.startItem,
+					openItem: config.domainExtras?.openStartItem,
+				})
+			: new SettingsList(items, 10, getSettingsListTheme(), onChange, callbacks.onCancel, { enableSearch: true });
 
 		this.addChild(this.settingsList);
 		this.addChild(new DynamicBorder());
 	}
 
-	getSettingsList(): SettingsList {
+	getSettingsList(): SettingsList | SettingsView {
 		return this.settingsList;
 	}
 }

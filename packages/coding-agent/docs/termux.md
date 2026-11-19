@@ -1,5 +1,7 @@
 # Run Pi on Android with Termux
 
+> Prism publishes releases for Linux x64 only and is not tested on Android. This page describes upstream pi, installed from npm, on Termux.
+
 Pi runs on Android through [Termux](https://termux.dev/), a terminal emulator and Linux environment. Text input, file tools, and shell commands are supported. Pi can copy and paste text through the Android clipboard with Termux:API. Clipboard image paste is not supported.
 
 ## Before you begin

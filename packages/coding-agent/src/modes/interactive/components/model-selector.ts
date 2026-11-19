@@ -10,6 +10,8 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
+import { fill, t } from "../../../fork/i18n/index.ts";
+import { withReloginNote } from "../../../fork/oauth-relogin.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../theme/theme.ts";
@@ -108,7 +110,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.addChild(this.scopeHintText);
 		} else {
 			const hintText = "Only showing models from configured providers. Use /login to add providers.";
-			this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
+			this.addChild(new Text(theme.fg("warning", t(hintText)), 0, 0));
 		}
 		this.addChild(new Spacer(1));
 
@@ -139,7 +141,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				new Text(
 					theme.fg(
 						"dim",
-						`  ${keyDisplayText("tui.select.confirm")} to select · ${keyDisplayText("app.models.save")} to set as default · ${keyDisplayText("tui.select.cancel")} to cancel`,
+						fill(
+							"  {0} to select · {1} to set as default · {2} to cancel",
+							keyDisplayText("tui.select.confirm"),
+							keyDisplayText("app.models.save"),
+							keyDisplayText("tui.select.cancel"),
+						),
 					),
 					0,
 					0,
@@ -195,9 +202,15 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			if (result.aborted && timedOut) {
 				this.errorMessage = "Model refresh timed out; showing cached models.";
 			} else if (result.errors.size === 1) {
-				this.errorMessage = `Could not refresh ${result.errors.keys().next().value}; showing cached models.`;
+				this.errorMessage = withReloginNote(
+					`Could not refresh ${result.errors.keys().next().value}; showing cached models.`,
+					result.errors.values(),
+				);
 			} else if (result.errors.size > 1) {
-				this.errorMessage = `Could not refresh ${result.errors.size} model catalogs (${[...result.errors.keys()].join(", ")}); showing cached models.`;
+				this.errorMessage = withReloginNote(
+					`Could not refresh ${result.errors.size} model catalogs (${[...result.errors.keys()].join(", ")}); showing cached models.`,
+					result.errors.values(),
+				);
 			} else {
 				this.errorMessage = this.modelRuntime.getError();
 				if (!this.errorMessage) {
@@ -246,13 +259,13 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	private getScopeText(): string {
-		const allText = this.scope === "all" ? theme.fg("accent", "all") : theme.fg("muted", "all");
-		const scopedText = this.scope === "scoped" ? theme.fg("accent", "scoped") : theme.fg("muted", "scoped");
-		return `${theme.fg("muted", "Scope: ")}${allText}${theme.fg("muted", " | ")}${scopedText}`;
+		const allText = this.scope === "all" ? theme.fg("accent", t("all")) : theme.fg("muted", t("all"));
+		const scopedText = this.scope === "scoped" ? theme.fg("accent", t("scoped")) : theme.fg("muted", t("scoped"));
+		return `${theme.fg("muted", t("Scope: "))}${allText}${theme.fg("muted", " | ")}${scopedText}`;
 	}
 
 	private getScopeHintText(): string {
-		return keyHint("tui.input.tab", "scope") + theme.fg("muted", " (all/scoped)");
+		return keyHint("tui.input.tab", "scope") + theme.fg("muted", t(" (all/scoped)"));
 	}
 
 	private isDefaultModel(model: Model<any>): boolean {
@@ -320,7 +333,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const isSelected = i === this.selectedIndex;
 			const isCurrent = modelsAreEqual(this.currentModel, item.model);
 			const isDefault = this.isDefaultModel(item.model);
-			const defaultBadge = isDefault ? theme.fg("muted", " · default") : "";
+			const defaultBadge = isDefault ? theme.fg("muted", t(" · default")) : "";
 
 			const cursor = isSelected ? theme.fg("accent", "→ ") : "  ";
 			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
@@ -342,19 +355,23 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			// Show error in red
 			const errorLines = this.errorMessage.split("\n");
 			for (const line of errorLines) {
-				this.listContainer.addChild(new Text(theme.fg("error", line), 0, 0));
+				this.listContainer.addChild(new Text(theme.fg("error", t(line)), 0, 0));
 			}
 		} else if (this.filteredModels.length === 0) {
-			this.listContainer.addChild(new Text(theme.fg("muted", "  No matching models"), 0, 0));
+			this.listContainer.addChild(new Text(theme.fg("muted", t("  No matching models")), 0, 0));
 		} else {
 			const selected = this.filteredModels[this.selectedIndex];
 			this.listContainer.addChild(new Spacer(1));
-			this.listContainer.addChild(new Text(theme.fg("muted", `  Model Name: ${selected.model.name}`), 0, 0));
+			this.listContainer.addChild(new Text(theme.fg("muted", fill("  Model Name: {0}", selected.model.name)), 0, 0));
 		}
 		if (this.refreshStatusMessage) {
 			this.listContainer.addChild(new Spacer(1));
 			this.listContainer.addChild(
-				new Text(theme.fg(this.refreshStatusSuccess ? "success" : "muted", `  ${this.refreshStatusMessage}`), 0, 0),
+				new Text(
+					theme.fg(this.refreshStatusSuccess ? "success" : "muted", `  ${t(this.refreshStatusMessage)}`),
+					0,
+					0,
+				),
 			);
 		}
 	}

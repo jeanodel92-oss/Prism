@@ -698,7 +698,7 @@ describe("resolveCliModel", () => {
 
 			expect(result.error).toBeUndefined();
 			expect(result.model?.provider).toBe("neuralwatt");
-			// :high is kept as part of the model id since --thinking was explicit
+			// high is kept as part of the model id since --thinking was explicit
 			expect(result.model?.id).toBe("zai-org/GLM-5.1-FP8:high");
 			expect(result.thinkingLevel).toBeUndefined();
 		});

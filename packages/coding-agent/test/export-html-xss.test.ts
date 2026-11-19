@@ -10,9 +10,10 @@ describe("export HTML markdown link sanitization", () => {
 		expect(templateJs).toMatch(/\^\(https\?\|mailto\|tel\|ftp\)/);
 	});
 
-	it("overrides the marked image renderer to use scheme allow-list sanitization", () => {
+	it("renders Markdown images as an escaped text placeholder", () => {
 		expect(templateJs).toMatch(/image\s*\(\s*token\s*\)/);
-		expect(templateJs).toMatch(/sanitizeMarkdownUrl\(token\.href\)/);
+		expect(templateJs).toMatch(/remote-image-placeholder/);
+		expect(templateJs).not.toMatch(/<img src=.*token\.href/);
 	});
 
 	it("strips C0 controls before checking and emitting markdown URLs", () => {
@@ -22,19 +23,22 @@ describe("export HTML markdown link sanitization", () => {
 
 	it("escapes href attributes in the custom link renderer", () => {
 		// The link renderer must escape href values to prevent attribute breakout
-		expect(templateJs).toMatch(/escapeHtml\(href\)/);
+		expect(templateJs).toContain(`let out = '<a href="' + escapeHtml(href) + '"';`);
 	});
 
-	it("escapes image mimeType attributes", () => {
-		// Image mimeType must be escaped to prevent attribute breakout
-		expect(templateJs).not.toMatch(/\$\{img\.mimeType\}/);
-		expect(templateJs).toMatch(/escapeHtml\(img\.mimeType/);
+	it("allows only raster image MIME types for embedded session images", () => {
+		expect(templateJs).toContain("image\\/(png|jpeg|gif|webp|bmp)");
+		expect(templateJs).not.toContain("image\\/svg");
 	});
 
-	it("escapes image data attributes", () => {
-		// Image data is embedded in src attributes and must not allow attribute breakout.
-		expect(templateJs).not.toMatch(/;base64,\$\{img\.data\}"/);
-		expect(templateJs).toMatch(/;base64,\$\{escapeHtml\(img\.data \|\| (?:''|"")\)\}"/);
+	it("validates embedded image data before emitting a data URL", () => {
+		expect(templateJs).toMatch(/A-Za-z0-9\+\//);
+		expect(templateJs).toMatch(/data:\$\{mimeType\};base64,\$\{data\}/);
+	});
+
+	it("does not use inline event handlers blocked by the export CSP", () => {
+		expect(templateJs).not.toMatch(/\son(?:click|error|load)\s*=/i);
+		expect(templateJs).toMatch(/data-expand-class/);
 	});
 
 	it("escapes entry IDs before inserting them into attributes", () => {

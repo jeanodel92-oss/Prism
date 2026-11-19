@@ -2,6 +2,7 @@ import { readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import nodePath from "path";
 import { type Static, Type } from "typebox";
+import { firstSorted, localNames, MAX_KEPT_NAMES, wholeLimit } from "../../fork/listing-bounds.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { pathExists, resolveToCwd } from "./path-utils.ts";
 import { lsRenderers } from "./renderers/ls.ts";
@@ -81,7 +82,8 @@ export function createLsToolDefinition(
 				(async () => {
 					try {
 						const dirPath = resolveToCwd(path || ".", ctx?.cwd || cwd);
-						const effectiveLimit = limit ?? DEFAULT_LIMIT;
+						// fork: a whole number of at least 1.
+						const effectiveLimit = wholeLimit(limit, DEFAULT_LIMIT);
 
 						// Check if path exists.
 						if (!(await ops.exists(dirPath))) {
@@ -96,21 +98,26 @@ export function createLsToolDefinition(
 							return;
 						}
 
-						// Read directory entries.
+						// Read directory entries, sorted alphabetically, case-insensitive.
+						// fork: only the first `limit` are kept as they are read, and a local
+						// folder is read entry by entry, never whole.
 						let entries: string[];
+						let more: boolean;
 						try {
-							entries = await ops.readdir(dirPath);
+							const source = ops === defaultLsOperations ? localNames(dirPath) : await ops.readdir(dirPath);
+							({ names: entries, more } = await firstSorted(
+								source,
+								Math.min(effectiveLimit, MAX_KEPT_NAMES),
+								signal,
+							));
 						} catch (e: any) {
 							reject(new Error(`Cannot read directory: ${e.message}`));
 							return;
 						}
 
-						// Sort alphabetically, case-insensitive.
-						entries.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-
 						// Format entries with directory indicators.
 						const results: string[] = [];
-						let entryLimitReached = false;
+						let entryLimitReached = more && entries.length === effectiveLimit;
 						for (const entry of entries) {
 							if (results.length >= effectiveLimit) {
 								entryLimitReached = true;
@@ -123,8 +130,8 @@ export function createLsToolDefinition(
 								const entryStat = await ops.stat(fullPath);
 								if (entryStat.isDirectory()) suffix = "/";
 							} catch {
-								// Skip entries we cannot stat.
-								continue;
+								// fork: listed, not dropped: a dangling link is still there.
+								suffix = " (broken link or unreadable)";
 							}
 							results.push(entry + suffix);
 						}

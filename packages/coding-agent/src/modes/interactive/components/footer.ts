@@ -1,5 +1,11 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	sanitizeTerminalLabel,
+	sanitizeTerminalText,
+	truncateToWidth,
+	visibleWidth,
+} from "@earendil-works/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ContextUsage } from "../../../core/extensions/types.ts";
@@ -13,7 +19,8 @@ import { theme } from "../theme/theme.ts";
  */
 function sanitizeStatusText(text: string): string {
 	// Replace newlines, tabs, carriage returns with space, then collapse multiple spaces
-	return text
+	// fork: first the controls other than colours, which statuses carry.
+	return sanitizeTerminalText(text)
 		.replace(/[\r\n\t]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
@@ -175,6 +182,8 @@ export class FooterComponent implements Component {
 		if (sessionName) {
 			pwd = `${pwd} • ${sessionName}`;
 		}
+		// fork: folder, branch and session name are shown, never interpreted.
+		pwd = sanitizeTerminalLabel(pwd);
 
 		// Build stats line
 		const statsParts = [];
@@ -217,7 +226,8 @@ export class FooterComponent implements Component {
 		let statsLeft = statsParts.join(" ");
 
 		// Add model name on the right side, plus thinking level if model supports it
-		const modelName = state.model?.id || "no-model";
+		// fork: a server's model list may hold anything; only the display is cleaned.
+		const modelName = sanitizeTerminalLabel(state.model?.id || "no-model");
 
 		let statsLeftWidth = visibleWidth(statsLeft);
 
@@ -241,13 +251,13 @@ export class FooterComponent implements Component {
 		const routed = this.session.routedModel;
 		if (routed) {
 			const level = routed.thinkingLevel ? ` • ${routed.thinkingLevel}` : "";
-			rightSideWithoutProvider += ` → ${routed.model.id}${level}`;
+			rightSideWithoutProvider += ` → ${sanitizeTerminalLabel(routed.model.id)}${level}`;
 		}
 
 		// Prepend the provider in parentheses if there are multiple providers and there's enough room
 		let rightSide = rightSideWithoutProvider;
 		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
-			rightSide = `(${state.model!.provider}) ${rightSideWithoutProvider}`;
+			rightSide = `(${sanitizeTerminalLabel(state.model!.provider)}) ${rightSideWithoutProvider}`;
 			if (statsLeftWidth + minPadding + visibleWidth(rightSide) > width) {
 				// Too wide, fall back
 				rightSide = rightSideWithoutProvider;

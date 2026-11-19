@@ -39,6 +39,8 @@ export * from "./utils/assistant-message-frame.ts";
 export * from "./utils/diagnostics.ts";
 export * from "./utils/event-stream.ts";
 export * from "./utils/json-parse.ts";
+// fork
+export { setOAuthPageBrand } from "./utils/oauth-page.ts";
 export * from "./utils/overflow.ts";
 export * from "./utils/retry.ts";
 export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "./utils/text.ts";

@@ -48,7 +48,8 @@ describe("buildSystemPrompt", () => {
 				skills: [],
 			});
 
-			expect(defaultPrompt.startsWith("You are an expert coding assistant operating inside pi")).toBe(true);
+			// fork: a general assistant, not "an expert coding assistant".
+			expect(defaultPrompt.startsWith("You are an assistant operating inside ")).toBe(true);
 			expect(customPrompt.startsWith("You are Exact.\n\n<cwd>")).toBe(true);
 		});
 
@@ -115,10 +116,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain(
-				"- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
-			);
-			expect(prompt).toContain("environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md)");
+			// fork: a short pointer; the model lists the docs folder instead of a topic index.
+			expect(prompt).toContain("- Resolve docs/... and examples/... there, not in the working directory");
 		});
 	});
 

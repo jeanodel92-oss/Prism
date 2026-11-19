@@ -1,0 +1,558 @@
+/* The phone's own design. Every rule needs :root[data-device="phone"], set by
+   phone.js in the phone app only: the desktop window renders exactly as without this file. */
+
+/* The welcome's prism stays the window's: on the phone the facets are the home, and a conversation sits in the dark
+   room (§ 4). */
+:root[data-device="phone"] .scene,
+:root[data-device="phone"] .backdrop::before {
+	display: none;
+}
+
+:root[data-device="phone"] .phone-home {
+	position: fixed;
+	inset: 0;
+	z-index: 15;
+	overflow: hidden;
+	background: var(--bg);
+	color: var(--ink);
+}
+
+:root[data-device="phone"] .phone-home[hidden] {
+	display: none;
+}
+
+:root[data-device="phone"] .facets {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	touch-action: manipulation;
+}
+
+:root[data-device="phone"] .facet-labels {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+/* A facet's title, in ink on its glass; the shadow keeps 4.5:1 where the light behind is brightest. */
+:root[data-device="phone"] .facet-label {
+	position: absolute;
+	display: grid;
+	justify-items: center;
+	gap: 0.2rem;
+	width: max-content;
+	max-width: 42vw;
+	transform: translate(-50%, -50%);
+	text-align: center;
+	text-shadow:
+		0 0 1rem rgb(0 0 0 / 0.75),
+		0 1px 2px rgb(0 0 0 / 0.6);
+}
+
+:root[data-device="phone"][data-appearance="light"] .facet-label {
+	text-shadow:
+		0 0 1rem rgb(255 255 255 / 0.85),
+		0 1px 2px rgb(255 255 255 / 0.7);
+}
+
+:root[data-device="phone"] .facet-title {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	font-size: 1rem;
+	font-weight: 500;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+:root[data-device="phone"] .facet-meta {
+	color: var(--ink-2);
+	font-size: 0.75rem;
+}
+
+:root[data-device="phone"] .facet-label.active .facet-meta {
+	color: var(--ink);
+}
+
+/* "At work" follows a dot in the session's tint: lightened on the dark ground, darkened on the light one. */
+:root[data-device="phone"] .facet-label.active .facet-meta::before {
+	content: "";
+	display: inline-block;
+	width: 0.45rem;
+	height: 0.45rem;
+	margin-right: 0.35rem;
+	border-radius: 50%;
+	background: var(--dot-dark);
+	vertical-align: 0.05rem;
+}
+
+:root[data-device="phone"][data-appearance="light"] .facet-label.active .facet-meta::before {
+	background: var(--dot-light);
+}
+
+/* A session waiting for an answer: "Asks", after a dot in ink. One whose
+   turn ended while the reader was elsewhere: "Done", the same way, its slab unlit. */
+:root[data-device="phone"] .facet-label.waiting .facet-meta,
+:root[data-device="phone"] .facet-label.done .facet-meta {
+	color: var(--ink);
+}
+
+:root[data-device="phone"] .facet-label.waiting .facet-meta::before,
+:root[data-device="phone"] .facet-label.done .facet-meta::before {
+	content: "";
+	display: inline-block;
+	width: 0.45rem;
+	height: 0.45rem;
+	margin-right: 0.35rem;
+	border-radius: 50%;
+	background: var(--ink);
+	vertical-align: 0.05rem;
+}
+
+/* The head: the site's mark, Prism and where the sessions come from, on a strip of glass over the facets. */
+:root[data-device="phone"] .phone-head {
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 0;
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.9rem 1.1rem;
+	background: var(--glass);
+	-webkit-backdrop-filter: blur(22px);
+	backdrop-filter: blur(22px);
+	box-shadow: inset 0 -1px 0 var(--edge-light);
+}
+
+:root[data-device="phone"] .phone-mark {
+	display: inline-flex;
+}
+
+:root[data-device="phone"] .phone-mark svg,
+:root[data-device="phone"] .phone-back svg {
+	width: 1.35rem;
+	height: 1.35rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linejoin: round;
+}
+
+:root[data-device="phone"] .phone-name {
+	font-size: 1.05rem;
+	font-weight: 500;
+}
+
+:root[data-device="phone"] .phone-where {
+	min-width: 0;
+	margin-left: auto;
+	overflow: hidden;
+	color: var(--ink-3);
+	font-size: 0.8rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+:root[data-device="phone"] .phone-where.lost {
+	color: var(--ink);
+	font-weight: 500;
+}
+
+/* The way back to the facets, in the topbar of a conversation. */
+.phone-back {
+	display: none;
+}
+
+:root[data-device="phone"] .phone-back {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* ------------------------------------------------------------ the quick switcher (§ 3) */
+
+.phone-grip,
+.phone-band,
+.phone-band-scrim,
+.phone-beam {
+	display: none;
+}
+
+/* A short pill hanging under the topbar's middle: pulled, it lowers the band. */
+:root[data-device="phone"] .topbar {
+	position: relative;
+	/* Above the conversation, so the grip's part below the bar takes touches too: the conversation covered it and
+	   only the pill's upper half answered (owner's QA, 2026-11-13). */
+	z-index: 4;
+	touch-action: pan-x;
+}
+
+:root[data-device="phone"] .phone-grip {
+	position: absolute;
+	bottom: -1.75rem;
+	left: 50%;
+	z-index: 3;
+	display: block;
+	/* The pill is small, the place a finger can take it is not: a thumb's width and height around it, mostly below
+	   the topbar so that its buttons keep their touches. A pull on the topbar itself works as well (band.js). */
+	width: 6.5rem;
+	height: 2.5rem;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	transform: translateX(-50%);
+	touch-action: none;
+	-webkit-tap-highlight-color: transparent;
+}
+
+:root[data-device="phone"] .phone-grip::before {
+	content: "";
+	position: absolute;
+	top: 0.6rem;
+	left: 2.1rem;
+	right: 2.1rem;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--phone-tint, var(--ink-3));
+	box-shadow: 0 0 0.6rem var(--phone-tint, transparent);
+	opacity: 0.85;
+	transform: translateY(-50%);
+}
+
+:root[data-device="phone"] .phone-band-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 12;
+	display: block;
+	background: rgb(0 0 0 / 0.35);
+	opacity: 0;
+	transition: opacity 350ms var(--settle);
+}
+
+:root[data-device="phone"] .phone-band-scrim.open {
+	opacity: 1;
+}
+
+:root[data-device="phone"] .phone-band-scrim[hidden],
+:root[data-device="phone"] .phone-band[hidden] {
+	display: none;
+}
+
+/* A band of glass lowered from the top; while the grip is pulled it follows the finger (--pull). */
+:root[data-device="phone"] .phone-band {
+	position: fixed;
+	top: 0;
+	right: 0;
+	left: 0;
+	z-index: 13;
+	display: grid;
+	justify-items: center;
+	gap: 0.5rem;
+	padding: 1.4rem 1rem 1.1rem;
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(28px) saturate(1.2);
+	backdrop-filter: blur(28px) saturate(1.2);
+	box-shadow:
+		0 1.4rem 3rem -1rem var(--shadow-far),
+		inset 0 -1px 0 var(--edge-light);
+	border-radius: 0 0 1.25rem 1.25rem;
+	transform: translateY(calc(-100% + var(--pull, 0) * 100%));
+	transition: transform 350ms var(--settle);
+	touch-action: none;
+	outline: none;
+}
+
+:root[data-device="phone"] .phone-band.open {
+	transform: translateY(0);
+}
+
+:root[data-device="phone"] .phone-orb {
+	width: 9.5rem;
+	height: 9.5rem;
+}
+
+:root[data-device="phone"] .phone-band-strip {
+	width: 100%;
+	overflow: hidden;
+}
+
+/* The carousel: one card per session, the centred one whole, its neighbours dimmed at the sides (band.js places them). */
+:root[data-device="phone"] .phone-band-track {
+	display: flex;
+	width: max-content;
+	transition: transform 350ms var(--settle);
+}
+
+:root[data-device="phone"] .phone-band-track.dragging,
+:root[data-device="phone"] .phone-band-track.dragging .phone-band-card {
+	transition: none;
+}
+
+:root[data-device="phone"] .phone-band-card {
+	flex: none;
+	padding: 0.35rem 0.75rem;
+	color: var(--ink-3);
+	font-size: 0.95rem;
+	text-align: center;
+	transition:
+		opacity 350ms var(--settle),
+		transform 350ms var(--settle),
+		color 350ms var(--settle);
+}
+
+:root[data-device="phone"] .phone-band-card span {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+:root[data-device="phone"] .phone-band-card.current {
+	color: var(--ink);
+	font-size: 1.05rem;
+	font-weight: 500;
+}
+
+:root[data-device="phone"] .phone-band-count {
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.75rem;
+}
+
+/* ------------------------------------------------------------ the dark room (§ 4) */
+
+/* The beam along the top of the composer's glass (beam.js draws it): a strip centred on that edge, over it. */
+:root[data-device="phone"] .phone-beam {
+	position: absolute;
+	top: -1.85rem;
+	right: 0.6rem;
+	left: 0.6rem;
+	z-index: 3;
+	display: block;
+	width: calc(100% - 1.2rem);
+	/* Its ray on the composer's edge (beam.js draws it 71 % down): the waves stay above the composer's text
+	   (owner, 2026-11-13). */
+	height: 2.6rem;
+	pointer-events: none;
+}
+
+/* The light behind the conversation rises in the session's tint while it works (da.css .backdrop-glow). */
+:root[data-device="phone"] .backdrop-glow {
+	background:
+		radial-gradient(28rem 16rem at 80% 85%, color-mix(in srgb, var(--phone-tint, var(--spectrum-violet)) 26%, transparent), transparent),
+		radial-gradient(24rem 12rem at 15% 70%, color-mix(in srgb, var(--phone-tint, var(--ink)) 10%, transparent), transparent);
+}
+
+:root[data-device="phone"] body[data-working="true"] .backdrop-glow {
+	opacity: calc(0.4 + var(--phone-intensity, 0) * 0.6);
+}
+
+/* Without WebGL: the facets as tiles of CSS glass, tinted at their edge. */
+:root[data-device="phone"] .facet-labels.no-gl {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	align-content: start;
+	gap: 0.6rem;
+	padding: 5rem 0.9rem 1rem;
+	pointer-events: auto;
+}
+
+:root[data-device="phone"] .no-gl .facet-label {
+	position: static;
+	width: auto;
+	max-width: none;
+	min-height: 6.5rem;
+	align-content: center;
+	padding: 0.75rem;
+	border-radius: 0.9rem;
+	background: color-mix(in srgb, var(--tint) 18%, var(--glass-strong));
+	box-shadow:
+		inset 0 1px 0 var(--edge-light),
+		inset 0 0 0 1px color-mix(in srgb, var(--tint) 45%, transparent);
+	transform: none;
+	text-shadow: none;
+}
+
+/* The beam is placed against the composer's edge. */
+:root[data-device="phone"] .composer {
+	position: relative;
+}
+
+
+/* The link to the PC lost (link-watch.js): a quiet line under the topbar while the transport tries again. */
+.phone-link {
+	display: none;
+}
+
+:root[data-device="phone"] .phone-link {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 2.25rem;
+	margin: 0.4rem 0.6rem 0;
+	padding: 0 0.85rem;
+	border-radius: 0.75rem;
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(22px);
+	backdrop-filter: blur(22px);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+	color: var(--ink-2);
+	font-size: 0.85rem;
+}
+
+:root[data-device="phone"] .phone-link[hidden] {
+	display: none;
+}
+
+:root[data-device="phone"] .phone-link::before {
+	content: "";
+	flex: none;
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	background: var(--warning);
+}
+
+/* On the phone the status line scrolls sideways (mobile.css): the folder keeps its name instead of shrinking to a few
+   letters, as a narrow desktop window has it shrink (emulator, 2026-11-13). */
+:root[data-device="phone"] .statusbar button.cwd {
+	flex: none;
+}
+
+/* The rail's mark leads home on the phone (phone.js). */
+:root[data-device="phone"] .rail-mark {
+	cursor: pointer;
+}
+
+/* The settings in two screens (phone.js): the list of sections, then the section touched, with a way back. */
+.phone-settings-back,
+.phone-settings-close {
+	display: none;
+}
+
+:root[data-device="phone"] #settings .settings-shell {
+	grid-template-rows: minmax(0, 1fr);
+}
+
+:root[data-device="phone"] #settings[data-level="list"] .settings-pane,
+:root[data-device="phone"] #settings[data-level="pane"] .settings-nav,
+:root[data-device="phone"] #settings[data-level="search"] .settings-section,
+:root[data-device="phone"] #settings[data-level="search"] .settings-sections {
+	display: none;
+}
+
+:root[data-device="phone"] #settings[data-level="search"] .settings-shell {
+	grid-template-rows: auto minmax(0, 1fr);
+}
+
+:root[data-device="phone"] #settings[data-level="list"] .settings-nav,
+:root[data-device="phone"] #settings[data-level="list"] .settings-sections {
+	flex-direction: column;
+	flex-wrap: nowrap;
+}
+
+:root[data-device="phone"] #settings[data-level="list"] .settings-nav {
+	max-height: none;
+	overflow-y: auto;
+	border-bottom: 0;
+}
+
+:root[data-device="phone"] #settings[data-level="list"] .settings-section {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	width: 100%;
+	padding: 0.8rem 0.25rem;
+	border-bottom: 1px solid var(--line);
+	border-radius: 0;
+	background: transparent;
+	text-align: left;
+}
+
+:root[data-device="phone"] #settings[data-level="list"] .settings-section::after {
+	content: "›";
+	color: var(--ink-3);
+	font-size: 1.2rem;
+}
+
+:root[data-device="phone"] #settings .settings-nav h2 {
+	flex-basis: auto;
+}
+
+:root[data-device="phone"] #settings .phone-settings-close {
+	position: absolute;
+	top: 0.6rem;
+	right: 0.6rem;
+	display: inline-flex;
+	justify-content: center;
+	align-items: center;
+}
+
+:root[data-device="phone"] #settings[data-level="pane"] .phone-settings-back {
+	display: inline-flex;
+	align-items: center;
+	align-self: flex-start;
+	margin: 0.6rem 0 0 0.6rem;
+	color: var(--ink-2);
+}
+
+:root[data-device="phone"] #settings[data-level="pane"] .settings-pane-title {
+	padding-top: 0.4rem;
+}
+
+/* ------------------------------------------------------------ the keyboard's shortcuts, by touch */
+
+/* The magnifier of the conversation's search, in the top bar. */
+:root[data-device="phone"] .phone-search {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+:root[data-device="phone"] .phone-search svg {
+	width: 1.25rem;
+	height: 1.25rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+}
+
+/* The search takes the screen's width: the window's 40 % would leave no room for the count and the two arrows. */
+:root[data-device="phone"] .search {
+	left: 1rem;
+	width: auto;
+}
+
+/* A long press on Send queues the message: no text selection, no system menu, no double-tap zoom under the finger. */
+:root[data-device="phone"] #send {
+	touch-action: manipulation;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+/* The keys of a module's terminal screen, unfolded by the button in the panel's head. */
+:root[data-device="phone"] .view-keys {
+	display: flex;
+	gap: 0.35rem;
+	padding: 0.35rem 0.6rem;
+	overflow-x: auto;
+}
+
+:root[data-device="phone"] .view-keys button {
+	flex: 1 0 auto;
+	min-width: 2.6rem;
+	min-height: 2.4rem;
+}
+
+:root[data-device="phone"] .view-keys[hidden],
+:root[data-device="phone"] .panel:not(.terminal-view) > .view-keys,
+:root[data-device="phone"] .panel:not(.terminal-view) .view-keys-toggle {
+	display: none;
+}

@@ -24,6 +24,8 @@ import type {
 	Usage,
 } from "@earendil-works/pi-ai/compat";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
+// fork: calculate against the context window supplied by the session (including routed models).
+import { getCompactionThresholdTokens } from "../../fork/compaction-threshold.ts";
 import { convertToLlm } from "../messages.ts";
 import {
 	buildSessionProjection,
@@ -121,6 +123,8 @@ export interface CompactionSettings {
 	enabled: boolean;
 	reserveTokens: number;
 	keepRecentTokens: number;
+	thresholdPercent?: number; // fork: absent keeps the existing reserveTokens trigger
+	thresholdMaxTokens?: number; // fork: reply capacity supplied by the settings manager
 }
 
 export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
@@ -266,7 +270,16 @@ export function estimateProjectedContextTokens(
  */
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
 	if (!settings.enabled) return false;
-	return contextTokens > contextWindow - settings.reserveTokens;
+	// fork: no configured threshold keeps the historical strict comparison.
+	return (
+		contextTokens >
+		getCompactionThresholdTokens(
+			contextWindow,
+			settings.reserveTokens,
+			settings.thresholdPercent,
+			settings.thresholdMaxTokens,
+		)
+	);
 }
 
 // ============================================================================
@@ -588,6 +601,11 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
 	}
 	if (response.stopReason === "length") {
 		return `${label} failed: generation hit the token cap and the summary is incomplete`;
+	}
+	// fork: no text (nothing, spaces, thinking only) is not a summary. A tool
+	// call keeps its own message, given by each caller.
+	if (!response.content.some((block) => block.type === "toolCall") && !contentText(response.content).trim()) {
+		return `${label} failed: the summary is empty`;
 	}
 	return undefined;
 }

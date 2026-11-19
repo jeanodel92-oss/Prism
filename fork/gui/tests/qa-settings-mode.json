@@ -1,0 +1,82 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: Simple / Advanced always at hand in the window's Settings, as in the terminal"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "click",
+		"selector": "#settings-button",
+		"sidebar": true
+	},
+	{
+		"do": "wait",
+		"selector": "#settings .settings-mode:not([hidden]) button[aria-checked='true']",
+		"text": "Simple",
+		"timeout": 15000
+	},
+	{
+		"do": "shot",
+		"name": "simple"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-mode button",
+		"text": "Advanced"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-section",
+		"text": "Interface"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine select[data-item$=':interface-mode'][title='advanced']",
+		"why": "the engine's setting changed, not only the switch"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings .settings-mode button[aria-checked='true']",
+		"text": "Advanced"
+	},
+	{
+		"do": "shot",
+		"name": "advanced"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-mode button",
+		"text": "Simple"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine select[data-item$=':interface-mode'][title='simple']"
+	},
+	{
+		"do": "pref",
+		"selector": "#settings-engine select[data-item$=':interface-mode']",
+		"value": "advanced",
+		"why": "the Interface setting moves the switch too"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings .settings-mode button[aria-checked='true']",
+		"text": "Advanced"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-mode button",
+		"text": "Simple"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine select[data-item$=':interface-mode'][title='simple']"
+	},
+	{
+		"do": "quit"
+	}
+]

@@ -3,7 +3,8 @@
  */
 
 import assert from "node:assert";
-import { homedir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { Image } from "../src/components/image.ts";
@@ -27,8 +28,9 @@ import {
 	setCapabilities,
 	setCapabilityOverrides,
 	setCellDimensions,
+	setTmuxProgram,
 } from "../src/terminal-image.ts";
-import { visibleWidth } from "../src/utils.ts";
+import { TRUSTED_LINK_ID, visibleWidth } from "../src/utils.ts";
 
 const ENV_KEYS = [
 	"TERM",
@@ -295,6 +297,22 @@ describe("detectCapabilities", () => {
 			assert.strictEqual(caps.hyperlinks, false);
 			assert.strictEqual(caps.images, null);
 		});
+	});
+
+	// fork: the probe runs the tmux the application chose, not the PATH's.
+	it("runs the tmux program set by the application", () => {
+		const dir = mkdtempSync(join(tmpdir(), "tui-tmux-"));
+		const fake = join(dir, "own-tmux");
+		writeFileSync(fake, "#!/bin/sh\necho 'RGB,hyperlinks'\n", { mode: 0o755 });
+		setTmuxProgram(() => fake);
+		try {
+			withEnv({ TMUX: "/tmp/tmux-1000/default,1234,0", TERM_PROGRAM: "ghostty", PATH: "/nonexistent" }, () => {
+				assert.strictEqual(detectCapabilities().hyperlinks, true);
+			});
+		} finally {
+			setTmuxProgram(() => "tmux");
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("checks tmux capability when TERM starts with 'tmux'", () => {
@@ -783,13 +801,13 @@ describe("imageFallback", () => {
 		try {
 			const abs = join(homedir(), ".pi", "agent", "shot.png");
 			const result = imageFallback("image/png", { widthPx: 10, heightPx: 10 }, abs);
-			assert.ok(result.includes("\x1b]8;;file://"), "expected OSC 8 file link");
+			assert.match(result, /\x1b\]8;[^;]*;file:\/\//, "expected OSC 8 file link");
 			assert.ok(
 				result.includes(abs.replaceAll("\\", "/")) || result.includes(abs),
 				"file URL should target absolute path",
 			);
 			// Visible text must use ~/... not the expanded home path.
-			const visible = result.replace(/\x1b\]8;;.*?\x1b\\/g, "");
+			const visible = result.replace(/\x1b\]8;[^;]*;.*?\x1b\\/g, "");
 			assert.strictEqual(visible, "[Image: ~/.pi/agent/shot.png [image/png] 10x10]");
 		} finally {
 			resetCapabilitiesCache();
@@ -820,20 +838,21 @@ describe("imageFallback", () => {
 describe("hyperlink", () => {
 	it("wraps text in OSC 8 open and close sequences", () => {
 		const result = hyperlink("click me", "https://example.com");
-		assert.strictEqual(result, "\x1b]8;;https://example.com\x1b\\click me\x1b]8;;\x1b\\");
+		// fork: the id parameter marks the link as created by this process.
+		assert.strictEqual(result, `\x1b]8;id=${TRUSTED_LINK_ID};https://example.com\x1b\\click me\x1b]8;;\x1b\\`);
 	});
 
 	it("preserves ANSI styling inside the hyperlink", () => {
 		const styled = "\x1b[4m\x1b[34mclick me\x1b[0m";
 		const result = hyperlink(styled, "https://example.com");
-		assert.ok(result.startsWith("\x1b]8;;https://example.com\x1b\\"));
+		assert.ok(result.startsWith(`\x1b]8;id=${TRUSTED_LINK_ID};https://example.com\x1b\\`));
 		assert.ok(result.includes(styled));
 		assert.ok(result.endsWith("\x1b]8;;\x1b\\"));
 	});
 
 	it("works with empty text", () => {
 		const result = hyperlink("", "https://example.com");
-		assert.strictEqual(result, "\x1b]8;;https://example.com\x1b\\\x1b]8;;\x1b\\");
+		assert.strictEqual(result, `\x1b]8;id=${TRUSTED_LINK_ID};https://example.com\x1b\\\x1b]8;;\x1b\\`);
 	});
 
 	it("works with file:// URIs", () => {

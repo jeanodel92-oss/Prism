@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { LlamaServerError } from "./client.ts"; // fork: keep server messages verbatim
 
 const DEFAULT_HUGGING_FACE_URL = "https://huggingface.co";
 const QUANTIZATION_PATTERN =
@@ -23,10 +24,10 @@ export interface HuggingFaceModelDetails {
 	quantizations: HuggingFaceQuantization[];
 }
 
-function payloadError(payload: unknown, fallback: string): string {
-	if (typeof payload !== "object" || payload === null) return fallback;
+function payloadError(payload: unknown, fallback: string): Error {
+	if (typeof payload !== "object" || payload === null) return new Error(fallback);
 	const error = (payload as { error?: unknown }).error;
-	return typeof error === "string" && error ? error : fallback;
+	return typeof error === "string" && error ? new LlamaServerError(error) : new Error(fallback);
 }
 
 function parseRateLimitDelay(value: string | null): number | undefined {
@@ -92,7 +93,7 @@ export class HuggingFaceClient {
 					delay ? `Hugging Face rate limit reached; retry in ${delay}s` : "Hugging Face rate limit reached",
 				);
 			}
-			throw new Error(payloadError(payload, fallback));
+			throw payloadError(payload, fallback);
 		}
 		return payload;
 	}

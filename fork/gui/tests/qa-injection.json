@@ -1,0 +1,16 @@
+[
+	{ "do": "wait", "selector": "#welcome:not([hidden])", "timeout": 30000 },
+	{ "do": "type", "text": "call read {\"path\":\"notes.txt\"}" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".dialog", "text": "Possible prompt injection in the result of read", "why": "owner: a big warning that pauses the agent", "timeout": 30000 },
+	{ "do": "wait", "selector": ".dialog", "text": "Instruction override" },
+	{ "do": "shot", "name": "injection-warning" },
+	{ "do": "absent", "selector": ".dialog", "text": "<U+000A>" },
+	{ "do": "wait", "selector": ".dialog.warning .dialog-title", "text": "WARNING" },
+	{ "do": "sleep", "ms": 500, "why": "a question ignores clicks for 400 ms after it appears" },
+	{ "do": "click", "selector": ".dialog button", "text": "Stop the agent" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Agent stopped" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']" },
+	{ "do": "shot", "name": "injection-stopped" },
+	{ "do": "quit" }
+]

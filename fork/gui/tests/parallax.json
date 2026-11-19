@@ -1,0 +1,8 @@
+[
+	{ "do": "wait", "selector": "#welcome:not([hidden])" },
+	{ "do": "pointer", "x": 0.95, "y": 0.9 },
+	{ "do": "parallax", "x": 0.9, "y": 0.8, "ms": 1500 },
+	{ "do": "pointer", "x": 0.05, "y": 0.1 },
+	{ "do": "parallax", "x": -0.9, "y": -0.8, "ms": 1500 },
+	{ "do": "quit" }
+]

@@ -1,0 +1,15 @@
+[
+	{ "do": "wait", "selector": "#welcome:not([hidden])", "timeout": 30000 },
+	{ "do": "type", "text": "call write {\"path\":\"pending.txt\",\"content\":\"x\"}" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog" },
+	{ "do": "wait", "selector": "#welcome:not([hidden])", "gone": true, "timeout": 1000 },
+	{ "do": "sleep", "ms": 300 },
+	{ "do": "log", "text": "focus before Enter" },
+	{ "do": "key", "key": "Enter" },
+	{ "do": "sleep", "ms": 2000 },
+	{ "do": "toasts" },
+	{ "do": "shot", "name": "e1-after-enter" },
+	{ "do": "absent", "selector": ".tool[data-status='error']" },
+	{ "do": "quit" }
+]

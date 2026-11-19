@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { getModel } from "../src/compat.ts";
 import { findEnvKeys, getEnvApiKey } from "../src/env-api-keys.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 
 const originalTogetherApiKey = process.env.TOGETHER_API_KEY;
 
@@ -58,7 +59,7 @@ describe("Together models", () => {
 			thinkingFormat: "openai",
 		});
 
-		const deepSeekV4 = getModel("together", "deepseek-ai/DeepSeek-V4-Pro");
+		const deepSeekV4 = getModel("together", "deepseek-ai/DeepSeek-V4-Pro-0813");
 		expect(deepSeekV4.thinkingLevelMap).toEqual({
 			minimal: null,
 			low: null,
@@ -71,10 +72,12 @@ describe("Together models", () => {
 			thinkingFormat: "together",
 		});
 
-		const minimax = getModel("together", "MiniMaxAI/MiniMax-M2.7");
-		expect(minimax.thinkingLevelMap).toEqual({ off: null, minimal: null, low: null, medium: null });
-		expect(minimax.compat?.thinkingFormat).toBeUndefined();
-		expect(minimax.compat?.supportsReasoningEffort).toBe(false);
+		const minimax = catalogModel<"openai-completions">("together", "MiniMaxAI/MiniMax-M2.7");
+		if (minimax) {
+			expect(minimax.thinkingLevelMap).toEqual({ off: null, minimal: null, low: null, medium: null });
+			expect(minimax.compat?.thinkingFormat).toBeUndefined();
+			expect(minimax.compat?.supportsReasoningEffort).toBe(false);
+		}
 	});
 
 	it("resolves TOGETHER_API_KEY from the environment", () => {

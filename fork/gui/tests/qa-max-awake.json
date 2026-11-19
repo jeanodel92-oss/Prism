@@ -1,0 +1,15 @@
+[
+	{ "do": "log", "text": "Owner's QA of 2026-11-04: at most ten engines run, the most recently used; the scenario lowers the cap to three." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "max-awake", "count": 3 },
+	{ "do": "open-sessions", "count": 5 },
+	{ "do": "awake", "awake": 3, "asleep": 2, "why": "each new engine put the least recently used beyond three to sleep" },
+	{ "do": "open-nth", "index": 0, "why": "the oldest wakes on opening" },
+	{ "do": "sleep", "ms": 1000 },
+	{ "do": "awake", "awake": 3, "asleep": 2, "why": "waking it put the next least recently used to sleep" },
+	{ "do": "absent", "selector": "#banner:not([hidden])" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "shot", "name": "max-awake" },
+	{ "do": "transcript-clean" },
+	{ "do": "quit" }
+]

@@ -14,6 +14,7 @@ import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { completeSimple, getEnvApiKey, getModel } from "../src/compat.ts";
 import type { AssistantMessage, Message, Tool, ToolResultMessage } from "../src/types.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 import { resolveApiKey } from "./oauth.ts";
 
 // Resolve API keys
@@ -41,11 +42,13 @@ const echoTool: Tool<typeof echoToolSchema> = {
  *
  * Both should succeed without "call_id too long" errors.
  */
+const copilotGpt55 = catalogModel("github-copilot", "gpt-5.5");
+
 describe("Tool Call ID Normalization - Live Handoff", () => {
-	it.skipIf(!copilotToken || !openrouterKey)(
+	it.skipIf(!copilotToken || !openrouterKey || !copilotGpt55)(
 		"github-copilot -> openrouter should normalize pipe-separated IDs",
 		async () => {
-			const copilotModel = getModel("github-copilot", "gpt-5.5");
+			const copilotModel = copilotGpt55!;
 			const openrouterModel = getModel("openrouter", "openai/gpt-5.5");
 
 			// Step 1: Generate tool call with github-copilot
@@ -112,10 +115,10 @@ describe("Tool Call ID Normalization - Live Handoff", () => {
 		60000,
 	);
 
-	it.skipIf(!copilotToken || !codexToken)(
+	it.skipIf(!copilotToken || !codexToken || !copilotGpt55)(
 		"github-copilot -> openai-codex should normalize pipe-separated IDs",
 		async () => {
-			const copilotModel = getModel("github-copilot", "gpt-5.5");
+			const copilotModel = copilotGpt55!;
 			const codexModel = getModel("openai-codex", "gpt-5.5");
 
 			// Step 1: Generate tool call with github-copilot

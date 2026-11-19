@@ -5,6 +5,7 @@ import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts"
 import { getModel, normalizeContext, stream } from "../src/compat.ts";
 import { MODELS } from "../src/models.generated.ts";
 import type { Model } from "../src/types.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 
 class PayloadCaptured extends Error {
 	constructor() {
@@ -504,13 +505,11 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
 		});
 
-		it.each([
-			MODELS.opencode["deepseek-v4-flash"],
-			MODELS.opencode["deepseek-v4-pro"],
-			MODELS.opencode["kimi-k2.5"],
-			MODELS.opencode["kimi-k2.6"],
-			MODELS.opencode["minimax-m2.7"],
-		] as const)("should omit long cache retention for $provider/$id", async (metadata) => {
+		it.each(
+			["deepseek-v4-flash", "deepseek-v4-pro", "kimi-k2.5", "kimi-k2.6", "minimax-m2.7"].flatMap(
+				(id) => catalogModel("opencode", id) ?? [],
+			),
+		)("should omit long cache retention for $provider/$id", async (metadata) => {
 			const model = metadata as Model<"openai-completions">;
 			let capturedPayload: OpenAICompletionsCachePayload | undefined;
 

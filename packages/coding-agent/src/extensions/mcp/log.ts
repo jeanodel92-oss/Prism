@@ -6,6 +6,8 @@
 
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { knownSecrets } from "../../fork/secrets/env.ts";
+import { maskValue } from "../../fork/secrets/mask.ts";
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
 
@@ -41,10 +43,12 @@ export class McpServerLog {
 	}
 
 	write(server: string, params: unknown): void {
-		const line = formatMcpLogMessage(server, params);
+		// fork: a server's diagnostics hold no known secret once in the log; masked on the
+		// decoded message, before it is formatted.
+		const line = formatMcpLogMessage(server, maskValue(params, knownSecrets()));
 		try {
 			if (this.size === undefined) {
-				mkdirSync(dirname(this.path), { recursive: true });
+				mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
 				this.size = this.currentSize();
 			}
 			if (this.size > MAX_LOG_BYTES) {
@@ -52,7 +56,8 @@ export class McpServerLog {
 				if (this.currentSize() > MAX_LOG_BYTES) renameSync(this.path, `${this.path}.1`);
 				this.size = this.currentSize();
 			}
-			appendFileSync(this.path, line);
+			// fork: private to the user, as every file Prism writes.
+			appendFileSync(this.path, line, { mode: 0o600 });
 			this.size += Buffer.byteLength(line);
 		} catch {
 			// Ignore: the log is best effort.

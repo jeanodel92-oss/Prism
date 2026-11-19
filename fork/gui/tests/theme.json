@@ -1,0 +1,23 @@
+[
+	{ "do": "log", "text": "SEED_SETTINGS theme light/mine, SEED_THEME tests/themes/mine.json: the terminal's setting, which the window leaves to the terminal" },
+	{ "do": "pref", "id": "pref-theme", "value": "dark" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "sleep", "ms": 3000, "why": "the engine's answers are in: none of them turns the window to the terminal's theme" },
+	{ "do": "wait", "selector": "html[data-appearance='dark'][data-theme='prism']" },
+	{ "do": "wait", "selector": "#scene:not([hidden])", "why": "Prism's own page, with its eclipse" },
+	{ "do": "shot", "name": "t1-prism" },
+
+	{ "do": "type", "text": "/docs" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.docs .panel-title", "text": "Documentation" },
+	{ "do": "contrast", "selector": ".panel.docs .panel-title", "text": "Documentation", "why": "the native reader is drawn in the window's theme" },
+	{ "do": "shot", "name": "t2-prism-view" },
+	{ "do": "key", "selector": ".panel.docs", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.docs", "gone": true },
+
+	{ "do": "pref", "id": "pref-theme", "value": "light" },
+	{ "do": "wait", "selector": "html[data-appearance='light'][data-theme='prism-light']" },
+	{ "do": "shot", "name": "t3-prism-light" },
+	{ "do": "log", "text": "theme-ok" },
+	{ "do": "quit" }
+]

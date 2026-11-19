@@ -39,7 +39,7 @@
 		},
 		"colors": {
 			"type": "object",
-			"description": "Theme color definitions (scrollbar, thinkingMax, and search highlight colors are optional and use compatible fallbacks)",
+			"description": "Theme color definitions (scrollbar, thinkingMax, search highlight and mdBold colors are optional and use compatible fallbacks)",
 			"required": [
 				"accent",
 				"border",
@@ -201,6 +201,10 @@
 				"mdHeading": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Markdown heading text"
+				},
+				"mdBold": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Markdown bold text, kept bold (left in the surrounding color when omitted)"
 				},
 				"mdLink": {
 					"$ref": "#/$defs/colorValue",

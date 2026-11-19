@@ -7,6 +7,7 @@
  */
 
 import { Text } from "@earendil-works/pi-tui";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
 import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
@@ -32,6 +33,7 @@ function formatLsResult(
 	theme: Theme,
 	showImages: boolean,
 ): string {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	const output = getTextOutput(result, showImages).trim();
 	let text = "";
 	if (output) {
@@ -41,7 +43,7 @@ function formatLsResult(
 		const remaining = lines.length - maxLines;
 		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+			text += `${theme.fg("muted", fill("\n... ({0} more lines,", String(remaining)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 		}
 	}
 

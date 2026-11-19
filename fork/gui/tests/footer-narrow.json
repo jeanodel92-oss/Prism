@@ -1,0 +1,15 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": "#statusbar .footer-action", "text": "more…" },
+	{ "do": "wait", "selector": "#statusbar .context-gauge" },
+	{ "do": "sleep", "ms": 500 },
+	{ "do": "absent", "selector": "#statusbar .footer-action", "text": "/help", "why": "QA 2026-11-04: at 560 px the pinned /help pushed the context gauge out; it stays in more…, as in the terminal" },
+	{ "do": "fits", "selector": "#statusbar" },
+	{ "do": "shot", "name": "fn1-footer" },
+	{ "do": "click", "selector": "#statusbar .footer-action", "text": "more…" },
+	{ "do": "wait", "selector": ".panel.question :is(li, button)", "text": "Help and shortcuts  /help", "why": "still reachable in more…" },
+	{ "do": "sleep", "ms": 500, "why": "a question ignores clicks for 400 ms after it appears (arming)" },
+	{ "do": "click", "selector": ".panel.question :is(li, button)", "text": "Footer buttons…" },
+	{ "do": "wait", "selector": ".panel.question :is(li, button)", "text": "1 Help and shortcuts", "why": "it is pinned (drive-all seeds it): only the room is missing" },
+	{ "do": "quit" }
+]

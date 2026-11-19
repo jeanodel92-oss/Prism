@@ -1,0 +1,47 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/context" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.context .panel-text", "text": "No measure yet", "why": "before any answer the context is not measured, as in the terminal" },
+	{ "do": "key", "selector": ".panel.context", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.context", "gone": true },
+
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md", "timeout": 30000 },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+
+	{ "do": "type", "text": "/context" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.context .ctx-bar .ctx-part.series-1" },
+	{ "do": "absent", "selector": ".panel.context .view", "why": "the window's own screen, not the terminal's grid" },
+	{ "do": "wait", "selector": ".panel.context .ctx-table tr[data-part='systemPrompt'] .num" },
+	{ "do": "wait", "selector": ".panel.context .ctx-table tr[data-part='free']" },
+	{ "do": "wide", "selector": ".panel.context .ctx-bar .ctx-part.free", "min": 300, "why": "the free part is ~90 % of the bar" },
+	{ "do": "wait", "selector": ".panel.context .panel-subtitle", "text": "tokens" },
+	{ "do": "fits", "selector": ".panel.context .panel-body" },
+	{ "do": "shot", "name": "x1-usage" },
+
+	{ "do": "click", "selector": ".panel.context .segmented button", "text": "System prompt" },
+	{ "do": "wait", "selector": ".panel.context .ctx-text", "text": "coding" },
+	{ "do": "wait", "selector": ".panel.context .panel-actions button", "text": "Copy" },
+
+	{ "do": "click", "selector": ".panel.context .segmented button", "text": "Tools" },
+	{ "do": "type", "selector": ".panel.context .ctx-content input", "text": "read" },
+	{ "do": "click", "selector": ".panel.context .ctx-list .check summary", "text": "read" },
+	{ "do": "wait", "selector": ".panel.context .ctx-list .check[open] .facts dt", "text": "path" },
+	{ "do": "shot", "name": "x2-tools" },
+
+	{ "do": "click", "selector": ".panel.context .segmented button", "text": "Messages" },
+	{ "do": "count", "selector": ".panel.context .ctx-list .check", "count": 2, "why": "the session's system entry is the System prompt tab" },
+	{ "do": "click", "selector": ".panel.context .ctx-list .check[data-role='assistant'] summary" },
+	{ "do": "wait", "selector": ".panel.context .ctx-list .check[open] .ctx-text", "text": "Résumé" },
+	{ "do": "fits", "selector": ".panel.context .panel-body" },
+	{ "do": "apart", "selector": "#toasts .toast", "from": ".panel.context" },
+	{ "do": "shot", "name": "x3-messages" },
+	{ "do": "key", "selector": ".panel.context", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.context", "gone": true },
+	{ "do": "transcript-clean" },
+	{ "do": "log", "text": "qa-context-ok" },
+	{ "do": "quit" }
+]

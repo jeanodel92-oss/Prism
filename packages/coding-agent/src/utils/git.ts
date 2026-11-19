@@ -141,7 +141,10 @@ function parseGenericGitUrl(url: string): GitSource | null {
 	) {
 		try {
 			const parsed = new URL(repoWithoutRef);
-			host = parsed.hostname;
+			// fork: two services on one name are two repositories. URL drops the default
+			// port of http(s) itself; ssh's and git's are dropped here, so an explicit default names the same one.
+			const defaultPort = parsed.protocol === "ssh:" ? "22" : parsed.protocol === "git:" ? "9418" : "";
+			host = parsed.port && parsed.port !== defaultPort ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
 			path = parsed.pathname.replace(/^\/+/, "");
 		} catch {
 			return null;

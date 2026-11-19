@@ -6,8 +6,8 @@
  */
 
 import { createInterface } from "node:readline";
-import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
-import { setCapabilityOverrides } from "@earendil-works/pi-tui";
+import { type ImageContent, modelsAreEqual, setOAuthPageBrand } from "@earendil-works/pi-ai";
+import { setCapabilityOverrides, setTmuxProgram } from "@earendil-works/pi-tui";
 import chalk from "chalk";
 import { type Args, type Mode, normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
 import {
@@ -63,7 +63,23 @@ import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
-import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
+import { APP_DISPLAY_NAME, IS_BRANDED_BUILD, PRISM_LOGO_SVG } from "./fork/brand.ts";
+// `prism browser-host`, started by the browser for the Prism extension.
+import { runBrowserHostCommand } from "./fork/browser/host.ts";
+import { setCliExtensions } from "./fork/child-invocation.ts";
+import { mayHoldMessage } from "./fork/cli-flag-values.ts";
+import { getCompactionThresholdStartupDiagnostic } from "./fork/compaction-threshold-warning.ts";
+import { runDoctorCommand } from "./fork/doctor-cli.ts";
+// fork: expose the resource loader's recorded failures to /doctor.
+import { setExtensionLoadDiagnostics } from "./fork/doctor-diagnostics.ts";
+import { addSandboxWritable, hostCommand } from "./fork/host-program.ts";
+import { resolveLanguage, setLanguage, t } from "./fork/i18n/index.ts";
+import { startInterface } from "./fork/launch-interface.ts";
+import { trustedWithoutPrompt } from "./fork/project-trust-default.ts";
+import { getSafeModeDiagnostics } from "./fork/safe-mode.ts";
+import { chooseHomeStart, opensWholeHome, startsFresh, windowWorkFolder } from "./fork/sandbox/home-start.ts";
+import { prepareScheduledRun } from "./fork/scheduled-tasks.ts";
+import { migrateProjectExtensionSystem, runMigrations, showDeprecationWarnings } from "./migrations.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
 import { validateThemeJson } from "./modes/interactive/theme/theme-json.ts";
@@ -71,7 +87,8 @@ import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
-const EXTENSION_LOAD_FAILURE_HINT = `Hint: Start without extensions using "${APP_NAME} -ne".`;
+// fork: suggest safe mode first.
+const EXTENSION_LOAD_FAILURE_HINT = `Hint: Start in safe mode using "${APP_NAME} --safe", or without extensions only using "${APP_NAME} -ne".`;
 
 /**
  * Read all content from piped stdin.
@@ -90,7 +107,9 @@ async function readPipedStdin(): Promise<string | undefined> {
 			data += chunk;
 		});
 		process.stdin.on("end", () => {
-			resolve(data.trim() || undefined);
+			// fork: keep the piped text as it is; trimming lost its indentation and
+			// the newline that separated it from the prompt.
+			resolve(data.trim() ? data : undefined);
 		});
 		process.stdin.resume();
 	});
@@ -100,7 +119,7 @@ function reportDiagnostics(diagnostics: readonly AgentSessionRuntimeDiagnostic[]
 	for (const diagnostic of diagnostics) {
 		const color = diagnostic.type === "error" ? chalk.red : diagnostic.type === "warning" ? chalk.yellow : chalk.dim;
 		const prefix = diagnostic.type === "error" ? "Error: " : diagnostic.type === "warning" ? "Warning: " : "";
-		console.error(color(`${prefix}${diagnostic.message}`));
+		console.error(color(`${t(prefix)}${t(diagnostic.message)}`)); // fork: translated
 	}
 }
 
@@ -578,17 +597,40 @@ export async function main(args: string[], options?: MainOptions) {
 		process.env.PI_OFFLINE = "1";
 		process.env.PI_SKIP_VERSION_CHECK = "1";
 	}
+	// fork: never check pi.dev for a newer official pi release at startup.
+	process.env.PI_SKIP_VERSION_CHECK = "1";
+	// fork: the local OAuth callback page shows Prism, not pi.
+	if (IS_BRANDED_BUILD) setOAuthPageBrand({ name: APP_DISPLAY_NAME, logoSvg: PRISM_LOGO_SVG });
+
+	// first, so nothing else writes to stdout, which carries the native messages.
+	if (await runBrowserHostCommand(args)) {
+		return;
+	}
 
 	if (await runAuthCommand(args)) {
 		return;
 	}
+
+	// fork: `prism doctor` runs before anything that a broken setup could stop.
+	if (await runDoctorCommand(args)) {
+		return;
+	}
+
+	// fork.9 (CAP-01): `prism --scheduled <id>`, started by the task's systemd timer, runs unattended.
+	const scheduled = prepareScheduledRun(args);
+	if (scheduled && "exit" in scheduled) {
+		console.error(scheduled.message);
+		process.exitCode = scheduled.exit;
+		return;
+	}
+	if (scheduled) args = scheduled.args;
 
 	if (process.platform === "win32") {
 		cleanupWindowsSelfUpdateQuarantine(getPackageDir());
 	}
 	cleanupManagedInstall();
 
-	const cwd = process.cwd();
+	let cwd = process.cwd();
 	const agentDir = getAgentDir();
 	const bootstrapSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
@@ -662,11 +704,55 @@ export async function main(args: string[], options?: MainOptions) {
 	validateForkFlags(parsed);
 	validateSessionIdFlags(parsed);
 
+	// fork: the startup prompts (home folder, project trust) in the
+	// interface language; the project's own settings may change it once trusted.
+	setLanguage(resolveLanguage(bootstrapSettingsManager.getLanguage()));
+	// the window instead of the terminal, by flag or by setting (src/fork/launch-interface.ts).
+	const openedIn = await startInterface({
+		flag: parsed.openIn,
+		plain:
+			appMode === "interactive" &&
+			!parsed.help &&
+			parsed.listModels === undefined &&
+			!mayHoldMessage(parsed) &&
+			startsFresh(parsed),
+		terminal: appMode === "interactive",
+		cwd,
+		launchArgs: args.filter((arg) => arg !== "--gui" && arg !== "--tui"),
+		// the window opened in the home folder works in ~/Prism, the same folder at each launch.
+		windowFolder: (folder) => (startsFresh(parsed) && opensWholeHome(folder, agentDir) ? windowWorkFolder() : folder),
+		setting: {
+			get: () => bootstrapSettingsManager.getOpenIn(),
+			set: (value) => bootstrapSettingsManager.setOpenIn(value),
+		},
+		ask: (title, options) => showStartupSelector(bootstrapSettingsManager, title, options),
+		say: (message) => console.error(message),
+	});
+	await bootstrapSettingsManager.flush();
+	if (openedIn === "window" || openedIn === "failed") {
+		if (openedIn === "failed") process.exitCode = 1;
+		return;
+	}
+	// fork: opened in the home folder with reading limited, ask where to work first.
+	if (appMode === "interactive" && startsFresh(parsed) && opensWholeHome(cwd, agentDir)) {
+		cwd = await chooseHomeStart(cwd, (title, options) =>
+			showStartupSelector(bootstrapSettingsManager, title, options),
+		);
+	}
+
+	// fork: nothing from an unapproved project folder applies before the trust decision.
+	const trustStore = new ProjectTrustStore(agentDir);
+	// fork: a refusal applies even to a folder without project resources yet.
+	const startupProjectTrusted =
+		parsed.projectTrustOverride ?? trustedWithoutPrompt(trustStore.get(cwd), hasTrustRequiringProjectResources(cwd));
+
 	// Run migrations (pass cwd for project-local migrations)
-	const { migratedAuthProviders: migratedProviders, deprecationWarnings } = runMigrations(cwd);
+	const { migratedAuthProviders: migratedProviders, deprecationWarnings } = runMigrations(cwd, {
+		includeProject: startupProjectTrusted,
+	});
 	time("runMigrations");
 
-	const startupSettingsManager = SettingsManager.create(cwd, agentDir);
+	const startupSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: startupProjectTrusted });
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);
 
 	// Experimental first-time setup: theme choice and analytics opt-in.
@@ -714,7 +800,6 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 	time("createSessionManager");
 
-	const trustStore = new ProjectTrustStore(agentDir);
 	const sessionCwd = sessionManager.getCwd();
 	const autoTrustOnReloadCwd =
 		parsed.projectTrustOverride === undefined && !hasTrustRequiringProjectResources(sessionCwd)
@@ -722,8 +807,12 @@ export async function main(args: string[], options?: MainOptions) {
 			: undefined;
 	const trustPromptMode: AppMode = parsed.help || parsed.listModels !== undefined ? "print" : appMode;
 	const projectTrustByCwd = new Map<string, boolean>();
+	const notifiedUntrustedProjects = new Set<string>();
+	const migratedProjects = new Set<string>(startupProjectTrusted ? [cwd] : []);
 
 	const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
+	// fork: what sub-agents and other children of this launch load.
+	setCliExtensions(resolvedExtensionPaths ?? []);
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
@@ -744,7 +833,7 @@ export async function main(args: string[], options?: MainOptions) {
 			? false
 			: (cachedProjectTrust ??
 				parsed.projectTrustOverride ??
-				(!hasTrustRequiringResources || trustStore.get(cwd) === true));
+				trustedWithoutPrompt(trustStore.get(cwd), hasTrustRequiringResources));
 		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
 		const services = await createAgentSessionServices({
 			cwd,
@@ -771,7 +860,23 @@ export async function main(args: string[], options?: MainOptions) {
 									}),
 								onExtensionError: (message) => projectTrustDiagnostics.push({ type: "warning", message }),
 							});
+							if (trusted && !migratedProjects.has(cwd)) {
+								migratedProjects.add(cwd);
+								deprecationWarnings.push(...migrateProjectExtensionSystem(cwd));
+							}
 							projectTrustByCwd.set(cwd, trusted);
+							if (
+								!trusted &&
+								trustPromptMode !== "interactive" &&
+								hasTrustRequiringProjectResources(cwd) &&
+								!notifiedUntrustedProjects.has(cwd)
+							) {
+								notifiedUntrustedProjects.add(cwd);
+								projectTrustDiagnostics.push({
+									type: "warning",
+									message: `This project folder is untrusted. Its settings, extensions, and instructions were not loaded. Trust it later with /trust, then restart ${APP_NAME}.`,
+								});
+							}
 							return trusted;
 						},
 					}
@@ -805,6 +910,7 @@ export async function main(args: string[], options?: MainOptions) {
 				message: `Extension package "${path}": ${warning}`,
 			})),
 		];
+		setExtensionLoadDiagnostics(resourceLoader.getExtensions().errors);
 
 		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
 		const scopedModels =
@@ -867,6 +973,11 @@ export async function main(args: string[], options?: MainOptions) {
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
 	const { settingsManager, modelRuntime, resourceLoader } = services;
+	// fork: the terminal probe's tmux, never one the project's commands wrote.
+	setTmuxProgram(() => {
+		addSandboxWritable([sessionManager.getCwd()]);
+		return hostCommand("tmux");
+	});
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs());
@@ -902,6 +1013,7 @@ export async function main(args: string[], options?: MainOptions) {
 	// pi reads user-authored themes, so it opts into full validation before any theme loads.
 	setThemeJsonValidator(validateThemeJson);
 	initTheme(settingsManager.getTheme(), appMode === "interactive");
+	setLanguage(resolveLanguage(settingsManager.getLanguage())); // fork
 	time("initTheme");
 
 	// Show deprecation warnings in interactive mode
@@ -910,14 +1022,19 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 
 	time("resolveModelScope");
-	const startupDiagnostics = deduplicateDiagnostics([...startupSettingsDiagnostics, ...runtime.diagnostics]);
+	const startupDiagnostics = deduplicateDiagnostics([
+		...getSafeModeDiagnostics(parsed),
+		...startupSettingsDiagnostics,
+		...getCompactionThresholdStartupDiagnostic(settingsManager, session.model),
+		...runtime.diagnostics,
+	]);
 	const hasRuntimeErrors = runtime.diagnostics.some((diagnostic) => diagnostic.type === "error");
 	if (appMode !== "interactive" || hasRuntimeErrors) {
 		reportDiagnostics(startupDiagnostics);
 	}
 	if (hasRuntimeErrors) {
 		if (runtime.diagnostics.some((diagnostic) => diagnostic.message.includes("Failed to load extension"))) {
-			console.error(chalk.yellow(EXTENSION_LOAD_FAILURE_HINT));
+			console.error(chalk.yellow(t(EXTENSION_LOAD_FAILURE_HINT))); // fork
 		}
 		process.exit(1);
 	}

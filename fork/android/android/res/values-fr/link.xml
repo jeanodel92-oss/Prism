@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="link_channel">Lien avec le PC</string>
+    <string name="link_title">Prism reste relié à votre PC</string>
+    <string name="link_text">Les réponses continuent d’arriver quand l’app est en arrière-plan. Désactivable dans les réglages, PC lié.</string>
+</resources>

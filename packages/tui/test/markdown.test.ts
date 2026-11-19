@@ -530,7 +530,7 @@ describe("Markdown component", () => {
 			};
 			const source = `> | Link | Plain |
 > | --- | --- |
-> | [one two three four five six](https://example.com) | normal text |`;
+> | [one-two-three-four-five-six](one-two-three-four-five-six) | normal text |`;
 
 			setCapabilities({ images: null, trueColor: true, hyperlinks: true });
 			const terminal = new VirtualTerminal(28, 10);
@@ -541,22 +541,22 @@ describe("Markdown component", () => {
 			try {
 				await terminal.waitForRender();
 				const viewport = terminal.getViewport();
-				const row = viewport.findIndex((line) => line.includes("one") && line.includes("normal"));
+				const row = viewport.findIndex((line) => line.includes("one") && line.includes("nor"));
 				assert.notStrictEqual(row, -1, `Missing wrapped blockquote table row: ${JSON.stringify(viewport)}`);
 				const line = viewport[row];
 				const linkCol = line.indexOf("one");
 				const separatorCol = line.indexOf("│", linkCol);
-				const plainCol = line.indexOf("normal");
+				const plainCol = line.indexOf("nor");
 				assert.ok(linkCol >= 0 && separatorCol > linkCol && plainCol > separatorCol);
 
 				assert.notStrictEqual(getCell(terminal, row, linkCol).getFgColor(), quoteColor);
 				assert.strictEqual(getCell(terminal, row, separatorCol).getFgColor(), quoteColor);
 				assert.strictEqual(getCell(terminal, row, plainCol).getFgColor(), quoteColor);
 
-				const finalRow = viewport.findIndex((line) => line.includes("five six"));
+				const finalRow = viewport.findIndex((line) => line.includes("ur-five-six"));
 				assert.notStrictEqual(finalRow, -1, `Missing final wrapped link row: ${JSON.stringify(viewport)}`);
 				const finalLine = viewport[finalRow];
-				const finalLinkCol = finalLine.indexOf("five six");
+				const finalLinkCol = finalLine.indexOf("ur-five-six");
 				const finalSeparatorCol = finalLine.indexOf("│", finalLinkCol);
 				const finalBorderCol = finalLine.lastIndexOf("│");
 				assert.ok(finalLinkCol >= 0 && finalSeparatorCol > finalLinkCol && finalBorderCol > finalSeparatorCol);
@@ -1641,39 +1641,28 @@ bar`,
 			assert.ok(joinedPlain.includes("(mailto:test@example.com)"), "Should show mailto URL in parentheses");
 		});
 
-		it("should emit OSC 8 hyperlink sequence when terminal supports hyperlinks", () => {
+		it("should show mismatched link targets instead of emitting OSC 8", () => {
 			setCapabilities({ images: null, trueColor: false, hyperlinks: true });
 			const markdown = new Markdown("[click here](https://example.com)", 0, 0, defaultMarkdownTheme);
 
 			const lines = markdown.render(80);
 			const joined = lines.join("");
 
-			// OSC 8 open: ESC ] 8 ; ; <url> ESC \
-			assert.ok(joined.includes("\x1b]8;;https://example.com\x1b\\"), "Should contain OSC 8 open sequence");
-			// OSC 8 close: ESC ] 8 ; ; ESC \
-			assert.ok(joined.includes("\x1b]8;;\x1b\\"), "Should contain OSC 8 close sequence");
-			// Visible text is present
-			const plainLines = lines.map((line) => line.replace(/\x1b[^a-zA-Z]*[a-zA-Z]|\x1b\].*?\x1b\\/g, ""));
-			assert.ok(plainLines.join("").includes("click here"), "Should contain link text");
-			// URL is NOT printed inline as plain text
-			const rawPlain = lines.map((line) =>
-				line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""),
-			);
-			assert.ok(!rawPlain.join("").includes("(https://example.com)"), "URL should not appear inline in parentheses");
+			assert.ok(joined.includes("click here"), "Should contain link text");
+			assert.ok(joined.includes("(https://example.com)"), "Should display the link target");
+			assert.ok(!joined.includes("\x1b]8;"), "Mismatched link text must not be clickable");
 		});
 
-		it("should use OSC 8 for mailto links when terminal supports hyperlinks", () => {
+		it("should show mismatched mailto targets instead of emitting OSC 8", () => {
 			setCapabilities({ images: null, trueColor: false, hyperlinks: true });
 			const markdown = new Markdown("[Email me](mailto:test@example.com)", 0, 0, defaultMarkdownTheme);
 
 			const lines = markdown.render(80);
 			const joined = lines.join("");
 
-			assert.ok(
-				joined.includes("\x1b]8;;mailto:test@example.com\x1b\\"),
-				"Should contain OSC 8 open with mailto URL",
-			);
-			assert.ok(joined.includes("\x1b]8;;\x1b\\"), "Should contain OSC 8 close sequence");
+			assert.ok(joined.includes("Email me"), "Should contain link text");
+			assert.ok(joined.includes("(mailto:test@example.com)"), "Should display the mailto target");
+			assert.ok(!joined.includes("\x1b]8;"), "Mismatched link text must not be clickable");
 		});
 
 		it("should use OSC 8 for bare URLs when terminal supports hyperlinks", () => {
@@ -1683,10 +1672,11 @@ bar`,
 			const lines = markdown.render(80);
 			const joined = lines.join("");
 
-			assert.ok(joined.includes("\x1b]8;;https://example.com\x1b\\"), "Should contain OSC 8 hyperlink");
+			// fork: links Prism creates carry an id parameter.
+			assert.match(joined, /\x1b\]8;[^;]*;https:\/\/example\.com\x1b\\/, "Should contain OSC 8 hyperlink");
 			// URL should not also appear as raw parenthetical text
 			const rawPlain = lines.map((line) =>
-				line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""),
+				line.replace(/\x1b\]8;[^;]*;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""),
 			);
 			assert.ok(!rawPlain.join("").includes("(https://example.com)"), "URL should not appear twice");
 		});

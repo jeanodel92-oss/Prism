@@ -28,7 +28,7 @@ import {
 	StreamableHttpTransport,
 } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { VERSION } from "../../config.ts";
+import { APP_NAME, VERSION } from "../../config.ts";
 import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
@@ -170,6 +170,17 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	challenge: OAuthChallenge | undefined;
 	private client: McpClient | undefined;
 	private opening: Promise<McpClient> | undefined;
+	/** fork: the client being set up, which close() must close as well. */
+	private connecting: McpClient | undefined;
+	/** fork: the newest list asked, the only one whose answer is kept. */
+	private toolsRefresh = 0;
+	private resourcesRefresh = 0;
+	/**
+	 * fork: clients detached after their session expired, closed once their calls in
+	 * flight have ended, or by close().
+	 */
+	private retired = new Set<McpClient>();
+	private inFlight = new Map<McpClient, number>();
 	private closed = false;
 	/** Stderr of the last stdio server that failed to connect. */
 	private stderrTail: string | undefined;
@@ -290,6 +301,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	private async withClient<T>(run: (client: McpClient) => Promise<T>, readOnly = false): Promise<T> {
 		for (let attempt = 1; ; attempt++) {
 			const client = await this.getClient();
+			this.inFlight.set(client, (this.inFlight.get(client) ?? 0) + 1);
 			try {
 				return await run(client);
 			} catch (error) {
@@ -301,15 +313,31 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 					// The server no longer knows the session (restart, deploy), so it did not run the request.
 					// Retry once on a new session. The old client is detached but not closed: closing would
 					// fail its other in-flight calls, which instead get the same 404 and retry the same way.
-					if (this.client === client) this.client = undefined;
+					if (this.client === client) {
+						this.client = undefined;
+						this.retired.add(client);
+					}
 					continue;
 				}
 				if (!this.needsSignIn(error)) throw error;
 				await this.dropClient(client);
 				this.markNeedsAuth();
 				throw new Error(signInRequiredMessage(this.entry));
+			} finally {
+				this.release(client);
 			}
 		}
+	}
+
+	/** fork: a detached client is closed when its last call ends. */
+	private release(client: McpClient): void {
+		const count = (this.inFlight.get(client) ?? 1) - 1;
+		if (count > 0) {
+			this.inFlight.set(client, count);
+			return;
+		}
+		this.inFlight.delete(client);
+		if (this.retired.delete(client)) void client.close().catch(() => undefined);
 	}
 
 	/** Connect again with fresh credentials, for example after signing in. */
@@ -370,7 +398,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 
 	private async connectOnce(): Promise<McpClient> {
 		const client = new McpClient({
-			name: "pi",
+			name: APP_NAME,
 			version: VERSION,
 			requestTimeoutMs: this.timeoutMs,
 			roots: [{ uri: pathToFileURL(this.cwd).href, name: basename(this.cwd) }],
@@ -378,14 +406,20 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		const log = this.log;
 		if (log) client.onNotification("notifications/message", (params) => log.write(this.entry.name, params));
 		let transport: McpTransport | undefined;
+		this.connecting = client;
+		// fork: a change announced while the first list is read is read again after.
+		let toolsChangedDuringSetup = false;
+		let resourcesChangedDuringSetup = false;
 		try {
 			transport = this.createTransport(this.entry, this.cwd, this.authProvider);
 			await client.connect(transport);
 			client.onNotification("notifications/tools/list_changed", () => {
-				void this.refreshTools(client);
+				if (this.client === client) void this.refreshTools(client);
+				else toolsChangedDuringSetup = true;
 			});
 			client.onNotification("notifications/resources/list_changed", () => {
-				void this.refreshResources(client);
+				if (this.client === client) void this.refreshResources(client);
+				else resourcesChangedDuringSetup = true;
 			});
 			const stdio = transport instanceof StdioTransport ? transport : undefined;
 			client.onClose(() => this.handleClientClose(client, stdio));
@@ -407,6 +441,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			this.error = undefined;
 			this.onTools(this);
 			this.changed();
+			if (toolsChangedDuringSetup) void this.refreshTools(client);
+			if (resourcesChangedDuringSetup) void this.refreshResources(client);
 			return client;
 		} catch (error) {
 			await client.close().catch(() => undefined);
@@ -414,6 +450,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 				this.stderrTail = transport.stderr.trim().slice(-STDERR_TAIL_CHARS) || undefined;
 			}
 			throw error;
+		} finally {
+			if (this.connecting === client) this.connecting = undefined;
 		}
 	}
 
@@ -439,9 +477,11 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	private async refreshTools(client: McpClient): Promise<void> {
+		const refresh = ++this.toolsRefresh;
 		try {
 			const tools = await client.listTools();
-			if (this.client !== client || this.closed) return;
+			// An older answer, which may still hold a removed tool, never replaces a newer one.
+			if (this.client !== client || this.closed || refresh !== this.toolsRefresh) return;
 			this.tools = tools;
 			this.onTools(this);
 		} catch (error) {
@@ -451,11 +491,17 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	private async refreshResources(client: McpClient): Promise<void> {
-		const { resources, resourceTemplates } = await fetchResources(client);
-		if (this.client !== client || this.closed) return;
-		this.resources = resources;
-		this.resourceTemplates = resourceTemplates;
-		this.onTools(this);
+		const refresh = ++this.resourcesRefresh;
+		// fork: called without await; a failure is the server's status, as for its tools.
+		try {
+			const { resources, resourceTemplates } = await fetchResources(client);
+			if (this.client !== client || this.closed || refresh !== this.resourcesRefresh) return;
+			this.resources = resources;
+			this.resourceTemplates = resourceTemplates;
+			this.onTools(this);
+		} catch (error) {
+			this.error = `Failed to refresh resources: ${errorMessage(error)}`;
+		}
 		this.changed();
 	}
 
@@ -466,6 +512,13 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		const client = this.client;
 		this.client = undefined;
 		await client?.close().catch(() => undefined);
+		// fork: a server still answering initialize is closed too, and its setup has
+		// ended when close() returns.
+		await this.connecting?.close().catch(() => undefined);
+		await this.opening?.catch(() => undefined);
+		const retired = [...this.retired];
+		this.retired.clear();
+		await Promise.all(retired.map((old) => old.close().catch(() => undefined)));
 		// A refresh the server already answered may have rotated the refresh token; exiting before the
 		// new tokens are saved would lose the grant.
 		await this.authProvider?.settled();

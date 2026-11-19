@@ -7,10 +7,17 @@ import type {
 	WheelScrollLines,
 } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
+import { type AnimationStyles, readAnimationStyles } from "../fork/animations.ts";
+// fork: configurable trigger, without changing summary budgets.
+import { validateCompactionThresholdPercent } from "../fork/compaction-threshold.ts";
+import { realPath } from "../fork/real-path.ts";
+import { writeFileAtomicSync } from "../fork/secrets/atomic-write.ts";
+// fork: global web search configuration.
+import { isWebSearchProvider, type WebSearchProvider } from "../fork/web-search-config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
@@ -27,6 +34,7 @@ const DEFAULT_COMPACTION_TOKEN_SETTINGS: Required<CompactionModelOverride> = {
 
 export interface CompactionSettings {
 	enabled?: boolean; // default: true
+	thresholdPercent?: number; // fork: global trigger percentage; absent keeps reserveTokens behavior
 	reserveTokens?: number; // default: 16384
 	keepRecentTokens?: number; // default: 20000
 	modelOverrides?: Record<string, CompactionModelOverride>; // exact "provider/modelId" keys
@@ -130,6 +138,9 @@ export type PackageSource =
 			themes?: string[];
 	  };
 
+/** fork: how much technical detail the interface shows. */
+export type InterfaceMode = "simple" | "advanced";
+
 export interface Settings {
 	lastChangelogVersion?: string;
 	defaultProvider?: string;
@@ -144,7 +155,19 @@ export interface Settings {
 	branchSummary?: BranchSummarySettings;
 	retry?: RetrySettings;
 	hideThinkingBlock?: boolean;
+	animations?: boolean; // fork: default true - draw the startup logo in; false shows it still
+	animationsOff?: string[]; // fork: the animations turned off one by one (fork/animations.ts)
+	animationStyles?: AnimationStyles; // fork: named styles, absent preserves the original look
+	replyLanguage?: string; // fork: default "auto" - the language of the user's latest message
+	openIn?: "terminal" | "window"; // fork: global only; unset asks once when the window is available
+	interfaceMode?: InterfaceMode; // fork: default "simple"
+	language?: string; // fork: "auto" (default, system locale), "en" or "fr"
+	webSearchProvider?: WebSearchProvider; // fork: global only; default exa (keyless)
+	webSearchUrl?: string; // fork: global only; SearXNG instance base URL, no default
 	showCacheMissNotices?: boolean; // default: false - show cache cost and provider recovery notices
+	showLocalCloudWarning?: boolean; // fork: default true - warn on local-to-cloud requests
+	traceEnabled?: boolean; // fork: default false - persist local operation traces
+	traceRetentionDays?: number; // fork: default 7 - delete older local operation traces
 	externalEditor?: string; // Command for Ctrl+G external editor; takes precedence over VISUAL/EDITOR
 	shellPath?: string; // Custom shell path (e.g., for Cygwin users on Windows); supports leading ~ expansion
 	quietStartup?: QuietStartup; // default: false
@@ -272,6 +295,8 @@ export interface SettingsManagerCreateOptions {
 
 export interface SettingsStorage {
 	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void;
+	/** fork: the content without waiting for the lock; see FileSettingsStorage.read. */
+	read?(scope: SettingsScope): string | undefined;
 }
 
 export interface SettingsError {
@@ -328,6 +353,22 @@ export class FileSettingsStorage implements SettingsStorage {
 		throw (lastError as Error) ?? new Error("Failed to acquire settings lock");
 	}
 
+	/**
+	 * fork: loading reads the file without the lock. Writes replace it whole
+	 *, so a reader sees one version or the other. Under the lock, a session started while
+	 * another was saving gave up after 10 tries 20 ms apart and took that for an unreadable file: it ran without the
+	 * global settings and saved none.
+	 */
+	read(scope: SettingsScope): string | undefined {
+		const path = scope === "global" ? this.globalSettingsPath : this.projectSettingsPath;
+		try {
+			return readFileSync(path, "utf-8");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+			throw error;
+		}
+	}
+
 	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void {
 		const path = scope === "global" ? this.globalSettingsPath : this.projectSettingsPath;
 		const dir = dirname(path);
@@ -337,19 +378,22 @@ export class FileSettingsStorage implements SettingsStorage {
 			// Only create directory and lock if file exists or we need to write
 			const fileExists = existsSync(path);
 			if (fileExists) {
-				release = this.acquireLockSyncWithRetry(path);
+				release = this.acquireLockSyncWithRetry(realPath(path));
 			}
 			const current = fileExists ? readFileSync(path, "utf-8") : undefined;
-			const next = fn(current);
+			let next = fn(current);
 			if (next !== undefined) {
 				// Only create directory when we actually need to write
 				if (!existsSync(dir)) {
 					mkdirSync(dir, { recursive: true });
 				}
 				if (!release) {
-					release = this.acquireLockSyncWithRetry(path);
+					release = this.acquireLockSyncWithRetry(realPath(path));
+					// fork: another session may have created the file before the lock; merge into it, not over it.
+					if (existsSync(path)) next = fn(readFileSync(path, "utf-8"));
 				}
-				writeFileSync(path, next, "utf-8");
+				// fork: replaced whole, never truncated by a crash or a full disk.
+				if (next !== undefined) writeFileAtomicSync(path, next, { mode: 0o644 });
 			}
 		} finally {
 			if (release) {
@@ -381,6 +425,8 @@ export class SettingsManager {
 	private globalSettings: Settings;
 	private projectSettings: Settings;
 	private settings: Settings;
+	// fork: overrides applied at run time (--theme), kept when a setting is saved.
+	private runtimeOverrides: Partial<Settings> = {};
 	private projectTrusted: boolean;
 	private modifiedFields = new Set<keyof Settings>(); // Track global fields modified during session
 	private modifiedNestedFields = new Map<keyof Settings, Set<string>>(); // Track global nested field modifications
@@ -390,6 +436,7 @@ export class SettingsManager {
 	private projectSettingsLoadError: Error | null = null; // Track if project settings file had parse errors
 	private writeQueue: Promise<void> = Promise.resolve();
 	private errors: SettingsError[];
+	private thresholdErrorReported = false; // fork: one warning for an invalid compaction.thresholdPercent
 	private settingsPaths: SettingsPaths;
 
 	private constructor(
@@ -411,6 +458,8 @@ export class SettingsManager {
 		this.errors = [...initialErrors];
 		this.settingsPaths = settingsPaths;
 		this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
+		// fork: report invalid thresholds before startup diagnostics are collected.
+		this.getCompactionThresholdPercent();
 	}
 
 	/** Create a SettingsManager that loads from files */
@@ -476,10 +525,12 @@ export class SettingsManager {
 		}
 
 		let content: string | undefined;
-		storage.withLock(scope, (current) => {
-			content = current;
-			return undefined;
-		});
+		if (storage.read) content = storage.read(scope);
+		else
+			storage.withLock(scope, (current) => {
+				content = current;
+				return undefined;
+			});
 
 		if (!content) {
 			return {};
@@ -630,10 +681,13 @@ export class SettingsManager {
 		}
 
 		this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
+		// fork: revalidate loaded thresholds before reload diagnostics are collected.
+		this.getCompactionThresholdPercent();
 	}
 
 	/** Apply additional overrides on top of current settings */
 	applyOverrides(overrides: Partial<Settings>): void {
+		this.runtimeOverrides = deepMergeSettings(this.runtimeOverrides, overrides);
 		this.settings = deepMergeSettings(this.settings, overrides);
 	}
 
@@ -680,16 +734,34 @@ export class SettingsManager {
 		this.modifiedProjectNestedFields.clear();
 	}
 
-	private enqueueWrite(scope: SettingsScope, task: () => void): void {
+	/**
+	 * fork: the fields a save writes leave the modified set when it is queued, so a later
+	 * save of another field does not write them again over a newer value from another session; a failed save puts
+	 * them back, and the next save retries them with their value then.
+	 */
+	private enqueueWrite(
+		scope: SettingsScope,
+		fields: Set<keyof Settings>,
+		nested: Map<keyof Settings, Set<string>>,
+		task: () => void,
+	): void {
+		this.clearModifiedScope(scope);
 		this.writeQueue = this.writeQueue
 			.then(() => {
 				if (scope === "project") {
 					this.assertProjectTrustedForWrite();
 				}
 				task();
-				this.clearModifiedScope(scope);
 			})
 			.catch((error) => {
+				const modified = scope === "global" ? this.modifiedFields : this.modifiedProjectFields;
+				const modifiedNested = scope === "global" ? this.modifiedNestedFields : this.modifiedProjectNestedFields;
+				for (const field of fields) modified.add(field);
+				for (const [field, keys] of nested) {
+					const current = modifiedNested.get(field) ?? new Set<string>();
+					for (const key of keys) current.add(key);
+					modifiedNested.set(field, current);
+				}
 				this.recordError(scope, error);
 			});
 	}
@@ -734,7 +806,10 @@ export class SettingsManager {
 	}
 
 	private save(): void {
-		this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
+		this.settings = deepMergeSettings(
+			deepMergeSettings(this.globalSettings, this.projectSettings),
+			this.runtimeOverrides,
+		);
 
 		if (this.globalSettingsLoadError) {
 			return;
@@ -744,7 +819,7 @@ export class SettingsManager {
 		const modifiedFields = new Set(this.modifiedFields);
 		const modifiedNestedFields = this.cloneModifiedNestedFields(this.modifiedNestedFields);
 
-		this.enqueueWrite("global", () => {
+		this.enqueueWrite("global", modifiedFields, modifiedNestedFields, () => {
 			this.persistScopedSettings("global", snapshotGlobalSettings, modifiedFields, modifiedNestedFields);
 		});
 	}
@@ -752,7 +827,10 @@ export class SettingsManager {
 	private saveProjectSettings(settings: Settings): void {
 		this.assertProjectTrustedForWrite();
 		this.projectSettings = structuredClone(settings);
-		this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
+		this.settings = deepMergeSettings(
+			deepMergeSettings(this.globalSettings, this.projectSettings),
+			this.runtimeOverrides,
+		);
 
 		if (this.projectSettingsLoadError) {
 			return;
@@ -761,7 +839,7 @@ export class SettingsManager {
 		const snapshotProjectSettings = structuredClone(this.projectSettings);
 		const modifiedFields = new Set(this.modifiedProjectFields);
 		const modifiedNestedFields = this.cloneModifiedNestedFields(this.modifiedProjectNestedFields);
-		this.enqueueWrite("project", () => {
+		this.enqueueWrite("project", modifiedFields, modifiedNestedFields, () => {
 			this.persistScopedSettings("project", snapshotProjectSettings, modifiedFields, modifiedNestedFields);
 		});
 	}
@@ -828,7 +906,7 @@ export class SettingsManager {
 	}
 
 	getSteeringMode(): "all" | "one-at-a-time" {
-		return this.settings.steeringMode || "one-at-a-time";
+		return this.settings.steeringMode || "all"; // fork
 	}
 
 	setSteeringMode(mode: "all" | "one-at-a-time"): void {
@@ -850,7 +928,9 @@ export class SettingsManager {
 	getThemeSetting(): string | undefined {
 		const value = this.settings.theme;
 		if (typeof value === "string") return value;
-		return undefined;
+		// fork: Prism's theme by default; --safe still forces the system theme.
+		// fork: its light or dark variant, by terminal appearance.
+		return "prism-light/prism";
 	}
 
 	getTheme(): string | undefined {
@@ -915,6 +995,28 @@ export class SettingsManager {
 		return this.settings.compaction?.enabled ?? true;
 	}
 
+	// fork: a project cannot mask a change made in /settings. An invalid value in the file is reported
+	// once as a settings error and keeps the default trigger, rather than failing every compaction check.
+	getCompactionThresholdPercent(): number | undefined {
+		const percent = this.globalSettings.compaction?.thresholdPercent;
+		try {
+			validateCompactionThresholdPercent(percent);
+		} catch (error) {
+			if (!this.thresholdErrorReported) this.recordError("global", error);
+			this.thresholdErrorReported = true;
+			return undefined;
+		}
+		return percent;
+	}
+
+	setCompactionThresholdPercent(percent: number | undefined): void {
+		validateCompactionThresholdPercent(percent);
+		this.globalSettings.compaction ??= {};
+		this.globalSettings.compaction.thresholdPercent = percent;
+		this.markModified("compaction", "thresholdPercent");
+		this.save();
+	}
+
 	setCompactionEnabled(enabled: boolean): void {
 		if (!this.globalSettings.compaction) {
 			this.globalSettings.compaction = {};
@@ -961,15 +1063,21 @@ export class SettingsManager {
 	}
 
 	/** Resolve each token setting through model override, ordinary setting, then built-in default. */
-	getCompactionSettings(model?: Pick<Model<string>, "provider" | "id">): {
+	getCompactionSettings(model?: Pick<Model<string>, "provider" | "id"> & Partial<Pick<Model<string>, "maxTokens">>): {
 		enabled: boolean;
 		reserveTokens: number;
 		keepRecentTokens: number;
+		thresholdPercent?: number; // fork: global trigger policy
+		thresholdMaxTokens?: number; // fork: reply capacity for the safety reserve, never persisted
 	} {
+		// fork: keep both the default result and the summarization budgets unchanged.
+		const percent = this.getCompactionThresholdPercent();
+		const reserveTokens = this.getCompactionReserveTokens(model);
 		return {
 			enabled: this.getCompactionEnabled(),
-			reserveTokens: this.getCompactionReserveTokens(model),
+			reserveTokens,
 			keepRecentTokens: this.getCompactionKeepRecentTokens(model),
+			...(percent !== undefined ? { thresholdPercent: percent, thresholdMaxTokens: model?.maxTokens } : {}),
 		};
 	}
 
@@ -1044,11 +1152,39 @@ export class SettingsManager {
 	}
 
 	getHideThinkingBlock(): boolean {
-		return this.settings.hideThinkingBlock ?? false;
+		// fork: thinking collapsed by default; ctrl+t expands it and saves the choice.
+		return this.settings.hideThinkingBlock ?? true;
 	}
 
 	getShowCacheMissNotices(): boolean {
 		return this.settings.showCacheMissNotices ?? false;
+	}
+
+	getShowLocalCloudWarning(): boolean {
+		return this.settings.showLocalCloudWarning ?? true;
+	}
+
+	// fork: opt-in because operation parameters may contain private project data.
+	getTraceEnabled(): boolean {
+		return this.settings.traceEnabled ?? false;
+	}
+
+	setTraceEnabled(enabled: boolean): void {
+		this.globalSettings.traceEnabled = enabled;
+		this.markModified("traceEnabled");
+		this.save();
+	}
+
+	getTraceRetentionDays(): number {
+		const days = this.settings.traceRetentionDays;
+		return typeof days === "number" && Number.isFinite(days) ? Math.max(1, Math.floor(days)) : 7;
+	}
+
+	setTraceRetentionDays(days: number): void {
+		if (!Number.isFinite(days) || days < 1) throw new Error(`Invalid traceRetentionDays setting: ${String(days)}`);
+		this.globalSettings.traceRetentionDays = Math.floor(days);
+		this.markModified("traceRetentionDays");
+		this.save();
 	}
 
 	getExternalEditorCommand(): string {
@@ -1069,9 +1205,117 @@ export class SettingsManager {
 		this.save();
 	}
 
+	// fork: the Prism logo's animation, read by the built-in prism extension.
+	getAnimations(): boolean {
+		return this.settings.animations ?? true;
+	}
+
+	setAnimations(enabled: boolean): void {
+		this.globalSettings.animations = enabled;
+		this.markModified("animations");
+		this.save();
+	}
+
+	// fork: the animations turned off one by one, under the global switch.
+	getAnimationsOff(): string[] {
+		const off = this.settings.animationsOff;
+		return Array.isArray(off) ? off.filter((id) => typeof id === "string") : [];
+	}
+
+	setAnimationsOff(ids: string[]): void {
+		this.globalSettings.animationsOff = ids;
+		this.markModified("animationsOff");
+		this.save();
+	}
+
+	getAnimationStyles(): AnimationStyles {
+		return readAnimationStyles(this.settings.animationStyles);
+	}
+
+	setAnimationStyles(styles: AnimationStyles): void {
+		this.globalSettings.animationStyles = readAnimationStyles(styles);
+		this.markModified("animationStyles");
+		this.save();
+	}
+
+	// fork: the language the model replies in, read by the built-in reply-language extension.
+	getReplyLanguage(): string {
+		return typeof this.settings.replyLanguage === "string" ? this.settings.replyLanguage : "auto";
+	}
+
+	setReplyLanguage(language: string): void {
+		this.globalSettings.replyLanguage = language;
+		this.markModified("replyLanguage");
+		this.save();
+	}
+
+	// fork: where a plain `prism` opens. Global only: a project cannot open a window on its own.
+	getOpenIn(): "terminal" | "window" | undefined {
+		const value = this.globalSettings.openIn;
+		return value === "terminal" || value === "window" ? value : undefined;
+	}
+
+	setOpenIn(value: "terminal" | "window"): void {
+		this.globalSettings.openIn = value;
+		this.markModified("openIn");
+		this.save();
+	}
+
+	// fork: simple (plain words, fewer technical messages) or advanced interface.
+	getInterfaceMode(): InterfaceMode {
+		return this.settings.interfaceMode === "advanced" ? "advanced" : "simple";
+	}
+
+	setInterfaceMode(mode: InterfaceMode): void {
+		this.globalSettings.interfaceMode = mode;
+		this.markModified("interfaceMode");
+		this.save();
+	}
+
+	// fork: the interface language setting; src/fork/i18n resolves "auto".
+	getLanguage(): string {
+		return typeof this.settings.language === "string" ? this.settings.language : "auto";
+	}
+
+	setLanguage(language: string): void {
+		this.globalSettings.language = language;
+		this.markModified("language");
+		this.save();
+	}
+
+	// fork: project settings cannot redirect global web search requests.
+	// An unsupported value gives undefined: web_search then says so instead of searching elsewhere.
+	getWebSearchProvider(): WebSearchProvider | undefined {
+		const provider = this.globalSettings.webSearchProvider ?? "exa";
+		return isWebSearchProvider(provider) ? provider : undefined;
+	}
+
+	setWebSearchProvider(provider: WebSearchProvider): void {
+		this.globalSettings.webSearchProvider = provider;
+		this.markModified("webSearchProvider");
+		this.save();
+	}
+
+	getWebSearchUrl(): string | undefined {
+		const url = this.globalSettings.webSearchUrl;
+		return typeof url === "string" ? url.trim() || undefined : undefined;
+	}
+
+	setWebSearchUrl(url: string | undefined): void {
+		this.globalSettings.webSearchUrl = url;
+		this.markModified("webSearchUrl");
+		this.save();
+	}
+
 	setShowCacheMissNotices(show: boolean): void {
 		this.globalSettings.showCacheMissNotices = show;
 		this.markModified("showCacheMissNotices");
+		this.save();
+	}
+
+	setShowLocalCloudWarning(show: boolean): void {
+		this.globalSettings.showLocalCloudWarning = show;
+		this.markModified("showLocalCloudWarning");
 		this.save();
 	}
 

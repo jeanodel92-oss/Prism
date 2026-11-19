@@ -1,0 +1,10 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/trace" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.inspector-trace .panel-text", "text": "Tracing is off" },
+	{ "do": "key", "selector": ".panel.inspector", "key": "Escape" },
+	{ "do": "focused", "selector": "#input" },
+	{ "do": "transcript-clean" },
+	{ "do": "quit" }
+]

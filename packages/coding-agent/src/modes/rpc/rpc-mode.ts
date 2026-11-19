@@ -25,15 +25,26 @@ import {
 	waitForRawStdoutBackpressure,
 	writeRawStdout,
 } from "../../core/output-guard.ts";
+import { SessionManager } from "../../core/session-manager.ts";
+import { RpcCompletion } from "../../fork/autocomplete.ts";
+import { createUiPreviews } from "../../fork/generated-ui.ts";
+import { fill, t } from "../../fork/i18n/index.ts"; // fork: shown errors only
+import { translateKitChoices } from "../../fork/menu-i18n.ts";
+import { setOnboardingHost } from "../../fork/onboarding.ts";
+import { handleBuiltinCommand } from "../../fork/rpc-builtins.ts";
+import { handleKeysCommand } from "../../fork/rpc-keys.ts";
+import { RpcViews } from "../../fork/rpc-views.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { type Theme, theme } from "../interactive/theme/theme.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
 import type {
 	RpcCommand,
+	RpcExtensionUIDismissed,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
 	RpcResponse,
+	RpcSessionListItem,
 	RpcSessionState,
 	RpcSlashCommand,
 } from "./rpc-types.ts";
@@ -46,6 +57,9 @@ export type {
 	RpcResponse,
 	RpcSessionState,
 } from "./rpc-types.ts";
+
+// fork: under the window's two seconds before it kills the engine.
+const SHUTDOWN_TURN_MS = 1500;
 
 /**
  * Run in RPC mode.
@@ -75,6 +89,13 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	const error = (id: string | undefined, command: string, message: string): RpcResponse => {
 		return { id, type: "response", command, success: false, error: message };
 	};
+
+	// fork: extension views (`ctx.ui.custom`, widget components) for clients that show them.
+	const views = new RpcViews(output);
+	const completion = new RpcCompletion();
+	// fork: the tutorial /onboarding offers to start is the window's own screen: the client opens it
+	// on `open_tutorial`.
+	setOnboardingHost({ openTutorial: () => output({ type: "open_tutorial" }) });
 
 	// Pending extension UI requests waiting for response
 	const pendingExtensionRequests = new Map<
@@ -106,17 +127,17 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				pendingExtensionRequests.delete(id);
 			};
 
-			const onAbort = () => {
+			// fork: tell the client, or it keeps showing a question nobody waits for.
+			const dismiss = (reason: RpcExtensionUIDismissed["reason"]) => {
 				cleanup();
+				output({ type: "extension_ui_dismissed", id, reason } satisfies RpcExtensionUIDismissed);
 				resolve(defaultValue);
 			};
+			const onAbort = () => dismiss("aborted");
 			opts?.signal?.addEventListener("abort", onAbort, { once: true });
 
 			if (opts?.timeout) {
-				timeoutId = setTimeout(() => {
-					cleanup();
-					resolve(defaultValue);
-				}, opts.timeout);
+				timeoutId = setTimeout(() => dismiss("timeout"), opts.timeout);
 			}
 
 			pendingExtensionRequests.set(id, {
@@ -126,7 +147,14 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				},
 				reject,
 			});
-			output({ type: "extension_ui_request", id, ...request } as RpcExtensionUIRequest);
+			output({
+				type: "extension_ui_request",
+				id,
+				...request,
+				...(opts?.toolCallId ? { toolCallId: opts.toolCallId } : {}),
+				...(opts?.tone ? { tone: opts.tone } : {}),
+				...(opts?.warning ? { warning: opts.warning } : {}),
+			} as RpcExtensionUIRequest);
 		});
 	}
 
@@ -134,10 +162,16 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	 * Create an extension UI context that uses the RPC protocol.
 	 */
 	const createExtensionUIContext = (): ExtensionUIContext => ({
-		select: (title, options, opts) =>
-			createDialogPromise(opts, undefined, { method: "select", title, options, timeout: opts?.timeout }, (r) =>
-				"cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined,
-			),
+		select: (title, options, opts) => {
+			// pi-tui-kit's own navigation choices in the interface's language (menu-i18n.ts).
+			const choices = translateKitChoices(options);
+			return createDialogPromise(
+				opts,
+				undefined,
+				{ method: "select", title, options: choices.shown, timeout: opts?.timeout },
+				(r) => ("cancelled" in r && r.cancelled ? undefined : "value" in r ? choices.original(r.value) : undefined),
+			);
+		},
 
 		confirm: (title, message, opts) =>
 			createDialogPromise(opts, false, { method: "confirm", title, message, timeout: opts?.timeout }, (r) =>
@@ -145,8 +179,12 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			),
 
 		input: (title, placeholder, opts) =>
-			createDialogPromise(opts, undefined, { method: "input", title, placeholder, timeout: opts?.timeout }, (r) =>
-				"cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined,
+			createDialogPromise(
+				opts,
+				undefined,
+				// fork: a secret (sudo password, API key) is masked by the client too.
+				{ method: "input", title, placeholder, timeout: opts?.timeout, ...(opts?.secret ? { secret: true } : {}) },
+				(r) => ("cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined),
 			),
 
 		notify(message: string, type?: "info" | "warning" | "error"): void {
@@ -193,18 +231,19 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		},
 
 		setWidget(key: string, content: unknown, options?: ExtensionWidgetOptions): void {
-			// Only support string arrays in RPC mode - factory functions are ignored
-			if (content === undefined || Array.isArray(content)) {
+			const send = (lines: string[] | undefined) =>
 				output({
 					type: "extension_ui_request",
 					id: crypto.randomUUID(),
 					method: "setWidget",
 					widgetKey: key,
-					widgetLines: content as string[] | undefined,
+					widgetLines: lines,
 					widgetPlacement: options?.placement,
 				} as RpcExtensionUIRequest);
-			}
-			// Component factories are not supported in RPC mode - would need TUI access
+			// fork: a component factory is rendered to lines when the client shows views.
+			views.removeWidget(key);
+			if (content === undefined || Array.isArray(content)) send(content as string[] | undefined);
+			else views.setWidget(key, content as Parameters<RpcViews["setWidget"]>[1], send);
 		},
 
 		setFooter(_factory: unknown): void {
@@ -225,9 +264,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			} as RpcExtensionUIRequest);
 		},
 
-		async custom() {
-			// Custom UI not supported in RPC mode
-			return undefined as never;
+		custom(factory, options) {
+			// fork: shown by clients that opted in with set_views; undefined otherwise, as before.
+			return views.custom(factory, options);
 		},
 
 		pasteToEditor(text: string): void {
@@ -251,27 +290,15 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			return "";
 		},
 
-		async editor(title: string, prefill?: string): Promise<string | undefined> {
-			const id = crypto.randomUUID();
-			return new Promise((resolve, reject) => {
-				pendingExtensionRequests.set(id, {
-					resolve: (response: RpcExtensionUIResponse) => {
-						if ("cancelled" in response && response.cancelled) {
-							resolve(undefined);
-						} else if ("value" in response) {
-							resolve(response.value);
-						} else {
-							resolve(undefined);
-						}
-					},
-					reject,
-				});
-				output({ type: "extension_ui_request", id, method: "editor", title, prefill } as RpcExtensionUIRequest);
-			});
-		},
+		// fork: closed by its signal like the other dialogs, and the client told so.
+		editor: (title, prefill, opts) =>
+			createDialogPromise(opts, undefined, { method: "editor", title, prefill }, (r) =>
+				"cancelled" in r && r.cancelled ? undefined : "value" in r ? r.value : undefined,
+			),
 
-		addAutocompleteProvider(): void {
-			// Autocomplete provider composition is not supported in RPC mode
+		addAutocompleteProvider(factory): void {
+			// fork: the extensions' wrappers apply to the `complete` command (src/fork/autocomplete.ts).
+			completion.add(factory);
 		},
 
 		setEditorComponent(): void {
@@ -313,9 +340,24 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	runtimeHost.setRebindSession(async () => {
 		await rebindSession();
 	});
+	// fork: the old session's views end with it.
+	runtimeHost.setBeforeSessionInvalidate(() => views.closeAll());
+	// fork: a replacement that failed after the old session was torn down leaves no
+	// session to serve. The engine says so and exits with an error, as the terminal does; the client restarts it.
+	runtimeHost.setOnSessionLost((lost) => {
+		process.stderr.write(
+			`Session change failed after the previous session was closed: ${lost instanceof Error ? lost.message : String(lost)}\n`,
+		);
+		void shutdown(1);
+	});
+
+	// fork: /reload from the client, as the terminal's: the same session, its resources read again. The
+	// extensions add their completion wrappers again when the session starts again.
+	const reloadSession = () => session.reload({ beforeSessionStart: () => completion.reset() });
 
 	const rebindSession = async (): Promise<void> => {
 		session = runtimeHost.session;
+		completion.reset(); // fork: the extensions add their completion wrappers again
 		await session.bindExtensions({
 			uiContext: createExtensionUIContext(),
 			mode: "rpc",
@@ -338,8 +380,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				switchSession: async (sessionPath, options) => {
 					return runtimeHost.switchSession(sessionPath, options);
 				},
+				// fork: as /reload, or the completion wrappers are registered twice.
 				reload: async () => {
-					await session.reload();
+					await reloadSession();
 				},
 			},
 			shutdownHandler: () => {
@@ -352,8 +395,11 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
+		const uiPreview = createUiPreviews(); // fork: the generated UI while the model writes it
 		unsubscribe = session.subscribe((event) => {
 			output(toJsonEvent(event));
+			const preview = uiPreview(event);
+			if (preview) output(preview);
 			if (event.type === "agent_settled") {
 				void checkShutdownRequested();
 			}
@@ -434,10 +480,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 			case "new_session": {
 				const options = command.parentSession ? { parentSession: command.parentSession } : undefined;
+				// fork: the runtime rebinds the new session itself (setRebindSession);
+				// rebinding it again here started its extensions twice.
 				const result = await runtimeHost.newSession(options);
-				if (!result.cancelled) {
-					await rebindSession();
-				}
 				return success(id, "new_session", result);
 			}
 
@@ -471,14 +516,15 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				const models = session.modelRuntime.getAvailableSnapshot();
 				const model = models.find((m) => m.provider === command.provider && m.id === command.modelId);
 				if (!model) {
-					return error(id, "set_model", `Model not found: ${command.provider}/${command.modelId}`);
+					return error(id, "set_model", fill("Model not found: {0}", `${command.provider}/${command.modelId}`));
 				}
 				await session.setModel(model);
 				return success(id, "set_model", model);
 			}
 
 			case "cycle_model": {
-				const result = await session.cycleModel();
+				// fork: direction, for the window's backward key.
+				const result = await session.cycleModel(command.direction);
 				if (!result) {
 					return success(id, "cycle_model", null);
 				}
@@ -601,30 +647,21 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			}
 
 			case "switch_session": {
-				const result = await runtimeHost.switchSession(command.sessionPath);
-				if (!result.cancelled) {
-					await rebindSession();
-				}
+				const result = await runtimeHost.switchSession(command.sessionPath); // fork: rebound by the runtime
 				return success(id, "switch_session", result);
 			}
 
 			case "fork": {
-				const result = await runtimeHost.fork(command.entryId);
-				if (!result.cancelled) {
-					await rebindSession();
-				}
+				const result = await runtimeHost.fork(command.entryId); // fork: rebound by the runtime
 				return success(id, "fork", { text: result.selectedText, cancelled: result.cancelled });
 			}
 
 			case "clone": {
 				const leafId = session.sessionManager.getLeafId();
 				if (!leafId) {
-					return error(id, "clone", "Cannot clone session: no current entry selected");
+					return error(id, "clone", t("Cannot clone session: no current entry selected"));
 				}
-				const result = await runtimeHost.fork(leafId, { position: "at" });
-				if (!result.cancelled) {
-					await rebindSession();
-				}
+				const result = await runtimeHost.fork(leafId, { position: "at" }); // fork: rebound by the runtime
 				return success(id, "clone", { cancelled: result.cancelled });
 			}
 
@@ -659,7 +696,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			case "set_session_name": {
 				const name = command.name.trim();
 				if (!name) {
-					return error(id, "set_session_name", "Session name cannot be empty");
+					return error(id, "set_session_name", t("Session name cannot be empty"));
 				}
 				session.setSessionName(name);
 				return success(id, "set_session_name");
@@ -710,6 +747,24 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				return success(id, "get_commands", { commands });
 			}
 
+			case "list_sessions": {
+				const manager = session.sessionManager;
+				const sessions: RpcSessionListItem[] = (
+					await SessionManager.list(manager.getCwd(), manager.getSessionDir())
+				).map((info) => ({
+					path: info.path,
+					id: info.id,
+					cwd: info.cwd,
+					name: info.name,
+					parentSessionPath: info.parentSessionPath,
+					created: info.created.toISOString(),
+					modified: info.modified.toISOString(),
+					messageCount: info.messageCount,
+					firstMessage: info.firstMessage,
+				}));
+				return success(id, "list_sessions", { sessions });
+			}
+
 			default: {
 				const unknownCommand = command as { type: string };
 				return error(id, unknownCommand.type, `Unknown command: ${unknownCommand.type}`);
@@ -723,6 +778,25 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	 */
 	let detachInput = () => {};
 
+	// fork: disposing during a turn leaves the agent loop running on a disconnected session,
+	// and its turn_end reaches extensions whose context is gone. A question nobody can answer any more is cancelled,
+	// and the wait is bounded: a tool that ignores the abort must not keep the engine alive.
+	async function settleTurnBeforeShutdown(): Promise<void> {
+		const settled = session.abort();
+		for (const [id, pending] of [...pendingExtensionRequests]) {
+			pendingExtensionRequests.delete(id);
+			pending.resolve({ type: "extension_ui_response", id, cancelled: true });
+		}
+		let timer: NodeJS.Timeout | undefined;
+		await Promise.race([
+			settled,
+			new Promise((resolve) => {
+				timer = setTimeout(resolve, SHUTDOWN_TURN_MS);
+			}),
+		]);
+		clearTimeout(timer);
+	}
+
 	async function shutdown(exitCode = 0, signal?: NodeJS.Signals): Promise<never> {
 		if (shuttingDown) {
 			process.exit(exitCode);
@@ -733,6 +807,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		}
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
+		await settleTurnBeforeShutdown();
 		await runtimeHost.dispose();
 		detachInput();
 		process.stdin.pause();
@@ -779,9 +854,29 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			return;
 		}
 
+		// fork: JSON that is not a command object (`null`, a number, an array,
+		// no text type) is refused; reading its fields would throw, and the error handler with it.
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			Array.isArray(parsed) ||
+			typeof (parsed as { type?: unknown }).type !== "string"
+		) {
+			const id = (parsed as { id?: unknown } | null)?.id;
+			output(error(typeof id === "string" ? id : undefined, "parse", "A command is a JSON object with a text type"));
+			await waitForRawStdoutBackpressure();
+			return;
+		}
 		const command = parsed as RpcCommand;
 		try {
-			const response = await handleCommand(command);
+			// fork: view commands (set_views, view_input, view_mouse, view_close), keys (get_keys,
+			// run_shortcut) and the terminal's built-ins with a view (show_help, show_changelog, trust, tree, clipboard_image).
+			const response =
+				views.handleCommand(command) ??
+				handleKeysCommand(command, session) ??
+				(await (handleBuiltinCommand(command, session, runtimeHost, views, reloadSession) ??
+					completion.handleCommand(command, session) ??
+					handleCommand(command)));
 			if (response) {
 				output(response);
 				await waitForRawStdoutBackpressure();

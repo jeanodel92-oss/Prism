@@ -1,8 +1,9 @@
-import { createInterface } from "node:readline";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { spawn } from "child_process";
 import path from "path";
 import { type Static, Type } from "typebox";
+import { fdUnreadablePathErrors, unreadablePathsNotice } from "../../fork/grep-unreadable.ts";
+import { wholeLimit } from "../../fork/listing-bounds.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { pathExists, resolveToCwd } from "./path-utils.ts";
@@ -109,7 +110,8 @@ export function createFindToolDefinition(
 				(async () => {
 					try {
 						const searchPath = resolveToCwd(searchDir || ".", ctx?.cwd || cwd);
-						const effectiveLimit = limit ?? DEFAULT_LIMIT;
+						// fork: a whole number of at least 1; fd reads 0 as "no limit".
+						const effectiveLimit = wholeLimit(limit, DEFAULT_LIMIT);
 						const ops = customOps ?? defaultFindOperations;
 
 						// If custom operations provide glob(), use that instead of fd.
@@ -179,7 +181,9 @@ export function createFindToolDefinition(
 							return;
 						}
 
-						const args: string[] = ["--glob", "--color=never", "--hidden"];
+						// fork: --show-errors names the folders fd could not open, instead of skipping them silently.
+						// fork: --print0, since a file name may end with a space or hold a newline.
+						const args: string[] = ["--glob", "--color=never", "--hidden", "--show-errors", "--print0"];
 
 						// fd normally ignores .gitignore outside git repos, so keep --no-require-git
 						// there. Inside repos, use fd's default git-aware behavior so parent
@@ -213,8 +217,9 @@ export function createFindToolDefinition(
 						}
 						args.push("--", effectivePattern, searchPath);
 
+						// fork: stopped while the enclosing repository was looked for.
+						if (settled) return;
 						const child = spawn(fdPath, args, { stdio: ["ignore", "pipe", "pipe"] });
-						const rl = createInterface({ input: child.stdout });
 						let stderr = "";
 						const lines: string[] = [];
 
@@ -225,15 +230,27 @@ export function createFindToolDefinition(
 						};
 
 						const cleanup = () => {
-							rl.close();
+							child.stdout.removeAllListeners("data");
 						};
 
 						child.stderr?.on("data", (chunk) => {
 							stderr += chunk.toString();
 						});
 
-						rl.on("line", (line) => {
+						// fork: collection stops once it holds more than the output can show.
+						let collectedBytes = 0;
+						let unterminated = "";
+						const collect = (line: string) => {
+							if (collectedBytes > DEFAULT_MAX_BYTES) return;
 							lines.push(line);
+							collectedBytes += relativizeFindResultPath(line, searchPath).length + 1;
+							if (collectedBytes > DEFAULT_MAX_BYTES) child.kill();
+						};
+						child.stdout.setEncoding("utf8");
+						child.stdout.on("data", (chunk: string) => {
+							const names = (unterminated + chunk).split("\0");
+							unterminated = names.pop() ?? "";
+							for (const name of names) collect(name);
 						});
 
 						child.on("error", (error) => {
@@ -243,11 +260,13 @@ export function createFindToolDefinition(
 
 						child.on("close", (code) => {
 							cleanup();
+							if (unterminated) collect(unterminated);
 							if (signal?.aborted) {
 								settle(() => reject(new Error("Operation aborted")));
 								return;
 							}
 							const output = lines.join("\n");
+							const unreadable = fdUnreadablePathErrors(stderr);
 							if (code !== 0) {
 								const errorMsg = stderr.trim() || `fd exited with code ${code}`;
 								if (!output) {
@@ -258,7 +277,15 @@ export function createFindToolDefinition(
 							if (!output) {
 								settle(() =>
 									resolve({
-										content: [{ type: "text", text: "No files found matching pattern" }],
+										content: [
+											{
+												type: "text",
+												text:
+													unreadable.length > 0
+														? `No files found matching pattern\n\n[${unreadablePathsNotice(unreadable)}]`
+														: "No files found matching pattern",
+											},
+										],
 										details: undefined,
 									}),
 								);
@@ -266,10 +293,11 @@ export function createFindToolDefinition(
 							}
 
 							const relativized: string[] = [];
-							for (const rawLine of lines) {
-								const line = rawLine.replace(/\r$/, "").trim();
+							for (const line of lines) {
 								if (!line) continue;
-								relativized.push(relativizeFindResultPath(line, searchPath));
+								// A name holding a line break is shown as a JSON string, so that it reads as one path.
+								const relative = relativizeFindResultPath(line, searchPath);
+								relativized.push(/[\r\n]/.test(relative) ? JSON.stringify(relative) : relative);
 							}
 
 							const resultLimitReached = relativized.length >= effectiveLimit;
@@ -288,6 +316,7 @@ export function createFindToolDefinition(
 								notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
 								details.truncation = truncation;
 							}
+							if (unreadable.length > 0) notices.push(unreadablePathsNotice(unreadable));
 							if (notices.length > 0) {
 								resultOutput += `\n\n[${notices.join(". ")}]`;
 							}

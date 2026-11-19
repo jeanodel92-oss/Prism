@@ -1,28 +1,28 @@
-import { realpath } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { realPath } from "../../fork/real-path.ts";
 
 const fileMutationQueues = new Map<string, Promise<void>>();
 let registrationQueue = Promise.resolve();
 
-function isMissingPathError(error: unknown): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		(error.code === "ENOENT" || error.code === "ENOTDIR")
-	);
+// fork: the file the path leads to, also before it exists (a linked parent, a dangling
+// final link): the key stays the same once the write creates it.
+// fork: a file with several names (hard links) is one file under each: keyed by its
+// identity. A file with one name keeps its path's key, the one it had before it existed.
+async function getMutationQueueKey(filePath: string): Promise<string> {
+	const real = realPath(resolve(filePath));
+	const stat = await lstat(real).catch(() => undefined);
+	return stat?.isFile() && stat.nlink > 1 ? `inode:${stat.dev}:${stat.ino}` : real;
 }
 
-async function getMutationQueueKey(filePath: string): Promise<string> {
-	const resolvedPath = resolve(filePath);
-	try {
-		return await realpath(resolvedPath);
-	} catch (error) {
-		if (isMissingPathError(error)) {
-			return resolvedPath;
-		}
-		throw error;
-	}
+/**
+ * fork: holds the file's queue until the returned function is called, for a read whose
+ * checks and bytes must come from one state of the file.
+ */
+export function holdFileMutationQueue(filePath: string): Promise<() => void> {
+	return new Promise((held, failed) => {
+		withFileMutationQueue(filePath, () => new Promise<void>((release) => held(release))).catch(failed);
+	});
 }
 
 /**

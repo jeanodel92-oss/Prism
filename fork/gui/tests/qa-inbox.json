@@ -1,0 +1,32 @@
+[
+	{ "do": "log", "text": "owner's decision, 2026-11-13: the phone's 'waiting for you' line in the PC window, under the topbar, and a dot on the waiting conversation in the side panel" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "absent", "selector": ".inbox:not([hidden])", "why": "nothing waits: no line" },
+	{ "do": "type", "text": "call write {\"path\":\"waiting.txt\",\"content\":\"inbox\"}" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Block this action once", "timeout": 30000 },
+	{ "do": "absent", "selector": ".inbox:not([hidden])", "why": "the question is in the conversation shown" },
+
+	{ "do": "click", "selector": "#new-session" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": ".inbox:not([hidden]) .inbox-line.asks", "text": "1 waiting for you" },
+	{ "do": "wait", "selector": "#open-list .session-link .inbox-dot.ask", "why": "the waiting conversation's dot in the side panel" },
+	{ "do": "fits", "selector": ".inbox" },
+	{ "do": "shot", "name": "i1-line" },
+
+	{ "do": "click", "selector": ".inbox-line" },
+	{ "do": "wait", "selector": ".inbox-list:not([hidden]) .inbox-entry.ask", "text": "Asks" },
+	{ "do": "shot", "name": "i2-unfolded" },
+	{ "do": "click", "selector": ".inbox-entry.ask" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Block this action once", "why": "the entry opens its conversation on the question" },
+	{ "do": "wait", "selector": ".inbox", "gone": true, "why": "drawn at the next frame" },
+	{ "do": "wait", "selector": "#open-list .inbox-dot", "gone": true },
+	{ "do": "sleep", "ms": 500, "why": "a question ignores clicks for 400 ms after it appears (arming)" },
+	{ "do": "click", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Block this action once" },
+	{ "do": "wait", "selector": ".msg.assistant + .turn-summary", "timeout": 30000 },
+
+	{ "do": "toasts" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "log", "text": "qa-inbox-ok" },
+	{ "do": "quit" }
+]

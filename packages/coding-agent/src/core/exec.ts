@@ -2,7 +2,8 @@
  * Shared command execution utilities for extensions and custom tools.
  */
 
-import { spawn } from "node:child_process";
+import { constants as osConstants } from "node:os";
+import { launch } from "../fork/child-process.ts";
 import { waitForChildProcess } from "../utils/child-process.ts";
 
 /**
@@ -38,46 +39,33 @@ export async function execCommand(
 	options?: ExecOptions,
 ): Promise<ExecResult> {
 	return new Promise((resolve) => {
-		const proc = spawn(command, args, {
+		// fork: in its own process group, stopped on timeout or abort with
+		// SIGTERM to the group, then SIGKILL after 5 s unless the group ended (`proc.killed` only said SIGTERM was sent).
+		const launched = launch(command, args, {
 			cwd,
 			shell: false,
 			stdio: ["ignore", "pipe", "pipe"],
+			graceMs: 5000,
 		});
+		const proc = launched.child;
+		// fork: the timeout and the abort stop the command while it
+		// runs only. A worker it started and left running after it exited is not killed later.
+		const stop = () => void launched.stop();
+		const limit =
+			options?.timeout !== undefined && options.timeout > 0 ? setTimeout(stop, options.timeout) : undefined;
+		if (options?.signal?.aborted) stop();
+		else options?.signal?.addEventListener("abort", stop, { once: true });
+		const release = () => {
+			if (limit) clearTimeout(limit);
+			options?.signal?.removeEventListener("abort", stop);
+		};
 
 		let stdout = "";
 		let stderr = "";
-		let killed = false;
-		let timeoutId: NodeJS.Timeout | undefined;
 
-		const killProcess = () => {
-			if (!killed) {
-				killed = true;
-				proc.kill("SIGTERM");
-				// Force kill after 5 seconds if SIGTERM doesn't work
-				setTimeout(() => {
-					if (!proc.killed) {
-						proc.kill("SIGKILL");
-					}
-				}, 5000);
-			}
-		};
-
-		// Handle abort signal
-		if (options?.signal) {
-			if (options.signal.aborted) {
-				killProcess();
-			} else {
-				options.signal.addEventListener("abort", killProcess, { once: true });
-			}
-		}
-
-		// Handle timeout
-		if (options?.timeout && options.timeout > 0) {
-			timeoutId = setTimeout(() => {
-				killProcess();
-			}, options.timeout);
-		}
-
+		// fork: a decoder per stream keeps a character split across chunks.
+		proc.stdout?.setEncoding("utf8");
+		proc.stderr?.setEncoding("utf8");
 		proc.stdout?.on("data", (data) => {
 			stdout += data.toString();
 		});
@@ -90,18 +78,19 @@ export async function execCommand(
 		// held open by detached descendants.
 		waitForChildProcess(proc)
 			.then((code) => {
-				if (timeoutId) clearTimeout(timeoutId);
-				if (options?.signal) {
-					options.signal.removeEventListener("abort", killProcess);
-				}
-				resolve({ stdout, stderr, code: code ?? 0, killed });
+				release();
+				// fork: a signal is 128 + its number, as in the bash tool, never 0.
+				const signal = proc.signalCode;
+				resolve({
+					stdout,
+					stderr,
+					code: code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : 1),
+					killed: launched.stopping,
+				});
 			})
 			.catch((_err) => {
-				if (timeoutId) clearTimeout(timeoutId);
-				if (options?.signal) {
-					options.signal.removeEventListener("abort", killProcess);
-				}
-				resolve({ stdout, stderr, code: 1, killed });
+				release();
+				resolve({ stdout, stderr, code: 1, killed: launched.stopping });
 			});
 	});
 }

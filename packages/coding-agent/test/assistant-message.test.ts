@@ -68,10 +68,11 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }], { stopReason: "length" }),
 			true,
 		);
-		const rendered = component.render(80).join("\n");
+		const rendered = component.render(300).join("\n");
 
 		expect(rendered).toContain("Thinking...");
-		expect(rendered).toContain("Response was truncated before completion.");
+		// fork: the stop names the limits and where to raise them.
+		expect(rendered).toContain("Response cut off by an output limit: Max output in /model-settings,");
 	});
 
 	test("coalesces adjacent thinking blocks into one hidden thinking label", () => {

@@ -10,42 +10,34 @@
 
 > New issues and PRs from new contributors are closed automatically. Maintainers review closed submissions daily. See [CONTRIBUTING.md](https://github.com/earendil-works/pi/blob/main/CONTRIBUTING.md).
 
-# Pi
+# Prism
 
-Pi is a minimal, extensible AI agent for the terminal. Adapt Pi to your workflow, not the other way around.
+Prism is a minimal, extensible AI agent for the terminal. Adapt Prism to your workflow, not the other way around.
 
-Ask Pi to create the prompt templates, skills, extensions, and themes you need, or install a Pi package. Use Pi directly, automate it in print, JSON, or RPC mode, or build applications with the TypeScript SDK.
+Ask Prism to create the prompt templates, skills, extensions, and themes you need, or install a Prism package. Use Prism directly, automate it in print, JSON, or RPC mode, or build applications with the TypeScript SDK.
 
 ## Getting started
 
-Install the command-line interface with npm:
+Install Prism on Linux x64:
 
 ```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+curl -fsSL https://prism.odelserver.space/install.sh | sh
 ```
 
-This requires Node.js 22.19 or newer. Pi does not require dependency lifecycle scripts for a normal npm installation.
-
-On macOS or Linux, you can instead use the installer:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
-
-Start Pi in the directory where you want it to work:
+Start Prism in the directory where you want it to work:
 
 ```bash
 cd /path/to/project
-pi
+prism
 ```
 
-For a built-in AI provider, run `/login` inside Pi to connect a subscription or API key. Then give Pi a task.
+For a built-in AI provider, run `/login` inside Prism to connect a subscription or API key. Then give Prism a task.
 
 See the [documentation](docs/index.md) for full setup and usage instructions.
 
 ## Development
 
-Clone the repository, install its dependencies, and run Pi from source:
+Prism's source repository is not public yet. The commands below build and run upstream pi, which Prism is based on:
 
 ```bash
 git clone https://github.com/earendil-works/pi

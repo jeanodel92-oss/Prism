@@ -80,6 +80,7 @@ export class Image implements Component {
 				maxHeightCells: maxHeight,
 				imageId: this.imageId,
 				moveCursor: false,
+				owner: this, // fork
 			});
 
 			if (result) {

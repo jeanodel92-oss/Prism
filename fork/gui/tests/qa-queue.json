@@ -1,0 +1,99 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: the messages waiting for the reply show above the composer, not as a small footer chip"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "slow"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".composer[data-busy='true']"
+	},
+	{
+		"do": "type",
+		"text": "use the other file instead"
+	},
+	{
+		"do": "send",
+		"why": "Enter while it works: steers the run"
+	},
+	{
+		"do": "wait",
+		"selector": ".queue-tray .queue-item[data-kind='steer'] .queue-text",
+		"text": "use the other file instead"
+	},
+	{
+		"do": "type",
+		"text": "then write the tests"
+	},
+	{
+		"do": "key",
+		"selector": "#input",
+		"key": "Enter",
+		"mods": {
+			"altKey": true
+		},
+		"why": "app.message.followUp (alt+enter)"
+	},
+	{
+		"do": "wait",
+		"selector": ".queue-tray .queue-item[data-kind='followUp'] .queue-text",
+		"text": "then write the tests"
+	},
+	{
+		"do": "wait",
+		"selector": ".queue-tray .queue-title",
+		"text": "Waiting to be sent (2)"
+	},
+	{
+		"do": "absent",
+		"selector": ".status .queued"
+	},
+	{
+		"do": "shot",
+		"name": "queue"
+	},
+	{
+		"do": "click",
+		"selector": ".queue-tray button",
+		"text": "Edit"
+	},
+	{
+		"do": "wait",
+		"selector": ".queue-tray",
+		"gone": true
+	},
+	{
+		"do": "wait",
+		"selector": "#input",
+		"text": "use the other file instead"
+	},
+	{
+		"do": "wait",
+		"selector": "#input",
+		"text": "then write the tests"
+	},
+	{
+		"do": "key",
+		"selector": "#input",
+		"key": "Escape"
+	},
+	{
+		"do": "wait",
+		"selector": ".composer[data-busy='false']",
+		"timeout": 15000
+	},
+	{
+		"do": "quit"
+	}
+]

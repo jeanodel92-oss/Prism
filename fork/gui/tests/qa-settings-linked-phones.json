@@ -1,0 +1,21 @@
+[
+	{ "do": "log", "text": "Owner's QA of 2026-11-13 (R8): the settings' 'Link a phone' section lists the linked phones directly, each with a Revoke button, and the list follows a removal. Needs a prism-remote answering 'devices' with two fingerprints and 'revoke' (PRISM_REMOTE_BIN: a test double); with none, only the empty line can be checked." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "click", "selector": "#settings-button", "sidebar": true },
+	{ "do": "click", "selector": ".settings-section[data-section='window']" },
+	{ "do": "wait", "selector": "#settings-link:not([hidden]) .settings-link-phones .link-phone-phones li button", "text": "Revoke", "timeout": 15000 },
+	{ "do": "count", "selector": "#settings-link .link-phone-phones li", "count": 2 },
+	{ "do": "wait", "selector": "#settings-link button", "text": "Link a phone" },
+	{ "do": "fits", "selector": "#settings-link" },
+	{ "do": "shot", "name": "s1-two-phones" },
+	{ "do": "click", "selector": "#settings-link .link-phone-phones li button", "text": "Revoke" },
+	{ "do": "wait", "selector": "#settings-link .link-phone-phones li:only-child", "timeout": 15000 },
+	{ "do": "shot", "name": "s2-one-phone" },
+	{ "do": "click", "selector": "#settings-link .link-phone-phones li button", "text": "Revoke" },
+	{ "do": "wait", "selector": "#settings-link .settings-link-phones .panel-text.muted", "text": "No phone linked yet.", "timeout": 15000 },
+	{ "do": "absent", "selector": "#settings-link .link-phone-phones" },
+	{ "do": "shot", "name": "s3-none" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "log", "text": "qa-settings-linked-phones-ok" },
+	{ "do": "quit" }
+]

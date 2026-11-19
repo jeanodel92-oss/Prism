@@ -1,0 +1,15 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "pref", "id": "pref-language", "value": "fr" },
+	{ "do": "type", "text": "/skills" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.native-command:not(.closing) .listbox li", "text": "Installer un skill" },
+	{ "do": "click", "selector": ".panel.native-command:not(.closing) .listbox li", "text": "gui-reader" },
+	{ "do": "wait", "selector": ".panel.native-command:not(.closing) button[data-item='toggle']", "text": "Le désactiver" },
+	{ "do": "shot", "name": "skill-detail-fr" },
+	{ "do": "fits", "selector": ".panel.native-command:not(.closing) .panel-body" },
+	{ "do": "click", "selector": ".panel.native-command:not(.closing) .panel-close" },
+	{ "do": "wait", "selector": ".panel.native-command", "gone": true },
+	{ "do": "transcript-clean" },
+	{ "do": "quit" }
+]

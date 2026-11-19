@@ -1,9 +1,17 @@
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
-import { createInterface } from "node:readline";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { spawn } from "child_process";
 import path from "path";
 import { type Static, Type } from "typebox";
+import { grepContext, oversizeMatch, readJsonLines } from "../../fork/grep-bounds.ts";
+import { cacheLargeFileContext, type GrepContextOptions, textDecoder } from "../../fork/grep-context-lines.ts";
+import {
+	NON_UTF8_PATHS_NOTICE,
+	ripgrepText,
+	unreadablePathErrors,
+	unreadablePathsNotice,
+} from "../../fork/grep-unreadable.ts";
+import { protectedSearch, protectedSearchNotice } from "../../fork/search-protected.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { resolveToCwd } from "./path-utils.ts";
@@ -59,12 +67,18 @@ export interface GrepOperations {
 
 const defaultGrepOperations: GrepOperations = {
 	isDirectory: async (p) => (await fsStat(p)).isDirectory(),
-	readFile: (p) => fsReadFile(p, "utf-8"),
+	// fork: a UTF-16 file with its byte order mark is decoded as ripgrep decodes it.
+	readFile: async (p) => {
+		const decoder = textDecoder();
+		return decoder.write(await fsReadFile(p)) + decoder.end();
+	},
 };
 
 export interface GrepToolOptions {
 	/** Custom operations for grep. Default: local filesystem plus ripgrep */
 	operations?: GrepOperations;
+	/** fork: tests lower the size above which context lines are streamed. */
+	largeFileContext?: GrepContextOptions;
 }
 
 export function createGrepToolDefinition(
@@ -123,6 +137,9 @@ export function createGrepToolDefinition(
 						}
 
 						const searchPath = resolveToCwd(searchDir || ".", ctx?.cwd || cwd);
+						// fork: files `read` would ask for are left out of the results.
+						const protectedFile = protectedSearch(searchPath, ctx?.cwd || cwd);
+						const leftOut = new Set<string>();
 						const ops = customOps ?? defaultGrepOperations;
 						let isDirectory: boolean;
 						try {
@@ -132,7 +149,8 @@ export function createGrepToolDefinition(
 							return;
 						}
 
-						const contextValue = context && context > 0 ? context : 0;
+						// fork: a whole number of lines, bounded.
+						const contextValue = grepContext(context);
 						const effectiveLimit = Math.max(1, limit ?? DEFAULT_LIMIT);
 						const formatPath = (filePath: string): string => {
 							if (isDirectory) {
@@ -150,7 +168,9 @@ export function createGrepToolDefinition(
 							if (!lines) {
 								try {
 									const content = await ops.readFile(filePath);
-									lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+									// fork: only \n ends a line, as for ripgrep; a lone \r
+									// stays in its line and is removed for display below.
+									lines = content.split("\n");
 								} catch {
 									lines = [];
 								}
@@ -165,8 +185,12 @@ export function createGrepToolDefinition(
 						if (glob) args.push("--glob", glob);
 						args.push("--", pattern, searchPath);
 
+						// fork: stopped while rg was being fetched or the path checked.
+						if (signal?.aborted) {
+							settle(() => reject(new Error("Operation aborted")));
+							return;
+						}
 						const child = spawn(rgPath, args, { stdio: ["ignore", "pipe", "pipe"] });
-						const rl = createInterface({ input: child.stdout });
 						let stderr = "";
 						let matchCount = 0;
 						let matchLimitReached = false;
@@ -176,7 +200,6 @@ export function createGrepToolDefinition(
 						const outputLines: string[] = [];
 
 						const cleanup = () => {
-							rl.close();
 							signal?.removeEventListener("abort", onAbort);
 						};
 						const stopChild = (dueToLimit = false) => {
@@ -215,8 +238,12 @@ export function createGrepToolDefinition(
 						};
 
 						// Collect matches during streaming, then format them after rg exits.
-						const matches: Array<{ filePath: string; lineNumber: number; lineText?: string }> = [];
-						rl.on("line", (line) => {
+						const matches: Array<{ filePath: string; lineNumber: number; lineText?: string; rawPath?: boolean }> =
+							[];
+						// fork: an event is never gathered whole past a megabyte; a longer match
+						// keeps its path, the start of its line and its line number when ripgrep's tail still holds it.
+						let unshownLongLines = 0;
+						const onLine = (line: string) => {
 							if (!line.trim() || matchCount >= effectiveLimit) return;
 							let event: any;
 							try {
@@ -225,16 +252,46 @@ export function createGrepToolDefinition(
 								return;
 							}
 							if (event.type === "match") {
+								// fork: a name that is not UTF-8 comes as `bytes`.
+								const pathText = ripgrepText(event.data?.path);
+								const filePath = pathText?.text;
+								if (filePath && protectedFile?.(path.resolve(searchPath, filePath))) {
+									leftOut.add(filePath);
+									return;
+								}
 								matchCount++;
-								const filePath = event.data?.path?.text;
 								const lineNumber = event.data?.line_number;
-								const lineText = event.data?.lines?.text;
+								const lineText = ripgrepText(event.data?.lines)?.text;
 								if (filePath && typeof lineNumber === "number")
-									matches.push({ filePath, lineNumber, lineText });
+									matches.push({ filePath, lineNumber, lineText, rawPath: pathText?.raw });
 								if (matchCount >= effectiveLimit) {
 									matchLimitReached = true;
 									stopChild(true);
 								}
+							}
+						};
+						readJsonLines(child.stdout, onLine, (head, tail) => {
+							const match = matchCount < effectiveLimit ? oversizeMatch(head, tail) : undefined;
+							if (!match) return;
+							const pathText = ripgrepText(match.path);
+							const filePath = pathText?.text;
+							if (filePath && protectedFile?.(path.resolve(searchPath, filePath))) {
+								leftOut.add(filePath);
+								return;
+							}
+							matchCount++;
+							if (filePath && match.lineNumber !== undefined) {
+								linesTruncated = true;
+								matches.push({
+									filePath,
+									lineNumber: match.lineNumber,
+									lineText: `${match.lineStart ?? ""}…`,
+									rawPath: pathText?.raw,
+								});
+							} else unshownLongLines++;
+							if (matchCount >= effectiveLimit) {
+								matchLimitReached = true;
+								stopChild(true);
 							}
 						});
 
@@ -248,21 +305,51 @@ export function createGrepToolDefinition(
 								settle(() => reject(new Error("Operation aborted")));
 								return;
 							}
-							if (!killedDueToLimit && code !== 0 && code !== 1) {
+							// fork: exit code 2 with only per-path errors means the other paths were searched.
+							const unreadable = code === 2 ? unreadablePathErrors(stderr) : undefined;
+							if (!killedDueToLimit && code !== 0 && code !== 1 && !unreadable) {
 								const errorMsg = stderr.trim() || `ripgrep exited with code ${code}`;
 								settle(() => reject(new Error(errorMsg)));
 								return;
 							}
 							if (matchCount === 0) {
 								settle(() =>
-									resolve({ content: [{ type: "text", text: "No matches found" }], details: undefined }),
+									resolve({
+										content: [
+											{
+												type: "text",
+												text: unreadable
+													? `No matches found\n\n[${unreadablePathsNotice(unreadable)}]`
+													: leftOut.size > 0
+														? `No matches found\n\n[${protectedSearchNotice(leftOut.size)}]`
+														: "No matches found",
+											},
+										],
+										details: undefined,
+									}),
 								);
 								return;
 							}
 
 							// Format matches after streaming finishes so custom readFile() backends can be async.
+							// fork: large local files give only the lines around the matches, in one pass.
+							if (contextValue > 0 && ops === defaultGrepOperations) {
+								await cacheLargeFileContext(matches, contextValue, fileCache, {
+									...options?.largeFileContext,
+									signal,
+								});
+								// fork: the abort listener is gone by now; the signal still says it.
+								if (signal?.aborted) {
+									settle(() => reject(new Error("Operation aborted")));
+									return;
+								}
+							}
+							// fork: formatting stops once the output is over what is shown.
+							let outputBytes = 0;
 							for (const match of matches) {
-								if (contextValue === 0 && match.lineText !== undefined) {
+								if (outputBytes > DEFAULT_MAX_BYTES) break;
+								// fork (405): a name that is not UTF-8 cannot be opened again; its line comes from rg.
+								if ((contextValue === 0 || match.rawPath) && match.lineText !== undefined) {
 									const relativePath = formatPath(match.filePath);
 									const sanitized = match.lineText
 										.replace(/\r\n/g, "\n")
@@ -271,9 +358,12 @@ export function createGrepToolDefinition(
 									const { text: truncatedText, wasTruncated } = truncateLine(sanitized);
 									if (wasTruncated) linesTruncated = true;
 									outputLines.push(`${relativePath}:${match.lineNumber}: ${truncatedText}`);
+									outputBytes += Buffer.byteLength(truncatedText) + 1;
 								} else {
-									const block = await formatBlock(match.filePath, match.lineNumber);
-									outputLines.push(...block);
+									for (const line of await formatBlock(match.filePath, match.lineNumber)) {
+										outputLines.push(line);
+										outputBytes += Buffer.byteLength(line) + 1;
+									}
 								}
 							}
 
@@ -300,6 +390,13 @@ export function createGrepToolDefinition(
 								);
 								details.linesTruncated = true;
 							}
+							if (unshownLongLines > 0)
+								notices.push(
+									`${unshownLongLines} matching line${unshownLongLines === 1 ? "" : "s"} over 1 MB not shown: their line number was not found. Use read with an offset`,
+								);
+							if (unreadable) notices.push(unreadablePathsNotice(unreadable));
+							if (leftOut.size > 0) notices.push(protectedSearchNotice(leftOut.size));
+							if (matches.some((match) => match.rawPath)) notices.push(NON_UTF8_PATHS_NOTICE);
 							if (notices.length > 0) output += `\n\n[${notices.join(". ")}]`;
 							settle(() =>
 								resolve({

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { KEYBINDINGS, useWindowsKeybindings } from "../src/core/keybindings.ts";
+import { KEYBINDINGS, KeybindingsManager, useWindowsKeybindings } from "../src/core/keybindings.ts";
+
+it("allows the desktop panel close key to be reassigned or disabled", () => {
+	expect(new KeybindingsManager().getKeys("app.panel.close")).toEqual(["space"]);
+	expect(new KeybindingsManager({ "app.panel.close": "alt+q" }).getKeys("app.panel.close")).toEqual(["alt+q"]);
+	expect(new KeybindingsManager({ "app.panel.close": [] }).getKeys("app.panel.close")).toEqual([]);
+});
 
 describe("Windows keybinding defaults", () => {
 	it("uses Windows keybindings on native Windows", () => {
@@ -25,7 +31,10 @@ describe("Windows keybinding defaults", () => {
 		const nativeWindows = process.platform === "win32";
 
 		expect(KEYBINDINGS["app.clipboard.pasteImage"].defaultKeys).toBe(windowsKeybindings ? "alt+v" : "ctrl+v");
-		expect(KEYBINDINGS["tui.altScreen.search"].defaultKeys).toBe(windowsKeybindings ? "ctrl+f" : "ctrl+shift+f");
+		// fork: ctrl+f searches on Linux as well.
+		expect(KEYBINDINGS["tui.altScreen.search"].defaultKeys).toEqual(
+			windowsKeybindings ? "ctrl+f" : ["ctrl+f", "ctrl+shift+f"],
+		);
 		expect(KEYBINDINGS["app.message.followUp"].defaultKeys).toBe(windowsKeybindings ? "ctrl+q" : "alt+enter");
 		expect(KEYBINDINGS["app.model.cycleBackward"].defaultKeys).toBe(windowsKeybindings ? "alt+p" : "shift+ctrl+p");
 		expect(KEYBINDINGS["tui.editor.undo"].defaultKeys).toBe(

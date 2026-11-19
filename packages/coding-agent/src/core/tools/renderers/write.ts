@@ -7,6 +7,7 @@
  */
 
 import { Container, Text } from "@earendil-works/pi-tui";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
@@ -100,6 +101,7 @@ function formatWriteCall(
 	cache: WriteHighlightCache | undefined,
 	cwd: string,
 ): string {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
 	const pathDisplay = renderToolPath(rawPath, theme, cwd);
@@ -119,7 +121,7 @@ function formatWriteCall(
 		const remaining = lines.length - maxLines;
 		text += `\n\n${displayLines.map((line) => (lang ? line : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines, ${totalLines} total,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+			text += `${theme.fg("muted", fill("\n... ({0} more lines, {1} total,", String(remaining), String(totalLines)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 		}
 	}
 

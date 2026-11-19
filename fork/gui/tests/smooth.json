@@ -1,0 +1,10 @@
+[
+	{ "do": "log", "text": "QA 2026-11-01: a reply neither shrinks nor scrolls back, ends at the bottom, and typing rebuilds no list." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "timed", "label": "reply 1", "text": "md", "selector": "#input", "settle": 700, "timeout": 10000, "why": "the welcome leaves: the transcript is shorter, and nothing scrolls" },
+	{ "do": "timed", "label": "reply 2", "text": "md", "selector": "#input", "settle": 700, "timeout": 10000, "smooth": true },
+	{ "do": "timed", "label": "reply 3", "text": "md", "selector": "#input", "settle": 700, "timeout": 10000, "smooth": true },
+	{ "do": "census", "label": "typing", "text": "hello", "ms": 300, "still": ["open-list", "history-list", "mode-switches", "widgets", "statusbar"] },
+	{ "do": "log", "text": "smooth-ok" },
+	{ "do": "quit" }
+]

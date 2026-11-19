@@ -309,6 +309,42 @@ export function visibleWidth(str: string): number {
 	return width;
 }
 
+/**
+ * fork: id carried by the OSC 8 links this process creates (`hyperlink()`), so
+ * `sanitizeTerminalText` keeps them and drops links that come from untrusted text.
+ */
+export const TRUSTED_LINK_ID = `pi-${globalThis.crypto.randomUUID()}`;
+
+const SGR_SEQUENCE = /^\x1b\[[0-9;:]*m$/;
+const LINK_CLOSE = /^\x1b\]8;;(?:\x07|\x1b\\)$/;
+// One linear pass: CSI, terminated OSC, DCS/SOS/PM/APC, any other ESC with the byte after it, and C0/C1 controls
+// except tab and newline. Bodies stop at the next ESC, so an unterminated sequence never rescans the text.
+const TERMINAL_CONTROL =
+	/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c)|\x1b[P_^X][^\x1b\x9c]*(?:\x1b\\|\x9c)?|\x1b[\s\S]?|[\x00-\x08\x0b-\x1a\x1c-\x1f\x7f-\x9f]/g;
+
+/**
+ * fork: remove terminal controls from untrusted display text. Keeps SGR styling, the
+ * links this process created, and link closers (harmless); drops everything that acts beyond styling.
+ */
+export function sanitizeTerminalText(text: string): string {
+	return text.replace(TERMINAL_CONTROL, (sequence) =>
+		SGR_SEQUENCE.test(sequence) || LINK_CLOSE.test(sequence) || sequence.startsWith(`\x1b]8;id=${TRUSTED_LINK_ID};`)
+			? sequence
+			: "",
+	);
+}
+
+/**
+ * fork: a one-line label from untrusted text (a name, an id, a path,
+ * a session title), or the payload of a sequence this process builds (title, notification). Removes every terminal
+ * control, styling included: a label has no reason to carry a colour, an unclosed one would run over the rest of the
+ * line, and an ESC inside an OSC payload ends the sequence on several terminals. Newline and tab become a space.
+ */
+export function sanitizeTerminalLabel(text: string): string {
+	if (!/[\x00-\x1f\x7f-\x9f]/.test(text)) return text;
+	return text.replace(TERMINAL_CONTROL, "").replace(/[\n\t]/g, " ");
+}
+
 /** Remove ANSI, OSC, and APC control sequences while preserving visible text. */
 export function stripTerminalSequences(str: string): string {
 	if (!str.includes("\x1b")) return str;

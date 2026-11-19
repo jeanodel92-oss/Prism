@@ -1,3 +1,4 @@
+import { imageDecodeRefusal } from "../fork/image-pixel-limit.ts";
 import { convertImageBytesToPng } from "./image-convert.ts";
 import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize.ts";
 
@@ -75,6 +76,10 @@ export async function processImage(
 	options?: ProcessImageOptions,
 ): Promise<ProcessImageResult> {
 	const autoResizeImages = options?.autoResizeImages ?? true;
+	// fork: a picture too large to decode is refused before Photon sees it.
+	const refusal =
+		autoResizeImages || !normalizeSupportedImageMimeType(mimeType) ? imageDecodeRefusal(bytes) : undefined;
+	if (refusal) return { ok: false, message: refusal };
 	const normalized = await normalizeImage(bytes, mimeType);
 	if (!normalized) {
 		return {

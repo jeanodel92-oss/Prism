@@ -1,10 +1,12 @@
 import { type SpawnSyncReturns, spawnSync } from "child_process";
-import { chmodSync, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "fs";
+import { chmodSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync } from "fs";
 import { arch, platform } from "os";
 import { join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { APP_NAME, getBinDir } from "../config.ts";
+import { hostProgram } from "../fork/host-program.ts";
+import { pinnedVersion, verifyPinnedDownload } from "../fork/pinned-tools.ts";
 import { fetchWithRetry } from "./management-http.ts";
 
 const TOOLS_DIR = getBinDir();
@@ -71,7 +73,9 @@ const TOOLS: Record<string, ToolConfig> = {
 // Check if a command exists in PATH by trying to run it
 function commandExists(cmd: string): boolean {
 	try {
-		const result = spawnSync(cmd, ["--version"], { stdio: "pipe" });
+		// fork: a candidate that never answers is killed after 5 s and
+		// counts as absent; no pipe a descendant could hold open. Its output was never read.
+		const result = spawnSync(cmd, ["--version"], { stdio: "ignore", timeout: 5000, killSignal: "SIGKILL" });
 		// Check for ENOENT error (command not found)
 		return result.error === undefined || result.error === null;
 	} catch {
@@ -90,11 +94,13 @@ export function getToolPath(tool: "fd" | "rg"): string | null {
 		return localPath;
 	}
 
-	// Check system PATH - if found, just return the command name (it's in PATH)
+	// fork: the real path the host-program rule finds, never the bare name: a PATH
+	// that starts with the project's `.venv/bin` ran an `rg` a sandboxed command wrote there. Windows keeps the name.
 	const systemBinaryNames = config.systemBinaryNames ?? [config.binaryName];
 	for (const systemBinaryName of systemBinaryNames) {
-		if (commandExists(systemBinaryName)) {
-			return systemBinaryName;
+		const program = platform() === "win32" ? systemBinaryName : hostProgram(systemBinaryName);
+		if (program && commandExists(program)) {
+			return program;
 		}
 	}
 
@@ -263,8 +269,8 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 	const architecture = arch();
 
 	// fd is pinned on darwin/x64, so skip the version lookup there.
-	const version =
-		tool === "fd" && plat === "darwin" && architecture === "x64" ? "10.3.0" : await getLatestVersion(config.repo);
+	// fork: every download is pinned, so its checksum can be checked.
+	const version = tool === "fd" && plat === "darwin" && architecture === "x64" ? "10.3.0" : pinnedVersion(tool);
 
 	// Get asset name for this platform
 	const assetName = config.getAssetName(version, plat, architecture);
@@ -276,22 +282,22 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 	mkdirSync(TOOLS_DIR, { recursive: true });
 
 	const downloadUrl = `https://github.com/${config.repo}/releases/download/${config.tagPrefix}${version}/${assetName}`;
-	const archivePath = join(TOOLS_DIR, assetName);
+	// fork: each download has its own folder, so the archive checked is the one extracted,
+	// and no other process's download replaces or removes it.
+	const workDir = mkdtempSync(join(TOOLS_DIR, `download_tmp_${config.binaryName}_`));
+	const archivePath = join(workDir, assetName);
 	const binaryExt = plat === "win32" ? ".exe" : "";
 	const binaryPath = join(TOOLS_DIR, config.binaryName + binaryExt);
 
-	// Download
-	await downloadFile(downloadUrl, archivePath);
-
 	// Extract into a unique temp directory. fd and rg downloads can run concurrently
 	// during startup, so sharing a fixed directory causes races.
-	const extractDir = join(
-		TOOLS_DIR,
-		`extract_tmp_${config.binaryName}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-	);
+	const extractDir = join(workDir, "extract");
 	mkdirSync(extractDir, { recursive: true });
 
 	try {
+		// Download
+		await downloadFile(downloadUrl, archivePath);
+		verifyPinnedDownload(tool, assetName, archivePath); // fork
 		if (assetName.endsWith(".tar.gz")) {
 			extractTarGzArchive(archivePath, extractDir, assetName);
 		} else if (assetName.endsWith(".zip")) {
@@ -323,8 +329,7 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 		}
 	} finally {
 		// Cleanup
-		rmSync(archivePath, { force: true });
-		rmSync(extractDir, { recursive: true, force: true });
+		rmSync(workDir, { recursive: true, force: true });
 	}
 
 	return binaryPath;
@@ -372,11 +377,13 @@ export async function ensureTool(
 	}
 
 	// Tool not found - download it
-	onStatus?.({ type: "info", message: `${config.name} not found. Downloading...` });
+	// fork: say what the tool is for, without the install path.
+	const purpose = tool === "fd" ? " (file search)" : tool === "rg" ? " (text search)" : "";
+	onStatus?.({ type: "info", message: `Downloading ${config.name}${purpose}...` });
 
 	try {
 		const path = await downloadTool(tool);
-		onStatus?.({ type: "info", message: `${config.name} installed to ${path}` });
+		onStatus?.({ type: "info", message: `${config.name} downloaded.` });
 		return path;
 	} catch (e) {
 		// Include the error cause chain: fetch failures surface as a bare

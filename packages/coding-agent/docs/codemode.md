@@ -1,6 +1,6 @@
 # Codemode
 
-The `codemode` tool lets the model write a JavaScript script that calls pi's other tools and runs non-LLM models, such as classifiers and image models. Only the script's output reaches the model, so a script can run calls in parallel and filter large results before the model sees them. To turn it on, see [Enable codemode](cli.md#enable-codemode).
+The `codemode` tool lets the model write a JavaScript script that calls Prism's other tools and runs non-LLM models, such as classifiers and image models. Only the script's output reaches the model, so a script can run calls in parallel and filter large results before the model sees them. To turn it on, see [Enable codemode](cli.md#enable-codemode).
 
 ## Scripts
 
@@ -13,7 +13,7 @@ A script may start with an options line:
 ```
 
 - `max_output_tokens` (default 10000) limits the output. Longer output keeps its start and end, and the full text is written to a temp file whose path is included in the result.
-- `timeout_ms` is a hard deadline for the whole script. It is unset by default. Image generation can take minutes, so do not set a short deadline for scripts that generate images.
+- `timeout_ms` is a hard deadline for the whole script. Without it, the script stops after 10 minutes (600000 ms). Image generation can take minutes, so do not set a short deadline for scripts that generate images.
 
 The result starts with `Script completed` or `Script failed`, the wall time, and the output. A failed script keeps its partial output, followed by `Script error:` and the error. Tool calls are real: calls made before a failure are not undone. Calls still running when the script ends are cancelled, and unawaited promises are discarded.
 

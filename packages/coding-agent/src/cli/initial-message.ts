@@ -37,7 +37,12 @@ export function buildInitialMessage({
 	}
 
 	return {
-		initialMessage: parts.length > 0 ? parts.join("") : undefined,
+		// fork: a part that does not end with a newline gets one, so piped text is
+		// not glued to the prompt that follows it.
+		initialMessage:
+			parts.length > 0
+				? parts.map((part, i) => (i < parts.length - 1 && !part.endsWith("\n") ? `${part}\n` : part)).join("")
+				: undefined,
 		initialImages: fileImages && fileImages.length > 0 ? fileImages : undefined,
 	};
 }

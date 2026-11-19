@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { keepRetiredModels, readPackageSources, readPreviousSnapshot } from "./fork-retired-models.ts";
 import { getEffortThinkingLevelMap, type ModelsDevReasoningOption } from "./models-dev-reasoning-options.ts";
 import { buildOpenRouterCatalog, type OpenRouterCatalog, type OpenRouterModelListItem } from "./openrouter-catalog.ts";
 import {
@@ -101,6 +102,7 @@ interface ModelsDevModel {
 	reasoning?: boolean;
 	reasoning_options?: ModelsDevReasoningOption[];
 	status?: string;
+	release_date?: string;
 	limit?: {
 		context?: number;
 		output?: number;
@@ -143,6 +145,44 @@ interface ModelsDevMetadata {
 }
 
 type ModelsDevCatalog = Record<string, ModelsDevProvider>;
+
+// fork: the raw models.dev catalog, kept for the release metadata applied to every chat model.
+let modelsDevCatalog: ModelsDevCatalog | undefined;
+
+// fork: providers whose models.dev entry has another name, or which serve another provider's models.
+const MODELS_DEV_PROVIDER_ALIASES: Record<string, string> = {
+	"openai-codex": "openai",
+	fireworks: "fireworks-ai",
+	together: "togetherai",
+	"vercel-ai-gateway": "vercel",
+};
+
+/**
+ * fork: models.dev's release date and "deprecated" status on each chat model, so a client can
+ * preselect recent models after a login. The date comes from the provider's own entry, else from the
+ * earliest date models.dev gives the same model ID elsewhere (also without a "vendor/" prefix); the
+ * status only from the provider's own entry, since deprecation is per provider.
+ */
+function applyReleaseMetadata(models: Model<Api>[], catalog: ModelsDevCatalog): void {
+	const earliest = new Map<string, string>();
+	for (const provider of Object.values(catalog)) {
+		for (const [id, model] of Object.entries(provider.models ?? {})) {
+			const date = model.release_date;
+			if (!date || !/^\d{4}-\d{2}(-\d{2})?$/.test(date)) continue;
+			for (const key of new Set([id, id.slice(id.lastIndexOf("/") + 1)])) {
+				const known = earliest.get(key);
+				if (!known || date < known) earliest.set(key, date);
+			}
+		}
+	}
+	for (const model of models) {
+		const own = catalog[MODELS_DEV_PROVIDER_ALIASES[model.provider] ?? model.provider]?.models?.[model.id];
+		const date =
+			own?.release_date ?? earliest.get(model.id) ?? earliest.get(model.id.slice(model.id.lastIndexOf("/") + 1));
+		if (date && /^\d{4}-\d{2}(-\d{2})?$/.test(date)) model.releaseDate = date;
+		if (own?.status === "deprecated") model.deprecated = true;
+	}
+}
 
 interface NvidiaNimModelListItem {
 	id: string;
@@ -197,7 +237,7 @@ const TOGETHER_REASONING_ONLY_MODELS = new Set([
 	"MiniMaxAI/MiniMax-M2.7",
 ]);
 const TOGETHER_REASONING_EFFORT_MODELS = new Set(["openai/gpt-oss-20b", "openai/gpt-oss-120b"]);
-const TOGETHER_TOGGLE_REASONING_EFFORT_MODELS = new Set(["deepseek-ai/DeepSeek-V4-Pro"]);
+const TOGETHER_TOGGLE_REASONING_EFFORT_MODELS = new Set(["deepseek-ai/DeepSeek-V4-Pro", "deepseek-ai/DeepSeek-V4-Pro-0813"]);
 const TOGETHER_FIXED_REASONING_LEVEL_MAP = {
 	off: null,
 	minimal: null,
@@ -862,8 +902,8 @@ function applyStrictToolCompatMetadata(model: Model<Api>): void {
 	}
 }
 
-// Responses endpoints verified (OpenAI, ChatGPT Codex backend, GitHub Copilot,
-// opencode zen) or documented (Azure OpenAI, Cloudflare AI Gateway) to pass
+// Responses endpoints verified
+//  or documented (Azure OpenAI, Cloudflare AI Gateway) to pass
 // OpenAI custom grammar tools through. OpenAI rejects `type: "custom"` tools
 // for pre-GPT-5 models (gpt-4.x, gpt-4o, o-series).
 const OPENAI_GRAMMAR_TOOL_PROVIDERS = new Set([
@@ -1759,6 +1799,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		const response = await fetch("https://models.dev/api.json");
 		if (!response.ok) throw new Error(`models.dev API returned ${response.status}`);
 		const data = (await response.json()) as ModelsDevCatalog;
+		modelsDevCatalog = data;
 
 		const models: Model<any>[] = [];
 		const nvidiaNimModelIds = data.nvidia?.models ? await fetchNvidiaNimModelIds() : new Map<string, string>();
@@ -2230,8 +2271,8 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// - @ai-sdk/google → google-generative-ai
 		// - null/undefined/@ai-sdk/openai-compatible → openai-completions
 		const opencodeVariants = [
-			{ key: "opencode", provider: "opencode", basePath: "https://opencode.ai/zen" },
-			{ key: "opencode-go", provider: "opencode-go", basePath: "https://opencode.ai/zen/go" },
+			{ key: "opencode", provider: "opencode", basePath: "https://opencode.ai/inference" },
+			{ key: "opencode-go", provider: "opencode-go", basePath: "https://opencode.ai/inference/go" },
 		] as const;
 
 		for (const variant of opencodeVariants) {
@@ -2280,16 +2321,9 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 
 				// Fix known mismatches between models.dev npm data and actual
 				// OpenCode Go endpoint behaviour. models.dev reports these models
-				// as @ai-sdk/anthropic, but the OpenCode Go endpoints either don't
-				// accept Anthropic SDK auth (MiniMax M2.7) or are served through
-				// the OpenAI-compatible /v1/chat/completions path (Qwen 3.5/3.6).
-				// Switch them to openai-completions so requests use Bearer auth
-				// and the standard /v1/chat/completions endpoint.
+				// as @ai-sdk/anthropic, but OpenCode Go serves them through the
+				// OpenAI-compatible /v1/chat/completions path.
 				if (variant.provider === "opencode-go") {
-					if (modelId === "minimax-m2.7") {
-						api = "openai-completions";
-						baseUrl = `${variant.basePath}/v1`;
-					}
 					if (modelId === "qwen3.5-plus" || modelId === "qwen3.6-plus") {
 						api = "openai-completions";
 						baseUrl = `${variant.basePath}/v1`;
@@ -2707,7 +2741,7 @@ async function loadModelsDevClassifierModels(): Promise<ClassifierModel<"typesaf
 // System One models yet. Cloudflare publishes pricing only in the dashboard.
 // https://developers.cloudflare.com/ai/models/typesafe/jev/
 // OpenCode Zen serves Jev through its TypeSafe-compatible System One endpoint.
-// Neither its /zen/v1/models listing nor models.dev carries metadata for it.
+// Neither its /inference/v1/models listing nor models.dev carries metadata for it.
 // https://opencode.ai/docs/zen
 const OPENCODE_CLASSIFIER_MODELS: ClassifierModel<"typesafe-system-one">[] = [
 	{
@@ -2716,7 +2750,7 @@ const OPENCODE_CLASSIFIER_MODELS: ClassifierModel<"typesafe-system-one">[] = [
 		name: "Jev 1.13",
 		api: "typesafe-system-one",
 		provider: "opencode",
-		baseUrl: "https://opencode.ai/zen/v1",
+		baseUrl: "https://opencode.ai/inference/v1",
 		input: ["text"],
 		cost: { input: 0.042, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 32000,
@@ -2727,7 +2761,7 @@ const OPENCODE_CLASSIFIER_MODELS: ClassifierModel<"typesafe-system-one">[] = [
 		name: "Jev 1.13 Free",
 		api: "typesafe-system-one",
 		provider: "opencode",
-		baseUrl: "https://opencode.ai/zen/v1",
+		baseUrl: "https://opencode.ai/inference/v1",
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 32000,
@@ -3396,6 +3430,7 @@ async function generateModels() {
 		"gpt-5.6-sol": 1050000,
 		"gpt-5.6-terra": 1050000,
 	};
+	if (modelsDevCatalog) applyReleaseMetadata(allModels, modelsDevCatalog);
 	const azureOpenAiModels: Model<Api>[] = allModels
 		.filter((model) => model.provider === "openai" && model.api === "openai-responses")
 		.map((model) => ({
@@ -3441,6 +3476,18 @@ async function generateModels() {
 		providers[model.provider] ??= { chat: {}, image: {}, classifier: {} };
 		// Only add if not already present (models.dev takes priority over OpenRouter).
 		providers[model.provider].chat[model.id] ??= { ...model, type: "chat" };
+	}
+	// fork: when the snapshot is rewritten, retired models the code or tests still name stay,
+	// deprecated (fork-retired-models.ts).
+	if (!generatorOptions.jsonOnly) {
+		const chatByProvider = Object.fromEntries(Object.entries(providers).map(([id, catalog]) => [id, catalog.chat]));
+		const retired = keepRetiredModels(
+			chatByProvider,
+			readPreviousSnapshot(packageRoot),
+			readPackageSources(join(packageRoot, "..")),
+		);
+		for (const [id, chat] of Object.entries(chatByProvider)) providers[id] ??= { chat, image: {}, classifier: {} };
+		if (retired.length > 0) console.log(`Kept ${retired.length} retired models still named in the code: ${retired.join(", ")}`);
 	}
 	for (const model of openRouterCatalog.images) {
 		applyImageInputMetadata(model);

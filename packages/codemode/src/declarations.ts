@@ -10,6 +10,11 @@ const INDENT = "  ";
 export const DEFAULT_INPUT_SCHEMA_MAX_CHARS = 16_000;
 /** Local `$ref` expansions per rendered schema, so shared definitions cannot blow up the output. */
 const MAX_REF_EXPANSIONS = 32;
+/**
+ * fork: deeper schemas render as `unknown`. Rendering recurses once per
+ * level, and a remote tool's deeply nested inline schema overflowed the stack, failing every codemode call.
+ */
+const MAX_SCHEMA_DEPTH = 32;
 
 /**
  * TypeScript types for MCP results, from the MCP `CallToolResult` schema, so `CallToolResult<T>`
@@ -139,11 +144,14 @@ export function renderToolSignature(
 	tool: Pick<CodemodeTool, "name" | "inputSchema" | "outputSchema">,
 	options: { inputMaxChars?: number } = {},
 ): string {
+	const inputSchema = tool.inputSchema;
 	const input =
-		tool.inputSchema === undefined
+		inputSchema === undefined
 			? "unknown"
-			: schemaToType(tool.inputSchema, { maxChars: options.inputMaxChars ?? DEFAULT_INPUT_SCHEMA_MAX_CHARS });
-	return `${toCodemodeIdentifier(tool.name)}(args: ${input}): Promise<${renderToolOutputType(tool.outputSchema)}>;`;
+			: isolated(() =>
+					schemaToType(inputSchema, { maxChars: options.inputMaxChars ?? DEFAULT_INPUT_SCHEMA_MAX_CHARS }),
+				);
+	return `${toCodemodeIdentifier(tool.name)}(args: ${input}): Promise<${isolated(() => renderToolOutputType(tool.outputSchema))}>;`;
 }
 
 /**
@@ -191,9 +199,23 @@ function renderGlobal(head: string, global: CodemodeTool, indent: string): strin
 	if (global.signature !== undefined) {
 		return `${docComment(global.description, indent)}${indent}${head}${global.signature};`;
 	}
-	const input = global.inputSchema === undefined ? "unknown" : schemaToType(global.inputSchema);
-	const output = global.outputSchema === undefined ? "unknown" : schemaToType(global.outputSchema);
+	const { inputSchema, outputSchema } = global;
+	const input = inputSchema === undefined ? "unknown" : isolated(() => schemaToType(inputSchema));
+	const output = outputSchema === undefined ? "unknown" : isolated(() => schemaToType(outputSchema));
 	return `${docComment(global.description, indent)}${indent}${head}(args: ${input}): Promise<${output}>;`;
+}
+
+/**
+ * fork: one tool's schema that cannot be rendered (a `const` or
+ * `enum` value `JSON.stringify` rejects, such as a BigInt or a cycle, or a throwing getter) renders as `unknown` instead
+ * of failing the declarations, and so the description, of every other tool.
+ */
+function isolated(render: () => string): string {
+	try {
+		return render();
+	} catch {
+		return "unknown";
+	}
 }
 
 function docComment(description: string | undefined, indent: string): string {
@@ -226,7 +248,7 @@ function union(types: string[]): string {
  * `unknown`.
  */
 export function schemaToType(schema: CodemodeJsonSchema, options: { maxChars?: number } = {}): string {
-	const type = toType(schema, { root: schema, resolving: new Set(), expansions: 0 });
+	const type = toType(schema, { root: schema, resolving: new Set(), expansions: 0, depth: 0 });
 	return options.maxChars !== undefined && type.length > options.maxChars ? "unknown" : type;
 }
 
@@ -235,6 +257,8 @@ interface SchemaContext {
 	/** References being expanded on the current path, to stop at recursive types. */
 	resolving: Set<string>;
 	expansions: number;
+	/** Schemas being rendered on the current path. */
+	depth: number;
 }
 
 function resolveRef(ref: string, root: CodemodeJsonSchema): CodemodeJsonSchema | undefined {
@@ -249,6 +273,16 @@ function resolveRef(ref: string, root: CodemodeJsonSchema): CodemodeJsonSchema |
 }
 
 function toType(schema: CodemodeJsonSchema, context: SchemaContext): string {
+	if (context.depth >= MAX_SCHEMA_DEPTH) return "unknown";
+	context.depth++;
+	try {
+		return toTypeAtDepth(schema, context);
+	} finally {
+		context.depth--;
+	}
+}
+
+function toTypeAtDepth(schema: CodemodeJsonSchema, context: SchemaContext): string {
 	if (schema === true) return "unknown";
 	if (schema === false) return "never";
 	if (!isObject(schema)) return "unknown";
@@ -308,15 +342,19 @@ function toType(schema: CodemodeJsonSchema, context: SchemaContext): string {
 }
 
 function arrayType(schema: Record<string, unknown>, context: SchemaContext): string {
+	// fork: the tuple prefix comes first; `items` (or draft-04 `additionalItems`)
+	// only types the elements after it, and `false` merely closes the tuple.
+	const prefixed = Array.isArray(schema.prefixItems);
+	const tuple = prefixed ? schema.prefixItems : Array.isArray(schema.items) ? schema.items : [];
+	if (Array.isArray(tuple) && tuple.length > 0) {
+		const head = tuple.map((item) => toType(item as CodemodeJsonSchema, context)).join(", ");
+		const rest = prefixed ? schema.items : schema.additionalItems;
+		if (rest === undefined || rest === false || Array.isArray(rest)) return `[${head}]`;
+		return `[${head}, ...Array<${toType(rest as CodemodeJsonSchema, context)}>]`;
+	}
 	if (schema.items !== undefined && !Array.isArray(schema.items)) {
 		return `Array<${toType(schema.items as CodemodeJsonSchema, context)}>`;
 	}
-	const tuple = Array.isArray(schema.prefixItems)
-		? schema.prefixItems
-		: Array.isArray(schema.items)
-			? schema.items
-			: [];
-	if (tuple.length > 0) return `[${tuple.map((item) => toType(item as CodemodeJsonSchema, context)).join(", ")}]`;
 	return "unknown[]";
 }
 

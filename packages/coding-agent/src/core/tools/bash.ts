@@ -4,6 +4,7 @@ import { constants as osConstants } from "node:os";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
+import { wholeCharacters } from "../../fork/utf8-chunks.ts";
 import { waitForChildProcess } from "../../utils/child-process.ts";
 import {
 	getShellConfig,
@@ -89,6 +90,8 @@ export interface BashOperations {
 			signal?: AbortSignal;
 			timeout?: number;
 			env?: NodeJS.ProcessEnv;
+			/** fork: the tool call running the command, for the sandbox's network questions. */
+			toolCallId?: string;
 		},
 	) => Promise<{ exitCode: number | null }>;
 }
@@ -136,8 +139,13 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 					}, timeoutMs);
 				}
 				// Stream stdout and stderr.
-				child.stdout?.on("data", onData);
-				child.stderr?.on("data", onData);
+				// fork: each stream passes on whole characters only, so a
+				// character split on stdout is not decoded together with stderr's bytes.
+				for (const stream of [child.stdout, child.stderr]) {
+					const whole = wholeCharacters(onData);
+					stream?.on("data", whole.write);
+					stream?.once("end", whole.end);
+				}
 				// Handle abort signal by killing the entire process tree.
 				if (signal) {
 					if (signal.aborted) onAbort();
@@ -339,17 +347,19 @@ export function createShellToolDefinition(
 				const truncation = snapshot.truncation;
 				let text = snapshot.content || emptyText;
 				let details: BashToolDetails | undefined;
+				// fork: a log that could not be written is said, not given as a path.
+				const fullOutput = snapshot.fullOutputPath ?? `not saved (${snapshot.fullOutputError ?? "no log"})`;
 				if (truncation.truncated) {
 					details = { truncation, fullOutputPath: snapshot.fullOutputPath };
 					const startLine = truncation.totalLines - truncation.outputLines + 1;
 					const endLine = truncation.totalLines;
 					if (truncation.lastLinePartial) {
 						const lastLineSize = formatSize(output.getLastLineBytes());
-						text += `\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${snapshot.fullOutputPath}]`;
+						text += `\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${fullOutput}]`;
 					} else if (truncation.truncatedBy === "lines") {
-						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${snapshot.fullOutputPath}]`;
+						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${fullOutput}]`;
 					} else {
-						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${snapshot.fullOutputPath}]`;
+						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${fullOutput}]`;
 					}
 				}
 				return { text, details };
@@ -366,6 +376,7 @@ export function createShellToolDefinition(
 						signal,
 						timeout,
 						env: spawnContext.env,
+						toolCallId: _toolCallId,
 					});
 					exitCode = result.exitCode;
 				} catch (err) {

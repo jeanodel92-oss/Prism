@@ -1,0 +1,155 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: one search across the window's preferences and every engine domain"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "click",
+		"selector": "#settings-button",
+		"sidebar": true
+	},
+	{
+		"do": "wait",
+		"selector": "#settings .settings-mode:not([hidden])",
+		"timeout": 15000,
+		"why": "the engine's settings are drawn"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-section",
+		"text": "Models"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-pane-title",
+		"text": "Models"
+	},
+	{
+		"do": "type",
+		"selector": "#settings .settings-search",
+		"text": "theme"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-pane-title",
+		"text": "Search results"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-window .field-row:not([hidden])",
+		"text": "Theme",
+		"why": "the window's own preference"
+	},
+	{
+		"do": "absent",
+		"selector": "#settings-window .field-row:not([hidden])",
+		"text": "Language"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine .native-menu-field",
+		"text": "First-run setup",
+		"why": "the engine's setting, with its domain"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine .native-menu-group",
+		"text": "Other"
+	},
+	{
+		"do": "focused",
+		"selector": "#settings .settings-search",
+		"why": "typing keeps the keyboard while the results come"
+	},
+	{
+		"do": "absent",
+		"selector": "#settings .settings-section[aria-current='true']"
+	},
+	{
+		"do": "shot",
+		"name": "theme"
+	},
+	{
+		"do": "type",
+		"selector": "#settings .settings-search",
+		"text": "zzzz qqqq"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine .panel-text",
+		"text": "No setting matches."
+	},
+	{
+		"do": "absent",
+		"selector": "#settings-window .field-row"
+	},
+	{
+		"do": "type",
+		"selector": "#settings .settings-search",
+		"text": ""
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-pane-title",
+		"text": "Models",
+		"why": "an empty search comes back to the domain shown before"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings .settings-section[aria-current='true']",
+		"text": "Models"
+	},
+	{
+		"do": "absent",
+		"selector": "#settings-engine .native-menu-group"
+	},
+	{
+		"do": "type",
+		"selector": "#settings .settings-search",
+		"text": "theme"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-engine .native-menu-group",
+		"text": "Other"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-section",
+		"text": "Models"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-pane-title",
+		"text": "Models",
+		"why": "a section chosen ends the search, even the one shown before"
+	},
+	{
+		"do": "absent",
+		"selector": "#settings-engine .native-menu-group"
+	},
+	{
+		"do": "click",
+		"selector": "#settings .settings-section",
+		"text": "Window"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-window .field-row",
+		"text": "Language",
+		"why": "the window's rows all shown again"
+	},
+	{
+		"do": "click",
+		"selector": "#settings button",
+		"text": "Close"
+	},
+	{
+		"do": "quit"
+	}
+]

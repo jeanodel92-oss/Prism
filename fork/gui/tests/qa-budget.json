@@ -1,0 +1,20 @@
+[
+	{ "do": "log", "text": "QA 2026-11-01: /budget is a screen with a field per limit, kept by the engine." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/budget" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#surface .panel.budget tr[data-kind='tools'] input" },
+	{ "do": "count", "selector": ".panel.budget tbody tr", "count": 4 },
+	{ "do": "shot", "name": "b1-off" },
+	{ "do": "type", "selector": ".panel.budget tr[data-kind='tools'] input", "text": "50" },
+	{ "do": "click", "selector": ".panel.budget tr[data-kind='tools'] button[type='submit']" },
+	{ "do": "wait", "selector": ".panel.budget tr[data-kind='tools'] .budget-gauge", "why": "the limit is set: a gauge and a way to remove it" },
+	{ "do": "style", "selector": ".panel.budget tr[data-kind='tools'] .budget-gauge > div", "property": "width", "value": "0px", "why": "nothing used yet: an empty gauge" },
+	{ "do": "shot", "name": "b2-set" },
+	{ "do": "click", "selector": ".panel.budget tr[data-kind='tools'] button.ghost" },
+	{ "do": "wait", "selector": ".panel.budget tr[data-kind='tools'] .budget-gauge", "gone": true },
+	{ "do": "key", "selector": ".panel.budget", "key": "Escape" },
+	{ "do": "wait", "selector": "#surface .panel.budget", "gone": true },
+	{ "do": "log", "text": "qa-budget-ok" },
+	{ "do": "quit" }
+]

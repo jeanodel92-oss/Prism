@@ -117,7 +117,7 @@ export interface PackageManager {
 	installAndPersist(source: string, options?: { local?: boolean }): Promise<void>;
 	remove(source: string, options?: { local?: boolean }): Promise<void>;
 	removeAndPersist(source: string, options?: { local?: boolean }): Promise<boolean>;
-	update(source?: string): Promise<void>;
+	update(source?: string, options?: { local?: boolean }): Promise<void>;
 	listConfiguredPackages(): ConfiguredPackage[];
 	resolveExtensionSources(
 		sources: string[],
@@ -135,6 +135,8 @@ interface PackageManagerOptions {
 	settingsManager: SettingsManager;
 	/** Names of built-in extensions, resolved as `builtin:<name>` extension resources. */
 	builtinExtensions?: string[];
+	/** fork: names from `builtinExtensions` that are off unless `+builtin:<name>` turns them on. */
+	builtinExtensionsDisabledByDefault?: string[];
 }
 
 type SourceScope = "user" | "project" | "temporary";
@@ -287,7 +289,8 @@ function isOverridePattern(s: string): boolean {
 }
 
 function hasGlobPattern(s: string): boolean {
-	return s.includes("*") || s.includes("?");
+	// fork: character classes and braces are glob syntax for the globber too.
+	return /[*?[\]{}]/.test(s);
 }
 
 /** Glob entries discover visible paths; exact entries can target dot paths or symlinked trees. */
@@ -715,13 +718,13 @@ function getOverridePatterns(entries: string[]): string[] {
 	return entries.filter((pattern) => pattern.startsWith("!") || pattern.startsWith("+") || pattern.startsWith("-"));
 }
 
-function isEnabledByOverrides(filePath: string, patterns: string[], baseDir: string): boolean {
+function isEnabledByOverrides(filePath: string, patterns: string[], baseDir: string, defaultEnabled = true): boolean {
 	const overrides = getOverridePatterns(patterns);
 	const excludes = overrides.filter((pattern) => pattern.startsWith("!")).map((pattern) => pattern.slice(1));
 	const forceIncludes = overrides.filter((pattern) => pattern.startsWith("+")).map((pattern) => pattern.slice(1));
 	const forceExcludes = overrides.filter((pattern) => pattern.startsWith("-")).map((pattern) => pattern.slice(1));
 
-	let enabled = true;
+	let enabled = defaultEnabled;
 	if (excludes.length > 0 && matchesAnyPattern(filePath, excludes, baseDir)) {
 		enabled = false;
 	}
@@ -814,6 +817,7 @@ export class DefaultPackageManager implements PackageManager {
 	private agentDir: string;
 	private settingsManager: SettingsManager;
 	private builtinExtensions: string[];
+	private builtinExtensionsDisabledByDefault: string[];
 	private globalNpmRoot: string | undefined;
 	private globalNpmRootCommandKey: string | undefined;
 	private progressCallback: ProgressCallback | undefined;
@@ -823,6 +827,7 @@ export class DefaultPackageManager implements PackageManager {
 		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager;
 		this.builtinExtensions = options.builtinExtensions ?? [];
+		this.builtinExtensionsDisabledByDefault = options.builtinExtensionsDisabledByDefault ?? [];
 	}
 
 	setProgressCallback(callback: ProgressCallback | undefined): void {
@@ -981,7 +986,14 @@ export class DefaultPackageManager implements PackageManager {
 				accumulator.extensions,
 				path,
 				{ source: "builtin", scope: projectEnabled === undefined ? "user" : "project", origin: "top-level" },
-				projectEnabled ?? isEnabledByOverrides(path, globalSettings.extensions ?? [], globalBaseDir),
+				projectEnabled ??
+					isEnabledByOverrides(
+						path,
+						globalSettings.extensions ?? [],
+						globalBaseDir,
+						// fork: default-off built-in extensions.
+						!this.builtinExtensionsDisabledByDefault.includes(name),
+					),
 			);
 		}
 
@@ -1087,9 +1099,10 @@ export class DefaultPackageManager implements PackageManager {
 		return this.removeSourceFromSettings(source, options);
 	}
 
-	async update(source?: string): Promise<void> {
-		const globalSettings = this.settingsManager.getGlobalSettings();
-		const projectSettings = this.settingsManager.getProjectSettings();
+	async update(source?: string, options?: { local?: boolean }): Promise<void> {
+		// fork: with a scope, only that scope's settings are updated.
+		const globalSettings = options?.local === true ? {} : this.settingsManager.getGlobalSettings();
+		const projectSettings = options?.local === false ? {} : this.settingsManager.getProjectSettings();
 		const identity = source ? this.getPackageIdentity(source) : undefined;
 		let matched = false;
 		const updateSources: ConfiguredUpdateSource[] = [];
@@ -1905,6 +1918,14 @@ export class DefaultPackageManager implements PackageManager {
 		}
 		mkdirSync(dirname(targetDir), { recursive: true });
 		rmSync(this.getGitUpdateMarkerPath(targetDir), { force: true });
+		// fork: the folder is reserved before the clone (git clones into an empty one), so
+		// a failure removes only the folder this call created, never another session's finished install.
+		try {
+			mkdirSync(targetDir);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			throw new Error(`${source.repo} is being installed by another process; try again once it is done.`);
+		}
 
 		try {
 			await this.runCommand("git", ["clone", source.repo, targetDir]);
@@ -2152,15 +2173,17 @@ export class DefaultPackageManager implements PackageManager {
 	}
 
 	private getGitInstallPath(source: GitSource, scope: SourceScope): string {
+		// fork: a port is part of the host; "+" keeps the folder name valid everywhere.
+		const host = source.host.replace(/:(\d+)$/, "+$1");
 		if (scope === "temporary") {
 			// Include the ref in the hash so each pinned ref gets its own checkout.
-			return this.getTemporaryDir(`git-${source.host}`, source.path, source.ref);
+			return this.getTemporaryDir(`git-${host}`, source.path, source.ref);
 		}
 		const installRoot = this.getGitInstallRoot(scope);
 		if (!installRoot) {
 			throw new Error("Missing git install root");
 		}
-		return this.resolveManagedPath(installRoot, source.host, source.path);
+		return this.resolveManagedPath(installRoot, host, source.path);
 	}
 
 	private getGitInstallRoot(scope: SourceScope): string | undefined {
@@ -2269,9 +2292,15 @@ export class DefaultPackageManager implements PackageManager {
 		metadata: PathMetadata,
 	): void {
 		const manifest = readPiManifest(join(packageRoot, "package.json"));
-		const entries = manifest?.[resourceType as keyof PiManifest];
-		if (entries) {
-			this.addManifestEntries(entries, packageRoot, resourceType, target, metadata);
+		// fork: a manifest bounds discovery; a category it does not export stays absent.
+		if (manifest) {
+			this.addManifestEntries(
+				manifest[resourceType as keyof PiManifest],
+				packageRoot,
+				resourceType,
+				target,
+				metadata,
+			);
 			return;
 		}
 		const dir = join(packageRoot, resourceType);
@@ -2338,8 +2367,9 @@ export class DefaultPackageManager implements PackageManager {
 		resourceType: ResourceType,
 	): { allFiles: string[]; enabledByManifest: Set<string> } {
 		const manifest = readPiManifest(join(packageRoot, "package.json"));
-		const entries = manifest?.[resourceType as keyof PiManifest];
-		if (entries && entries.length > 0) {
+		// fork: with a manifest, an absent or empty category exports nothing.
+		if (manifest) {
+			const entries = manifest[resourceType as keyof PiManifest] ?? [];
 			const allFiles = this.collectFilesFromManifestEntries(entries, packageRoot, resourceType);
 			const manifestPatterns = entries.filter(isOverridePattern);
 			const enabledByManifest =
@@ -2378,8 +2408,10 @@ export class DefaultPackageManager implements PackageManager {
 	private collectFilesFromManifestEntries(entries: string[], root: string, resourceType: ResourceType): string[] {
 		const sourceEntries = entries.filter((entry) => !isOverridePattern(entry));
 		const resolved = sourceEntries.flatMap((entry) => {
-			if (!hasGlobPattern(entry)) {
-				return [resolve(root, entry)];
+			// fork: an existing literal path wins, so names containing brackets still load.
+			const literal = resolve(root, entry);
+			if (!hasGlobPattern(entry) || existsSync(literal)) {
+				return [literal];
 			}
 
 			return expandPackageGlob(entry, root);
@@ -2620,7 +2652,10 @@ export class DefaultPackageManager implements PackageManager {
 		enabled: boolean,
 	): void {
 		if (!path) return;
-		if (!map.has(path)) {
+		// fork: the same path declared with higher precedence replaces the earlier entry,
+		// so its enabled state survives; equal precedence keeps the first entry as before.
+		const existing = map.get(path);
+		if (!existing || resourcePrecedenceRank(metadata) < resourcePrecedenceRank(existing.metadata)) {
 			map.set(path, { metadata, enabled });
 		}
 	}

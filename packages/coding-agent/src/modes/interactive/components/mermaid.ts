@@ -2,6 +2,7 @@ import { Marked, type Token } from "@earendil-works/pi-tui";
 import { type MermaidArt, render, type Span } from "grok-mermaid";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import type { MermaidRenderingMode } from "../../../core/settings-manager.ts";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import type { Theme } from "../theme/theme.ts";
 
 const markdownParser = new Marked();
@@ -58,6 +59,7 @@ function themedLines(art: MermaidArt, theme: Theme): string[] {
 
 /** Create a transformer that replaces top-level Mermaid code blocks with Unicode terminal diagrams. */
 export function createMermaidMarkdownTransformer(options: MermaidTransformerOptions): MarkdownTransformer {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	return (markdown, context) => {
 		const mode = options.getMode();
 		if (
@@ -75,8 +77,8 @@ export function createMermaidMarkdownTransformer(options: MermaidTransformerOpti
 				const art = render(token.text);
 				if (!art || art.width > context.availableWidth) return token.raw;
 				if (!context.isStreaming && art.warnings.length > 0) {
-					const suffix = art.warnings.length > 1 ? ` (+${art.warnings.length - 1} more)` : "";
-					const warning = `Mermaid diagram not rendered: ${art.warnings[0]}${suffix}`;
+					const suffix = art.warnings.length > 1 ? fill(" (+{0} more)", String(art.warnings.length - 1)) : "";
+					const warning = fill("Mermaid diagram not rendered: {0}{1}", art.warnings[0]!, suffix);
 					const styledWarning = options.theme ? options.theme.fg("warning", warning) : warning;
 					return `${token.raw}\n${codeSpan(styledWarning)}  \n`;
 				}

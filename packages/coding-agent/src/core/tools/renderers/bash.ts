@@ -7,6 +7,7 @@
  */
 
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.ts";
 import { theme } from "../../../modes/interactive/theme/theme.ts";
@@ -46,6 +47,7 @@ function rebuildBashResultRenderComponent(
 	startedAt: number | undefined,
 	endedAt: number | undefined,
 ): void {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	component.clear();
 
 	let output = getTextOutput(result as any, showImages).trim();
@@ -74,7 +76,7 @@ function rebuildBashResultRenderComponent(
 					maxVisualLines: BASH_PREVIEW_LINES,
 					keep: "end",
 					formatHint: (hidden) =>
-						theme.fg("muted", `... (${hidden} earlier lines,`) +
+						theme.fg("muted", fill("... ({0} earlier lines,", String(hidden))) +
 						` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
 				}),
 			);
@@ -84,14 +86,24 @@ function rebuildBashResultRenderComponent(
 	if (truncation?.truncated || fullOutputPath) {
 		const warnings: string[] = [];
 		if (fullOutputPath) {
-			warnings.push(`Full output: ${fullOutputPath}`);
+			warnings.push(fill("Full output: {0}", fullOutputPath));
 		}
 		if (truncation?.truncated) {
 			if (truncation.truncatedBy === "lines") {
-				warnings.push(`Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`);
+				warnings.push(
+					fill(
+						"Truncated: showing {0} of {1} lines",
+						String(truncation.outputLines),
+						String(truncation.totalLines),
+					),
+				);
 			} else {
 				warnings.push(
-					`Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit)`,
+					fill(
+						"Truncated: {0} lines shown ({1} limit)",
+						String(truncation.outputLines),
+						formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES),
+					),
 				);
 			}
 		}

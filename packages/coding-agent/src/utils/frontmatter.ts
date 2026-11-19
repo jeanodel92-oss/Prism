@@ -11,18 +11,23 @@ const normalizeNewlines = (value: string): string => value.replace(/\r\n/g, "\n"
 const extractFrontmatter = (content: string): { yamlString: string | null; body: string } => {
 	const normalized = normalizeNewlines(stripBom(content));
 
-	if (!normalized.startsWith("---")) {
+	// fork: delimiters are whole lines of exactly three dashes, so a Markdown rule
+	// such as "----" or a line like "--- note" is content, not frontmatter.
+	const opening = /^---[ \t]*\n/.exec(normalized);
+	if (!opening) {
 		return { yamlString: null, body: normalized };
 	}
 
-	const endIndex = normalized.indexOf("\n---", 3);
-	if (endIndex === -1) {
+	const closing = /\n---[ \t]*(?:\n|$)/g;
+	closing.lastIndex = opening[0].length - 1;
+	const end = closing.exec(normalized);
+	if (!end) {
 		return { yamlString: null, body: normalized };
 	}
 
 	return {
-		yamlString: normalized.slice(4, endIndex),
-		body: normalized.slice(endIndex + 4).trim(),
+		yamlString: normalized.slice(opening[0].length, end.index),
+		body: normalized.slice(end.index + end[0].length).trim(),
 	};
 };
 

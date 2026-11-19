@@ -54,7 +54,8 @@ function getCreateJiti(): Promise<typeof createJiti> {
 
 let virtualModulesPromise: Promise<Record<string, unknown>> | undefined;
 
-function getVirtualModules(): Promise<Record<string, unknown>> {
+/** fork: exported so vendored plugins can reuse the host's module instances (src/fork/vendored.ts). */
+export function getVirtualModules(): Promise<Record<string, unknown>> {
 	virtualModulesPromise ??= import("./virtual-modules.ts").then((module) => module.VIRTUAL_MODULES);
 	return virtualModulesPromise;
 }
@@ -245,14 +246,19 @@ function createExtensionAPI(
 	runtime: ExtensionRuntime,
 	cwd: string,
 	eventBus: EventBus,
-): { api: ExtensionAPI; commit: () => void; discard: () => void } {
+): { api: ExtensionAPI; commit: () => void; discard: () => void; withdraw: () => void } {
 	const pendingFlagValues = new Map<string, boolean | string>();
 	const pendingRuntimeChanges: Array<() => void> = [];
 	const loadingUnsubscribers: Array<() => void> = [];
-	let state: "loading" | "active" | "failed" = "loading";
+	// fork: every event bus subscription, so a withdrawn extension leaves none behind.
+	const busUnsubscribers: Array<() => void> = [];
+	let state: "loading" | "active" | "failed" | "withdrawn" = "loading";
 	const assertActive = () => {
 		if (state === "failed") {
 			throw new Error(`Extension "${extension.path}" failed to load and its API is no longer active.`);
+		}
+		if (state === "withdrawn") {
+			throw new Error(`Extension "${extension.path}" was not loaded and its API is no longer active.`);
 		}
 		runtime.assertActive();
 	};
@@ -431,9 +437,9 @@ function createExtensionAPI(
 			return runtime.getCommands();
 		},
 
-		setModel(model) {
+		setModel(model, options) {
 			assertActive();
-			return runtime.setModel(model);
+			return runtime.setModel(model, options);
 		},
 
 		getThinkingLevel() {
@@ -515,6 +521,7 @@ function createExtensionAPI(
 				assertActive();
 				const unsubscribe = runtime.trackEventBusSubscription(eventBus.on(channel, handler));
 				if (state === "loading") loadingUnsubscribers.push(unsubscribe);
+				busUnsubscribers.push(unsubscribe);
 				return unsubscribe;
 			},
 		},
@@ -538,7 +545,32 @@ function createExtensionAPI(
 			for (const unsubscribe of loadingUnsubscribers) unsubscribe();
 			clearPending();
 		},
+		withdraw: () => {
+			if (state !== "active") return;
+			state = "withdrawn";
+			for (const unsubscribe of busUnsubscribers) unsubscribe();
+			for (const server of runtime.mcpServers.list()) {
+				if (server.extensionPath === extension.path) runtime.mcpServers.unregister(server.name, extension.path);
+			}
+			const own = (registration: { extensionPath: string }) => registration.extensionPath !== extension.path;
+			runtime.pendingProviderRegistrations = runtime.pendingProviderRegistrations.filter(own);
+			runtime.pendingNativeProviderRegistrations = runtime.pendingNativeProviderRegistrations.filter(own);
+			runtime.pendingVirtualModelRegistrations = runtime.pendingVirtualModelRegistrations.filter(own);
+		},
 	};
+}
+
+/** fork: how each loaded extension takes back what it published to the shared runtime. */
+const withdrawals = new WeakMap<Extension, () => void>();
+
+/**
+ * fork: take back an extension left out after loading (replaced, or refused to a
+ * project): its event bus subscriptions, MCP servers and queued provider and model registrations. Its API throws from
+ * then on. Runtime state shared with the extensions kept (flag values) stays.
+ */
+export function withdrawExtension(extension: Extension): void {
+	withdrawals.get(extension)?.();
+	withdrawals.delete(extension);
 }
 
 function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cacheToken is ExtensionCacheToken {
@@ -549,7 +581,11 @@ function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cache
 	);
 }
 
-async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
+async function loadExtensionModule(
+	extensionPath: string,
+	cacheToken?: ExtensionCacheToken,
+	aliases?: Record<string, string>,
+) {
 	if (isCurrentCacheToken(cacheToken)) {
 		const cachedFactory = extensionCache.get(extensionPath);
 		if (cachedFactory) {
@@ -569,6 +605,7 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
 	const jiti = createJitiImpl(import.meta.url, {
 		moduleCache: false,
 		...resolutionOptions,
+		...(aliases ? { alias: { ...("alias" in resolutionOptions ? resolutionOptions.alias : {}), ...aliases } } : {}),
 	});
 
 	const module = await jiti.import(extensionPath, { default: true });
@@ -580,6 +617,14 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
 		extensionCache.set(extensionPath, factory);
 	}
 	return factory;
+}
+
+/** fork: import an extension file's factory with the module resolution of file extensions. */
+export function importExtensionFactory(
+	extensionPath: string,
+	aliases?: Record<string, string>,
+): Promise<ExtensionFactory | undefined> {
+	return loadExtensionModule(extensionPath, undefined, aliases);
 }
 
 /**
@@ -616,6 +661,7 @@ async function initializeExtension(
 	try {
 		await factory(load.api);
 		load.commit();
+		withdrawals.set(extension, load.withdraw);
 	} catch (error) {
 		load.discard();
 		throw error;

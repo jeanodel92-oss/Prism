@@ -1,8 +1,9 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { TerminalColorMode } from "./colors.ts";
+import { sanitizeTerminalLabel, TRUSTED_LINK_ID } from "./utils.ts";
 
 export type ImageProtocol = "kitty" | "iterm2" | null;
 
@@ -30,6 +31,11 @@ export interface ImageRenderOptions {
 	imageId?: number;
 	/** Whether Kitty should apply its default cursor movement after placement. */
 	moveCursor?: boolean;
+	/**
+	 * fork: the component that shows the image. Its metadata is kept while the component
+	 * lives, whatever the number of images, since its cached lines still need it for cropping and upload.
+	 */
+	owner?: object;
 }
 
 let cachedCapabilities: TerminalCapabilities | null = null;
@@ -46,6 +52,15 @@ export function setCellDimensions(dims: CellDimensions): void {
 	cellDimensions = dims;
 }
 
+// fork: the tmux the probe runs, chosen by the application. Named alone, the PATH
+// chose it, and a PATH that starts with a project's `.venv/bin` ran a `tmux` written there.
+let tmuxProgram: () => string = () => "tmux";
+
+/** Sets the tmux program the capability probe runs, as a path or a name; looked up when the probe runs. */
+export function setTmuxProgram(program: () => string): void {
+	tmuxProgram = program;
+}
+
 /**
  * Checks whether the attached tmux client forwards OSC 8 hyperlinks to the
  * outer terminal. tmux only re-emits them when its `client_termfeatures` lists
@@ -53,7 +68,7 @@ export function setCellDimensions(dims: CellDimensions): void {
  */
 function probeTmuxHyperlinks(): boolean {
 	try {
-		const termfeatures = execSync("tmux display-message -p '#{client_termfeatures}'", {
+		const termfeatures = execFileSync(tmuxProgram(), ["display-message", "-p", "#{client_termfeatures}"], {
 			encoding: "utf8",
 			timeout: 250,
 			stdio: ["ignore", "pipe", "ignore"],
@@ -217,6 +232,15 @@ export function allocateImageId(): number {
 	return Math.floor(Math.random() * 0xfffffffe) + 1;
 }
 
+/**
+ * fork: image data comes from tools and MCP servers. Only base64 goes inside a graphics sequence: anything
+ * else could end the sequence and write its own controls. Length check and one linear character class.
+ */
+function isBase64(data: string): boolean {
+	return data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(data);
+}
+
+/** fork: an empty string when the data is not base64; `renderImage` then returns null for the text fallback. */
 export function encodeKitty(
 	base64Data: string,
 	options: {
@@ -227,6 +251,7 @@ export function encodeKitty(
 		moveCursor?: boolean;
 	} = {},
 ): string {
+	if (!isBase64(base64Data)) return "";
 	const CHUNK_SIZE = 4096;
 
 	const params: string[] = ["a=T", "f=100", "q=2"];
@@ -284,6 +309,7 @@ export function deleteAllKittyPlacements(): string {
 	return "\x1b_Ga=d,d=a,q=2\x1b\\";
 }
 
+/** fork: an empty string when the data is not base64, as {@link encodeKitty}. */
 export function encodeITerm2(
 	base64Data: string,
 	options: {
@@ -294,6 +320,7 @@ export function encodeITerm2(
 		inline?: boolean;
 	} = {},
 ): string {
+	if (!isBase64(base64Data)) return "";
 	const params: string[] = [
 		`inline=${options.inline !== false ? 1 : 0}`,
 		`size=${Buffer.byteLength(base64Data, "base64")}`,
@@ -325,6 +352,7 @@ export interface KittyImageMetadata extends ImageCellSize {
 
 interface RegisteredKittyImageMetadata extends KittyImageMetadata {
 	transmissionGeneration: number;
+	owner?: WeakRef<object>;
 }
 
 export interface KittyImagePlacement {
@@ -339,13 +367,23 @@ export interface KittyImagePlacement {
 const kittyImageMetadata = new Map<number, RegisteredKittyImageMetadata>();
 let kittyTransmissionGeneration = 0;
 
-export function registerKittyImageMetadata(metadata: KittyImageMetadata): void {
+export function registerKittyImageMetadata(metadata: KittyImageMetadata, owner?: object): void {
 	kittyTransmissionGeneration += 1;
 	kittyImageMetadata.delete(metadata.imageId);
-	kittyImageMetadata.set(metadata.imageId, { ...metadata, transmissionGeneration: kittyTransmissionGeneration });
+	kittyImageMetadata.set(metadata.imageId, {
+		...metadata,
+		transmissionGeneration: kittyTransmissionGeneration,
+		owner: owner ? new WeakRef(owner) : undefined,
+	});
 	if (kittyImageMetadata.size > 1000) {
-		const oldestImageId = kittyImageMetadata.keys().next().value;
-		if (oldestImageId !== undefined) kittyImageMetadata.delete(oldestImageId);
+		// fork: the oldest image nobody shows any more, not one still on screen, and
+		// not the one just registered.
+		for (const [imageId, entry] of kittyImageMetadata) {
+			if (imageId !== metadata.imageId && entry.owner?.deref() === undefined) {
+				kittyImageMetadata.delete(imageId);
+				break;
+			}
+		}
 	}
 }
 
@@ -642,7 +680,8 @@ export function renderImage(
 ): { sequence: string; columns: number; rows: number; imageId?: number } | null {
 	const caps = getCapabilities();
 
-	if (!caps.images) {
+	// fork: data that is not base64 gets the caller's text fallback, never a sequence.
+	if (!caps.images || !isBase64(base64Data)) {
 		return null;
 	}
 
@@ -658,13 +697,16 @@ export function renderImage(
 
 	if (caps.images === "kitty") {
 		if (options.imageId !== undefined) {
-			registerKittyImageMetadata({
-				imageId: options.imageId,
-				columns: size.columns,
-				rows: size.rows,
-				widthPx: imageDimensions.widthPx,
-				heightPx: imageDimensions.heightPx,
-			});
+			registerKittyImageMetadata(
+				{
+					imageId: options.imageId,
+					columns: size.columns,
+					rows: size.rows,
+					widthPx: imageDimensions.widthPx,
+					heightPx: imageDimensions.heightPx,
+				},
+				options.owner,
+			);
 		}
 		const sequence = encodeKitty(base64Data, {
 			columns: size.columns,
@@ -698,7 +740,10 @@ export function renderImage(
  * @param url - The URL to link to
  */
 export function hyperlink(text: string, url: string): string {
-	return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+	// fork: the id marks the link as created here, so sanitizeTerminalText keeps it.
+	// fork: the address may come from a file name or a page; a control in it
+	// would end the link and write its own sequence.
+	return `\x1b]8;id=${TRUSTED_LINK_ID};${sanitizeTerminalLabel(url)}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
 /** Shorten home-prefixed absolute paths to ~/... for compact display. */

@@ -54,7 +54,8 @@ export function isMcpAppResource(item: { uri?: string; uriTemplate?: string; mim
 
 /** A listed resource or template without `_meta` and icons, tagged with its server. */
 function listed<T extends { _meta?: unknown }>(server: string, item: T): Record<string, unknown> {
-	const { _meta, icons: _icons, ...rest } = item as T & { icons?: unknown };
+	// fork: a `server` field sent by the server never replaces the one the harness knows.
+	const { _meta, icons: _icons, server: _claimed, ...rest } = item as T & { icons?: unknown; server?: unknown };
 	return { server, ...rest };
 }
 
@@ -167,10 +168,12 @@ const READ_OUTPUT_SCHEMA = {
 	required: ["server", "uri", "contents"],
 };
 
-function stringArgument(params: unknown, key: string): string | undefined {
+function stringArgument(params: unknown, key: string, opaque = false): string | undefined {
 	const value = (params as Record<string, unknown> | undefined)?.[key];
 	if (value === undefined || value === null) return undefined;
 	if (typeof value !== "string") throw new Error(`${key} must be a string`);
+	// fork: an opaque value (a cursor) goes back to the server exactly as it sent it.
+	if (opaque) return value === "" ? undefined : value;
 	return value.trim() || undefined;
 }
 
@@ -226,7 +229,7 @@ export function createMcpResourceToolDefinitions(options: {
 		all: (server: McpResourceServer, options: McpRequestOptions) => Promise<T[]>,
 	): Promise<Record<string, unknown>> => {
 		const serverName = stringArgument(params, "server");
-		const cursor = stringArgument(params, "cursor");
+		const cursor = stringArgument(params, "cursor", true);
 		const visible = (item: T) => !isMcpAppResource(item as { uri?: string; uriTemplate?: string; mimeType?: string });
 		if (serverName) {
 			const server = findServer(serverName);
@@ -246,9 +249,10 @@ export function createMcpResourceToolDefinitions(options: {
 		const errors: { server: string; error: string }[] = [];
 		results.forEach((result, index) => {
 			const server = servers[index].name;
-			if (result.status === "fulfilled")
-				items.push(...result.value.filter(visible).map((item) => listed(server, item)));
-			else errors.push({ server, error: errorMessage(result.reason) });
+			// fork: never spread into call arguments.
+			if (result.status === "fulfilled") {
+				for (const item of result.value) if (visible(item)) items.push(listed(server, item));
+			} else errors.push({ server, error: errorMessage(result.reason) });
 		});
 		return { [key]: items, ...(errors.length > 0 ? { errors } : {}) };
 	};

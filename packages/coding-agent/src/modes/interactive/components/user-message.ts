@@ -1,5 +1,7 @@
 import { Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import { fencePastedCode } from "../../../fork/pasted-code.ts";
+import { HookRenderCache, renderHooks } from "../../../fork/render-hooks.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 
@@ -15,6 +17,7 @@ export class UserMessageComponent extends Container {
 	private markdownTheme: MarkdownTheme;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
+	private hookCache = new HookRenderCache<string[] | undefined>(); // fork
 
 	constructor(
 		text: string,
@@ -36,12 +39,13 @@ export class UserMessageComponent extends Container {
 	}
 
 	private rebuild(): void {
+		this.hookCache.clear(); // fork
 		this.clear();
 		// The Markdown pads and colors its own background: a Box around it would keep a second full-width copy of every
 		// line, with identical output.
 		this.addChild(
 			new Markdown(
-				this.text,
+				fencePastedCode(this.text), // fork: pasted code shown whole, as one block
 				this.outputPad,
 				1,
 				this.markdownTheme,
@@ -58,7 +62,19 @@ export class UserMessageComponent extends Container {
 		);
 	}
 
+	// fork: render hook for the Prism pack; renderDefault is upstream's render. decorated once.
 	override render(width: number): string[] {
+		const hook = renderHooks.userMessage;
+		const hooked = hook && this.hookCache.get(width, true, () => hook(width, (w) => this.renderDefault(w)));
+		return hooked ?? this.renderDefault(width);
+	}
+
+	override invalidate(): void {
+		super.invalidate();
+		this.hookCache.clear(); // fork
+	}
+
+	private renderDefault(width: number): string[] {
 		const lines = super.render(width);
 		if (lines.length === 0) {
 			return lines;

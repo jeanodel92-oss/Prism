@@ -1,11 +1,18 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, ImageContent, Model, ModelImageResizeOptions, TextContent } from "@earendil-works/pi-ai";
-import { constants } from "fs";
+import { closeSync, constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile } from "fs/promises";
 import { type Static, Type } from "typebox";
+import { assertNotBinaryFile } from "../../fork/binary-file.ts";
+import { readBounded } from "../../fork/bounded-read.ts";
+import { documentTextForModel, IMAGE_LIMIT } from "../../fork/document-preview.ts";
+import { openBound, takeFileBinding } from "../../fork/file-binding.ts";
+import { readLargeText } from "../../fork/large-text-read.ts";
+import { assertNotSpecialFile } from "../../fork/regular-file.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { detectSupportedImageMimeTypeFromFile } from "../../utils/mime.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import { holdFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import { readRenderers } from "./renderers/read.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -43,7 +50,8 @@ export interface ReadOperations {
 
 const defaultReadOperations: ReadOperations = {
 	readFile: (path) => fsReadFile(path),
-	access: (path) => fsAccess(path, constants.R_OK),
+	// fork: a FIFO or a device would hang the read or fill memory.
+	access: (path) => fsAccess(path, constants.R_OK).then(() => assertNotSpecialFile(path)),
 	detectImageMimeType: detectSupportedImageMimeTypeFromFile,
 };
 
@@ -70,6 +78,8 @@ export function createReadToolDefinition(
 	const autoResizeImages = options?.autoResizeImages ?? true;
 	const fallbackResizeOptions = options?.resizeOptions;
 	const ops = options?.operations ?? defaultReadOperations;
+	// fork: reads join the per-file queue of edit and write, which truncate the file before
+	// writing it: a read running alongside an edit of the same file could see it empty.
 	return {
 		name: "read",
 		label: "read",
@@ -80,11 +90,15 @@ export function createReadToolDefinition(
 		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		async execute(
 			_toolCallId,
-			{ path, offset, limit }: { path: string; offset?: number; limit?: number },
+			{ path, offset: rawOffset, limit: rawLimit }: { path: string; offset?: number; limit?: number },
 			signal?: AbortSignal,
 			_onUpdate?,
 			ctx?: ExtensionContext,
 		) {
+			// fork: whole line numbers, so that the normal read and the streamed read of a
+			// large file select the same lines for offset=1.5.
+			const offset = rawOffset === undefined ? undefined : Math.floor(rawOffset);
+			const limit = rawLimit === undefined ? undefined : Math.floor(rawLimit);
 			return new Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }>(
 				(resolve, reject) => {
 					if (signal?.aborted) {
@@ -98,20 +112,50 @@ export function createReadToolDefinition(
 					};
 					signal?.addEventListener("abort", onAbort, { once: true });
 
+					let release: (() => void) | undefined;
+					let opened: number | undefined;
 					(async () => {
 						try {
 							const absolutePath = await resolveReadPathAsync(path, ctx?.cwd || cwd);
 							if (aborted) return;
+							// fork: one hold of the write queue from the checks on the
+							// content to its bytes, all read from the object the permission judged, by its descriptor.
+							const binding =
+								ops === defaultReadOperations ? takeFileBinding(_toolCallId, absolutePath) : undefined;
+							release = await holdFileMutationQueue(binding?.physical ?? absolutePath);
+							if (binding) opened = openBound(binding, "read").fd;
+							const source = opened === undefined ? absolutePath : `/proc/${process.pid}/fd/${opened}`;
 							// Check if file exists and is readable.
-							await ops.access(absolutePath);
+							await ops.access(source);
 							if (aborted) return;
-							const mimeType = ops.detectImageMimeType ? await ops.detectImageMimeType(absolutePath) : undefined;
+							const mimeType = ops.detectImageMimeType ? await ops.detectImageMimeType(source) : undefined;
+							// fork: a binary file is refused instead of returned as raw bytes.
+							// fork: a PDF, .docx or .odt is read as the text a system program extracts, when there is one.
+							const extracted =
+								!mimeType && ops === defaultReadOperations
+									? await documentTextForModel(source, {
+											name: absolutePath,
+											...(opened === undefined ? {} : { fd: opened }),
+											...(signal ? { signal } : {}),
+										})
+									: undefined;
+							if (aborted) return;
+							if (!mimeType && extracted === undefined && ops === defaultReadOperations)
+								await assertNotBinaryFile(source, path);
 							let content: (TextContent | ImageContent)[];
 							let details: ReadToolDetails | undefined;
 							const nonVisionImageNote = getNonVisionImageNote(ctx?.model);
+							// fork: a large local text file is streamed, not loaded whole (1 GB for a 257 MB file).
+							const large =
+								mimeType || extracted !== undefined || ops !== defaultReadOperations
+									? undefined
+									: await readLargeText(source, path, offset, limit, signal ? { signal } : {});
 							if (mimeType) {
-								// Read image as binary.
-								const buffer = await ops.readFile(absolutePath);
+								// fork: an image signature does not make a huge file loaded whole.
+								const buffer =
+									ops === defaultReadOperations
+										? await readBounded(source, IMAGE_LIMIT)
+										: await ops.readFile(source);
 								const processed = await processImage(buffer, mimeType, {
 									autoResizeImages,
 									resizeOptions: ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
@@ -129,9 +173,12 @@ export function createReadToolDefinition(
 										{ type: "image", data: processed.data, mimeType: processed.mimeType },
 									];
 								}
+							} else if (large) {
+								content = [{ type: "text", text: large.text }];
+								details = large.details;
 							} else {
 								// Read text content.
-								const buffer = await ops.readFile(absolutePath);
+								const buffer = extracted !== undefined ? Buffer.from(extracted) : await ops.readFile(source);
 								const textContent = buffer.toString("utf-8");
 								const allLines = textContent.split("\n");
 								const totalFileLines = allLines.length;
@@ -189,6 +236,9 @@ export function createReadToolDefinition(
 						} catch (error: any) {
 							signal?.removeEventListener("abort", onAbort);
 							if (!aborted) reject(error);
+						} finally {
+							release?.();
+							if (opened !== undefined) closeSync(opened);
 						}
 					})();
 				},

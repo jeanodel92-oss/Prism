@@ -1,0 +1,12 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "longthink" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md", "text": "ok" },
+	{ "do": "click", "selector": ".thinking summary" },
+	{ "do": "wait", "selector": ".thinking-body", "text": "fonts.googleapis.com" },
+	{ "do": "shot", "name": "long-thinking" },
+	{ "do": "fits", "selector": ".transcript", "why": "QA of fork.10: a long line in the reasoning made the window scroll sideways" },
+	{ "do": "fits", "selector": ".thinking-body" },
+	{ "do": "quit" }
+]

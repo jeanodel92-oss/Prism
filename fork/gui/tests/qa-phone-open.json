@@ -1,0 +1,42 @@
+[
+	{ "do": "log", "text": "Owner's QA of fork.11: a conversation a phone has open through the window's engines is listed under Open on the PC, asleep until shown; shown, it shares the phone's engine; it leaves the list when the phone lets it go, unless shown here." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "phone conversation" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".turn-summary", "timeout": 30000 },
+	{ "do": "type", "text": "/phone" },
+	{ "do": "send" },
+	{ "do": "click", "selector": ".panel.link-phone .link-phone-row button", "text": "Run while Prism is open", "timeout": 15000 },
+	{ "do": "wait", "selector": ".panel.link-phone .panel-text", "text": "Running while Prism is open.", "timeout": 15000 },
+	{ "do": "key", "key": "Escape" },
+	{ "do": "click", "selector": "#new-session" },
+	{ "do": "wait", "selector": "#open-list li:nth-child(2)" },
+	{ "do": "click", "selector": "#open-list li:first-child .close", "sidebar": true },
+	{ "do": "wait", "selector": "#open-list li:nth-child(2)", "gone": true, "timeout": 15000 },
+	{ "do": "absent", "selector": "#open-list .state.phone" },
+
+	{ "do": "log", "text": "phone-now" },
+	{ "do": "wait", "selector": "#open-list li .state.phone", "timeout": 20000, "why": "the phone opened the conversation the window closed" },
+	{ "do": "wait", "selector": "#open-list li .label", "text": "phone conversation" },
+	{ "do": "shot", "name": "o1-open-on-phone", "sidebar": true },
+
+	{ "do": "log", "text": "phone-leave" },
+	{ "do": "wait", "selector": "#open-list li:nth-child(2)", "gone": true, "timeout": 20000, "why": "the phone let it go and it was never shown here" },
+
+	{ "do": "log", "text": "phone-now" },
+	{ "do": "wait", "selector": "#open-list li .state.phone", "timeout": 20000 },
+	{ "do": "click", "selector": "#open-list li .session-link", "text": "phone conversation", "sidebar": true },
+	{ "do": "wait", "selector": ".msg.user", "text": "phone conversation", "timeout": 30000, "why": "shown, it opens on the phone's engine" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "absent", "selector": "#open-list .state.phone", "why": "it runs here now too" },
+	{ "do": "click", "selector": "#open-list li.current .close", "sidebar": true },
+	{ "do": "wait", "selector": "#open-list li:nth-child(2)", "gone": true, "timeout": 15000 },
+	{ "do": "sleep", "ms": 7000, "why": "two rounds of the window's question to the host" },
+	{ "do": "absent", "selector": "#open-list .state.phone", "why": "closed here while the phone has it: not listed again" },
+	{ "do": "log", "text": "phone-leave" },
+
+	{ "do": "toasts" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "log", "text": "qa-phone-open-ok" },
+	{ "do": "quit" }
+]

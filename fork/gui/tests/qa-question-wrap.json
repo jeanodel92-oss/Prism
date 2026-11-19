@@ -1,0 +1,59 @@
+[
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"ask_user_question\", {\"questions\": [{\"header\": \"Formulaire\", \"question\": \"L'énoncé liste form/fieldset/legend/label/checkbox/radio/select dans les objectifs, mais la grille de correction n'en parle pas : faut-il un formulaire dans la page ?\", \"options\": [{\"label\": \"Petit formulaire visuel\", \"description\": \"La table et un <form> sans JavaScript (fieldset/legend/label, cases à cocher et boutons radio), au plus près de l'énoncé.\"}, {\"label\": \"Strictement la grille\", \"description\": \"Uniquement le tableau et la feuille CSS, au plus près des deux captures fournies, sans aucun formulaire.\"}, {\"label\": \"Formulaire filtrant\", \"description\": \"Cases à cocher qui affichent ou masquent des catégories de cours avec un peu de JavaScript.\"}]}]}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Petit formulaire visuel",
+		"timeout": 20000,
+		"why": "fork.10.5: a question of the model, on the interaction surface"
+	},
+	{
+		"do": "shot",
+		"name": "question"
+	},
+	{
+		"do": "fits",
+		"selector": ".panel.question:not(.closing) .panel-title",
+		"why": "owner's QA of 2026-11-07: the question was cut with an ellipsis"
+	},
+	{
+		"do": "fits",
+		"selector": ".panel.question:not(.closing) .listbox-label",
+		"why": "and so were its options"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"text": "faut-il un formulaire dans la page ?",
+		"why": "the whole question is there"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Strictement la grille"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"gone": true
+	},
+	{
+		"do": "quit"
+	}
+]

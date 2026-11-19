@@ -1,0 +1,34 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+
+	{ "do": "type", "text": "! ls" },
+	{ "do": "focus", "selector": "#input" },
+	{ "do": "key", "selector": "#input", "key": "Escape", "why": "the editor drops a ! command" },
+	{ "do": "absent", "selector": "#input", "text": "ls" },
+
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+	{ "do": "sleep", "ms": 600, "why": "two Escapes 600 ms apart are two single Escapes (the terminal's 500 ms)" },
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+	{ "do": "sleep", "ms": 800, "why": "time for a view the engine would open" },
+	{ "do": "absent", "selector": ".view" },
+
+	{ "do": "type", "text": "x" },
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+	{ "do": "sleep", "ms": 800, "why": "a non-empty composer: no view" },
+	{ "do": "absent", "selector": ".view" },
+	{ "do": "type", "text": "" },
+
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+	{ "do": "key", "selector": "#input", "key": "Escape", "why": "doubleEscapeAction (tree by default)" },
+	{ "do": "wait", "selector": ".panel.tree .tree-row", "text": "md" },
+	{ "do": "shot", "name": "e1-tree" },
+	{ "do": "key", "selector": ".panel.tree .listbox-filter", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.tree", "gone": true },
+
+	{ "do": "log", "text": "escape-ok" },
+	{ "do": "quit" }
+]

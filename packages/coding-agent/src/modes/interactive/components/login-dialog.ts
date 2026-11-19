@@ -1,9 +1,22 @@
 import type { AuthInfoLink, OAuthDeviceCodeInfo } from "@earendil-works/pi-ai";
-import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
+import {
+	Container,
+	type Focusable,
+	getKeybindings,
+	hyperlink,
+	Input,
+	Spacer,
+	Text,
+	type TUI,
+} from "@earendil-works/pi-tui";
+import { fill, t } from "../../../fork/i18n/index.ts";
 import { openBrowser } from "../../../utils/open-browser.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
+
+/** fork: drawn in place of each character of a secret. */
+export const SECRET_MASK = "•";
 
 /**
  * Login dialog component - replaces editor during OAuth login flow
@@ -45,29 +58,39 @@ export class LoginDialogComponent extends Container implements Focusable {
 		this.addChild(new DynamicBorder());
 
 		// Title
-		this.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
+		this.addChild(new Text(theme.fg("accent", theme.bold(t(title))), 1, 0));
 
 		// Dynamic content area
 		this.contentContainer = new Container();
 		this.addChild(this.contentContainer);
 
 		// Input (always present, used when needed)
-		this.input = new Input();
-		this.input.onSubmit = () => {
+		this.input = this.newInput();
+
+		// Bottom border
+		this.addChild(new DynamicBorder());
+	}
+
+	/**
+	 * fork: one field per step, so a secret left in the undo stack or the kill
+	 * ring of one step cannot come back in the next.
+	 */
+	private newInput(mask?: string): Input {
+		const input = new Input({ mask });
+		input.focused = this._focused;
+		input.onSubmit = () => {
 			if (this.inputResolver) {
-				const value = this.input.getValue();
+				const value = input.getValue();
 				this.replaceInputWithSubmittedText(value);
 				this.inputResolver(value);
 				this.inputResolver = undefined;
 				this.inputRejecter = undefined;
 			}
 		};
-		this.input.onEscape = () => {
+		input.onEscape = () => {
 			this.cancel();
 		};
-
-		// Bottom border
-		this.addChild(new DynamicBorder());
+		return input;
 	}
 
 	get signal(): AbortSignal {
@@ -75,8 +98,10 @@ export class LoginDialogComponent extends Container implements Focusable {
 	}
 
 	private replaceInputWithSubmittedText(value: string): void {
+		// fork: a secret stays masked once submitted.
+		const shown = this.input.mask === undefined ? value : this.input.mask.repeat(Array.from(value).length);
 		this.contentContainer.children = this.contentContainer.children.map((child) =>
-			child === this.input ? new Text(`> ${value}`, 0, 0) : child,
+			child === this.input ? new Text(`> ${shown}`, 0, 0) : child,
 		);
 	}
 
@@ -96,16 +121,17 @@ export class LoginDialogComponent extends Container implements Focusable {
 	showAuth(url: string, instructions?: string): void {
 		this.contentContainer.clear();
 		this.contentContainer.addChild(new Spacer(1));
-		const linkedUrl = `\x1b]8;;${url}\x07${url}\x1b]8;;\x07`;
+		// fork: hyperlink() marks the link as Prism's own, so Text keeps it.
+		const linkedUrl = hyperlink(url, url);
 		this.contentContainer.addChild(new Text(theme.fg("accent", linkedUrl), 1, 0));
 
 		const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
-		const hyperlink = `\x1b]8;;${url}\x07${clickHint}\x1b]8;;\x07`;
-		this.contentContainer.addChild(new Text(theme.fg("dim", hyperlink), 1, 0));
+		const hintLink = hyperlink(t(clickHint), url);
+		this.contentContainer.addChild(new Text(theme.fg("dim", hintLink), 1, 0));
 
 		if (instructions) {
 			this.contentContainer.addChild(new Spacer(1));
-			this.contentContainer.addChild(new Text(theme.fg("warning", instructions), 1, 0));
+			this.contentContainer.addChild(new Text(theme.fg("warning", t(instructions)), 1, 0));
 		}
 
 		openBrowser(url);
@@ -118,14 +144,16 @@ export class LoginDialogComponent extends Container implements Focusable {
 	showDeviceCode(info: OAuthDeviceCodeInfo): void {
 		this.contentContainer.clear();
 		this.contentContainer.addChild(new Spacer(1));
-		const linkedUrl = `\x1b]8;;${info.verificationUri}\x07${info.verificationUri}\x1b]8;;\x07`;
+		const linkedUrl = hyperlink(info.verificationUri, info.verificationUri);
 		this.contentContainer.addChild(new Text(theme.fg("accent", linkedUrl), 1, 0));
 
 		const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
-		const hyperlink = `\x1b]8;;${info.verificationUri}\x07${clickHint}\x1b]8;;\x07`;
-		this.contentContainer.addChild(new Text(theme.fg("dim", hyperlink), 1, 0));
+		const hintLink = hyperlink(t(clickHint), info.verificationUri);
+		this.contentContainer.addChild(new Text(theme.fg("dim", hintLink), 1, 0));
 		this.contentContainer.addChild(new Spacer(1));
-		this.contentContainer.addChild(new Text(theme.fg("warning", `Enter code: ${info.userCode}`), 1, 0));
+		this.contentContainer.addChild(
+			new Text(theme.fg("warning", fill("On the web page above, enter this code: {0}", info.userCode)), 1, 0),
+		);
 
 		this.tui.requestRender();
 	}
@@ -134,9 +162,9 @@ export class LoginDialogComponent extends Container implements Focusable {
 	 * Show input for manual code/URL entry (for callback server providers)
 	 */
 	showManualInput(prompt: string): Promise<string> {
-		this.input.setValue("");
+		this.input = this.newInput();
 		this.contentContainer.addChild(new Spacer(1));
-		this.contentContainer.addChild(new Text(theme.fg("dim", prompt), 1, 0));
+		this.contentContainer.addChild(new Text(theme.fg("dim", t(prompt)), 1, 0));
 		this.contentContainer.addChild(this.input);
 		this.contentContainer.addChild(new Text(`(${keyHint("tui.select.cancel", "to cancel")})`, 1, 0));
 		this.tui.requestRender();
@@ -151,11 +179,13 @@ export class LoginDialogComponent extends Container implements Focusable {
 	 * Called by onPrompt callback - show prompt and wait for input
 	 * Note: Does NOT clear content, appends to existing (preserves URL from showAuth)
 	 */
-	showPrompt(message: string, placeholder?: string): Promise<string> {
+	showPrompt(message: string, placeholder?: string, secret = false): Promise<string> {
+		// fork: mask secrets such as API keys while they are typed or pasted.
+		this.input = this.newInput(secret ? SECRET_MASK : undefined);
 		this.contentContainer.addChild(new Spacer(1));
-		this.contentContainer.addChild(new Text(theme.fg("text", message), 1, 0));
+		this.contentContainer.addChild(new Text(theme.fg("text", t(message)), 1, 0));
 		if (placeholder) {
-			this.contentContainer.addChild(new Text(theme.fg("dim", `e.g., ${placeholder}`), 1, 0));
+			this.contentContainer.addChild(new Text(theme.fg("dim", fill("e.g., {0}", placeholder)), 1, 0));
 		}
 		this.contentContainer.addChild(this.input);
 		this.contentContainer.addChild(
@@ -166,7 +196,6 @@ export class LoginDialogComponent extends Container implements Focusable {
 			),
 		);
 
-		this.input.setValue("");
 		this.tui.requestRender();
 
 		return new Promise((resolve, reject) => {
@@ -180,7 +209,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 		this.contentContainer.clear();
 		this.contentContainer.addChild(new Spacer(1));
 		for (const line of lines) {
-			this.contentContainer.addChild(new Text(line, 1, 0));
+			this.contentContainer.addChild(new Text(t(line), 1, 0));
 		}
 		this.tui.requestRender();
 	}
@@ -188,11 +217,10 @@ export class LoginDialogComponent extends Container implements Focusable {
 	/** Show provider-owned information and links without starting an auth callback flow. */
 	showInfo(message: string, links: readonly AuthInfoLink[] = [], showCloseHint = false): void {
 		this.contentContainer.addChild(new Spacer(1));
-		this.contentContainer.addChild(new Text(theme.fg("text", message), 1, 0));
+		this.contentContainer.addChild(new Text(theme.fg("text", t(message)), 1, 0));
 		for (const link of links) {
 			const text = link.label ? `${link.label}: ${link.url}` : link.url;
-			const hyperlink = `\x1b]8;;${link.url}\x07${text}\x1b]8;;\x07`;
-			this.contentContainer.addChild(new Text(theme.fg("accent", hyperlink), 1, 0));
+			this.contentContainer.addChild(new Text(theme.fg("accent", hyperlink(text, link.url)), 1, 0));
 		}
 		if (showCloseHint) {
 			this.contentContainer.addChild(new Spacer(1));
@@ -206,7 +234,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 	 */
 	showWaiting(message: string): void {
 		this.contentContainer.addChild(new Spacer(1));
-		this.contentContainer.addChild(new Text(theme.fg("dim", message), 1, 0));
+		this.contentContainer.addChild(new Text(theme.fg("dim", t(message)), 1, 0));
 		this.contentContainer.addChild(new Text(`(${keyHint("tui.select.cancel", "to cancel")})`, 1, 0));
 		this.tui.requestRender();
 	}
@@ -215,7 +243,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 	 * Called by onProgress callback
 	 */
 	showProgress(message: string): void {
-		this.contentContainer.addChild(new Text(theme.fg("dim", message), 1, 0));
+		this.contentContainer.addChild(new Text(theme.fg("dim", t(message)), 1, 0));
 		this.tui.requestRender();
 	}
 

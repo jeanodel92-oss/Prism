@@ -18,7 +18,7 @@ describe("settings diagnostics", () => {
 
 			expect(diagnostics).toHaveLength(1);
 			expect(diagnostics[0]?.type).toBe("warning");
-			expect(diagnostics[0]?.message).toContain(`Invalid settings file ${settingsPath}:`);
+			expect(diagnostics[0]?.message).toContain(`Could not use the settings in ${settingsPath}:`);
 		} finally {
 			rmSync(tempDir, { recursive: true, force: true });
 		}
@@ -37,7 +37,7 @@ describe("settings diagnostics", () => {
 	});
 
 	it("deduplicates diagnostics by type and message", () => {
-		const warning = { type: "warning" as const, message: "Invalid settings file /tmp/settings.json" };
+		const warning = { type: "warning" as const, message: "Could not use the settings in /tmp/settings.json" };
 
 		expect(deduplicateDiagnostics([warning, warning, { ...warning, type: "error" }])).toEqual([
 			warning,

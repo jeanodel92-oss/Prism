@@ -3,6 +3,7 @@
  */
 
 import { performance } from "node:perf_hooks";
+import { hideImagesUnderOverlays } from "./fork/overlay-images.ts";
 import { isKeyRelease, matchesKey } from "./keys.ts";
 import type { Terminal } from "./terminal.ts";
 import {
@@ -363,6 +364,11 @@ export class Container implements Component {
 		this.children = [];
 	}
 
+	/** fork: for containers that draw their children themselves (render hooks). */
+	setMouseLayout(layout: { width: number; children: Array<{ component: Component; height: number }> }): void {
+		this.mouseLayout = layout;
+	}
+
 	invalidate(): void {
 		for (const child of this.children) {
 			child.invalidate?.();
@@ -550,6 +556,14 @@ export abstract class TuiBase extends Container implements TUI {
 
 	protected afterTerminalStop(_options: TuiStopOptions): void {}
 
+	/** fork: rewrites raw input before anything handles it (src/fork/pixel-mouse.ts). */
+	protected normalizeInput(data: string): string {
+		return data;
+	}
+
+	/** fork: the terminal reported its cell size in pixels. */
+	protected onCellSizeReported(_widthPx: number, _heightPx: number): void {}
+
 	get fullRedraws(): number {
 		return this.fullRedrawCount;
 	}
@@ -703,6 +717,14 @@ export abstract class TuiBase extends Container implements TUI {
 
 	private isComponentMounted(component: Component): boolean {
 		return this.getMountedRoots().some((child) => this.containsComponent(child, component));
+	}
+
+	/** fork: whether a component is still shown, in the tree or in an open overlay. */
+	protected isComponentShown(component: Component): boolean {
+		return (
+			this.isComponentMounted(component) ||
+			this.overlayStack.some((entry) => this.containsComponent(entry.component, component))
+		);
 	}
 
 	private containsComponent(root: Component, target: Component): boolean {
@@ -1042,6 +1064,8 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	private handleTerminalInput(data: string): void {
+		data = this.normalizeInput(data); // fork
+		if (data === "") return;
 		if (this.consumeTerminalColorResponse(data)) {
 			return;
 		}
@@ -1191,6 +1215,7 @@ export abstract class TuiBase extends Container implements TUI {
 		}
 
 		setCellDimensions({ widthPx, heightPx });
+		this.onCellSizeReported(widthPx, heightPx); // fork
 		// Invalidate all components so images re-render with correct dimensions.
 		this.invalidate();
 		this.requestRender();
@@ -1392,6 +1417,15 @@ export abstract class TuiBase extends Container implements TUI {
 		}
 
 		const viewportStart = Math.max(0, workingHeight - termHeight);
+
+		// fork: an image would stay drawn over the overlay (src/fork/overlay-images.ts).
+		hideImagesUnderOverlays(
+			result,
+			rendered.map(({ row, overlayLines }) => ({
+				start: viewportStart + row,
+				end: viewportStart + row + overlayLines.length,
+			})),
+		);
 
 		// Composite each overlay
 		for (const { overlayLines, row, col, w } of rendered) {

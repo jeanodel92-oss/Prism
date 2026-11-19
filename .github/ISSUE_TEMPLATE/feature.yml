@@ -1,0 +1,21 @@
+name: Feature request
+description: Something Prism should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you need?
+      description: The problem or the use, before the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How could Prism do it?
+  - type: checkboxes
+    id: implement
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to implement it.

@@ -7,6 +7,7 @@
  */
 
 import type { AssistantMessage, ImageContent } from "@earendil-works/pi-ai";
+import { sanitizeTerminalText } from "@earendil-works/pi-tui";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, waitForRawStdoutBackpressure, writeRawStdout } from "../core/output-guard.ts";
 import { killTrackedDetachedChildren } from "../utils/shell.ts";
@@ -37,6 +38,8 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeBackpressure: (() => void) | undefined;
 	let disposed = false;
+	// fork: ctx.shutdown() from an extension (a sandbox that does not work) stops print mode.
+	let shutdownRequested = false;
 	const signalCleanupHandlers: Array<() => void> = [];
 
 	const disposeRuntime = async (): Promise<void> => {
@@ -98,6 +101,9 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 					await session.reload();
 				},
 			},
+			shutdownHandler: () => {
+				shutdownRequested = true;
+			},
 			onError: (err) => {
 				console.error(`Extension error (${err.extensionPath}): ${err.error}`);
 			},
@@ -127,28 +133,40 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		}
 
 		await rebindSession();
+		if (shutdownRequested) return 1;
 
 		if (initialMessage) {
 			await session.prompt(initialMessage, { images: initialImages });
 		}
 
 		for (const message of messages) {
+			if (shutdownRequested) return 1;
 			await session.prompt(message);
 		}
+		if (shutdownRequested) return 1;
+
+		const lastMessage = session.state.messages[session.state.messages.length - 1];
+		// fork: a reply that ended in an error fails the run in every format.
+		const failedReply =
+			lastMessage?.role === "assistant" &&
+			((lastMessage as AssistantMessage).stopReason === "error" ||
+				(lastMessage as AssistantMessage).stopReason === "aborted");
+		if (failedReply) exitCode = 1;
 
 		if (mode === "text") {
-			const state = session.state;
-			const lastMessage = state.messages[state.messages.length - 1];
-
 			if (lastMessage?.role === "assistant") {
 				const assistantMsg = lastMessage as AssistantMessage;
+				// fork: a terminal gets the reply without its controls; a pipe or a file
+				// gets the exact bytes.
+				const shown = (text: string, tty: boolean | undefined) => (tty ? sanitizeTerminalText(text) : text);
 				if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
-					console.error(assistantMsg.errorMessage || `Request ${assistantMsg.stopReason}`);
-					exitCode = 1;
+					console.error(
+						shown(assistantMsg.errorMessage || `Request ${assistantMsg.stopReason}`, process.stderr.isTTY),
+					);
 				} else {
 					for (const content of assistantMsg.content) {
 						if (content.type === "text") {
-							writeRawStdout(`${content.text}\n`);
+							writeRawStdout(`${shown(content.text, process.stdout.isTTY)}\n`);
 						}
 					}
 				}

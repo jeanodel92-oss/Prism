@@ -55,7 +55,15 @@ import {
 	resetApiProviders,
 	streamSimple,
 } from "@earendil-works/pi-ai/compat";
-import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
+// fork: the sandbox for shell commands.
+import { fill, t } from "../fork/i18n/index.ts"; // fork: shown errors only
+// fork: each model keeps the thinking level last used with it.
+import { rememberModelThinking } from "../fork/model-thinking-memory.ts";
+import { createSandboxableBashOperations, sessionSandbox } from "../fork/sandbox/runtime.ts";
+// fork: the secrets of the environment stay out of the model's commands.
+import { knownSecrets, withoutSecrets } from "../fork/secrets/env.ts";
+import { maskValue } from "../fork/secrets/mask.ts";
+import { getTerminalTheme, getThemeByName, resolveThemeSetting, theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { processImage } from "../utils/image-process.ts";
 import { sleep } from "../utils/sleep.ts";
@@ -228,7 +236,11 @@ export type AgentSessionEvent =
 			reason: "manual" | "threshold" | "overflow";
 	  }
 	| { type: "summarization_retry_finished" }
-	| { type: "bash_execution_update"; id?: string; delta: string };
+	| { type: "bash_execution_update"; id?: string; delta: string }
+	// fork: a user's bash command, for the clients that did not ask for it (the other screen of a shared session).
+	// `pending`: it ended during a turn, so the session holds its message only once the turn has settled.
+	| { type: "bash_execution_start"; id?: string; command: string; excludeFromContext: boolean }
+	| { type: "bash_execution_end"; id?: string; message?: BashExecutionMessage; pending?: boolean };
 
 /** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
@@ -312,6 +324,8 @@ export interface PromptOptions {
 export interface ModelMutationOptions {
 	/** Persist the new value to global defaults. Defaults to session-only. */
 	persist?: boolean;
+	/** fork: checked after the auth wait; false leaves the selection as it is. */
+	onlyIf?: () => boolean;
 }
 
 /** Result from cycleModel() */
@@ -370,6 +384,11 @@ export class AgentSession {
 	private _unsubscribeAgent?: () => void;
 	private _eventListeners: AgentSessionEventListener[] = [];
 	private _isAgentRunActive = false;
+	private _preparingPrompt = false;
+	/** fork: abort() came while a prompt was being prepared; it must not start. */
+	private _preparationAbortRequested = false;
+	/** fork: a manual compaction waits for the session to stop before it starts. */
+	private _manualCompactionStarting = false;
 	private _agentRunAbortRequested = false;
 	private _idleWaitPromise: Promise<void> | undefined;
 	private _resolveIdleWait: (() => void) | undefined;
@@ -378,6 +397,13 @@ export class AgentSession {
 	private _steeringMessages: string[] = [];
 	/** Tracks pending follow-up messages for UI display. Removed when delivered. */
 	private _followUpMessages: string[] = [];
+	/** fork: queued messages whose images are still being processed, in call order. */
+	private _queuedImagesTail: Promise<void> = Promise.resolve();
+	private _queuedImagesPending = 0;
+	/** Bumped by clearQueue(), so a message still being processed is dropped with the queue. */
+	private _queueGeneration = 0;
+	/** fork: the texts of those messages, which clearQueue() returns with the others. */
+	private _queuedInFlight: { behavior: "steer" | "followUp"; text: string }[] = [];
 	/** Messages queued to be included with the next user prompt as context ("asides"). */
 	private _pendingNextTurnMessages: CustomMessage[] = [];
 	/** Context-only custom messages queued during a run, flushed once the current turn's tool results are in. */
@@ -727,7 +753,10 @@ export class AgentSession {
 					onUpdate,
 				});
 			},
-			emit: async (event) => {
+			emit: async (nestedEvent) => {
+				// fork: a nested tool's progress, masked as in _handleAgentEvent.
+				const event =
+					nestedEvent.type === "tool_execution_update" ? maskValue(nestedEvent, knownSecrets()) : nestedEvent;
 				await this._extensionRunner.emit(event);
 				this._emit(event);
 			},
@@ -818,7 +847,7 @@ export class AgentSession {
 	private async _dispatchTurnEndBoundary(
 		message: AssistantMessage,
 		toolResults: ToolResultMessage[],
-	): Promise<boolean> {
+	): Promise<boolean | "stop"> {
 		this._lastActivityOutcome =
 			message.stopReason === "aborted" ? "aborted" : message.stopReason === "error" ? "error" : "completed";
 		const messageEntryId = this._findPersistedMessageEntryId(message);
@@ -848,6 +877,7 @@ export class AgentSession {
 			(entries) => this._buildBoundaryContext(entries, "turn_end"),
 		);
 		this._commitBoundaryDrafts(boundary.entries);
+		if (boundary.stop) return "stop";
 		if (boundary.continue && !this._buildBoundaryContext([], "turn_end").canContinue) {
 			this._reportInvalidBoundaryContinuation("turn_end");
 			return false;
@@ -859,10 +889,11 @@ export class AgentSession {
 		const previousFinishTurn = this.agent.finishTurn;
 		this.agent.finishTurn = async (turn, signal) => {
 			this._boundaryDispatchedMessages.add(turn.message);
-			const extensionContinue = await this._dispatchTurnEndBoundary(turn.message, turn.toolResults);
+			const extensionDecision = await this._dispatchTurnEndBoundary(turn.message, turn.toolResults);
 			const previousDecision = await previousFinishTurn?.(turn, signal);
 			if (previousDecision?.action === "end") return previousDecision;
-			if (extensionContinue || previousDecision?.action === "continue") return { action: "continue" };
+			if (extensionDecision === "stop") return { action: "end" };
+			if (extensionDecision || previousDecision?.action === "continue") return { action: "continue" };
 			return undefined;
 		};
 	}
@@ -1071,7 +1102,10 @@ export class AgentSession {
 	}
 
 	/** Internal handler for agent events - shared by subscribe and reconnect */
-	private _handleAgentEvent = async (event: AgentEvent): Promise<void> => {
+	private _handleAgentEvent = async (agentEvent: AgentEvent): Promise<void> => {
+		// fork: a tool's progress reaches the interface, RPC and JSON clients and the
+		// extensions before its result, which the secrets extension masks: the update is masked as the result is.
+		const event = agentEvent.type === "tool_execution_update" ? maskValue(agentEvent, knownSecrets()) : agentEvent;
 		// Record the calls a tool made through ctx.executeTool() and their usage on its result message.
 		if (this._nestedToolCalls) {
 			if (event.type === "message_start" && event.message.role === "toolResult") {
@@ -1471,6 +1505,8 @@ export class AgentSession {
 			exposure: this._getToolExposure(definition.name),
 			...(definition.namespace ? { namespace: definition.namespace } : {}),
 			...(definition.annotations ? { annotations: { ...definition.annotations } } : {}),
+			// fork: the permission gate reads the declaration.
+			...(definition.permissions ? { permissions: definition.permissions } : {}),
 			sourceInfo,
 		}));
 	}
@@ -1789,6 +1825,9 @@ export class AgentSession {
 					await this.agent.continue();
 					continue;
 				}
+				// fork: a message queued during the run whose images
+				// are still being processed joins it, instead of waiting in the queue for the next prompt.
+				if (this._queuedImagesPending > 0) await this._queuedImagesTail;
 				if (this._agentRunAbortRequested || !(await this._runBeforeSettleBoundary())) break;
 				if (this._agentRunAbortRequested) break;
 				await this.agent.continue();
@@ -1918,6 +1957,20 @@ export class AgentSession {
 	 * @throws Error if streaming and no streamingBehavior specified
 	 * @throws Error if no model selected or no API key available (when not streaming)
 	 */
+	/** fork: a prompt never starts while the context is being changed. */
+	private _assertNoContextChange(): void {
+		if (this._compactionAbortController !== undefined || this._manualCompactionStarting) {
+			throw new Error(
+				"Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
+			);
+		}
+		if (this._branchSummaryAbortController !== undefined) {
+			throw new Error(
+				"Cannot submit a prompt while the session tree is being navigated. Wait for it to finish and retry.",
+			);
+		}
+	}
+
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
 		if (this._isEmittingAgentSettled) {
 			this._deferredSettledActions.push(async () => await this.prompt(text, options));
@@ -1936,11 +1989,7 @@ export class AgentSession {
 			}
 		}
 
-		if (this._compactionAbortController !== undefined) {
-			throw new Error(
-				"Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
-			);
-		}
+		this._assertNoContextChange();
 
 		// Emit input event for extension interception (before skill/template expansion)
 		const processedInput = await this._runInputHandlers(
@@ -1963,7 +2012,9 @@ export class AgentSession {
 		}
 
 		// If streaming, queue via steer() or followUp() based on option
-		if (this.isStreaming) {
+		// fork: a prompt still being prepared counts, or a second one would pass this check,
+		// be announced as started and then be lost.
+		if (this.isStreaming || this._preparingPrompt) {
 			if (!options?.streamingBehavior) {
 				throw new Error(
 					"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
@@ -1978,6 +2029,24 @@ export class AgentSession {
 			return;
 		}
 
+		// fork: a compaction or a tree navigation started while the input was handled.
+		this._assertNoContextChange();
+		this._preparingPrompt = true;
+		this._preparationAbortRequested = false;
+		try {
+			await this._prepareAndRunPrompt(expandedText, currentImages, preflightResult);
+		} catch (error) {
+			this._preparingPrompt = false;
+			throw error;
+		}
+	}
+
+	/** fork: what `prompt` awaits before the run starts, under `_preparingPrompt`. */
+	private async _prepareAndRunPrompt(
+		expandedText: string,
+		currentImages: ImageContent[] | undefined,
+		preflightResult: PromptOptions["preflightResult"],
+	): Promise<void> {
 		// Flush any pending bash and custom messages before the new prompt
 		this._flushPendingBashMessages();
 		this._flushPendingCustomMessages();
@@ -2059,7 +2128,12 @@ export class AgentSession {
 		this._runSystemPromptOptions = result.systemPromptOptions;
 		if (updateMessage) messages.unshift(updateMessage);
 
+		// fork: stopped while it was being prepared: nothing is sent.
+		if (this._preparationAbortRequested) throw new Error("The prompt was cancelled before it started.");
 		preflightResult?.("started");
+		this._preparingPrompt = false;
+		// fork: the level used with a model becomes that model's own.
+		rememberModelThinking(this.model, this.thinkingLevel, this.settingsManager);
 		await this._runAgentPrompt(messages);
 	}
 
@@ -2189,30 +2263,60 @@ export class AgentSession {
 	 * Internal: Queue a steering message (already expanded, no extension command check).
 	 */
 	private async _queueSteer(text: string, images?: ImageContent[]): Promise<void> {
-		this._steeringMessages.push(text);
-		this._emitQueueUpdate();
-		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
-		if (images) {
-			content.push(...images);
-		}
-		this.agent.steer({
-			role: "user",
-			content,
-			timestamp: Date.now(),
-		});
+		await this._queueUserMessage("steer", text, images);
 	}
 
 	/**
 	 * Internal: Queue a follow-up message (already expanded, no extension command check).
 	 */
 	private async _queueFollowUp(text: string, images?: ImageContent[]): Promise<void> {
-		this._followUpMessages.push(text);
-		this._emitQueueUpdate();
-		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
-		if (images) {
-			content.push(...images);
+		await this._queueUserMessage("followUp", text, images);
+	}
+
+	/**
+	 * fork: queued images get the processing of an idle prompt (conversion,
+	 * resize to the model's profile, hints) before the message is queued. A message with images waits for that
+	 * processing, and messages queued after it wait their turn, so the queue keeps the order of the calls. A
+	 * message still being processed when the queue is cleared is dropped with it; its text is returned with the
+	 * others, as is any queued message's.
+	 */
+	private async _queueUserMessage(
+		behavior: "steer" | "followUp",
+		text: string,
+		images: ImageContent[] | undefined,
+	): Promise<void> {
+		if (!images?.length && this._queuedImagesPending === 0) {
+			this._deliverQueuedMessage(behavior, text, []);
+			return;
 		}
-		this.agent.followUp({ role: "user", content, timestamp: Date.now() });
+		const normalizing = this._normalizePromptImages(images);
+		const generation = this._queueGeneration;
+		const inFlight = { behavior, text };
+		this._queuedInFlight.push(inFlight);
+		this._queuedImagesPending++;
+		const step = this._queuedImagesTail
+			.then(async () => {
+				const normalized = await normalizing;
+				if (generation !== this._queueGeneration) return;
+				this._queuedInFlight = this._queuedInFlight.filter((entry) => entry !== inFlight);
+				const fullText = normalized.hints.length > 0 ? `${text}\n\n${normalized.hints.join("\n")}` : text;
+				this._deliverQueuedMessage(behavior, fullText, normalized.images);
+			})
+			.finally(() => {
+				this._queuedInFlight = this._queuedInFlight.filter((entry) => entry !== inFlight);
+				this._queuedImagesPending--;
+			});
+		this._queuedImagesTail = step.catch(() => {});
+		await step;
+	}
+
+	private _deliverQueuedMessage(behavior: "steer" | "followUp", text: string, images: ImageContent[]): void {
+		(behavior === "steer" ? this._steeringMessages : this._followUpMessages).push(text);
+		this._emitQueueUpdate();
+		const content: (TextContent | ImageContent)[] = [{ type: "text", text }, ...images];
+		const message = { role: "user" as const, content, timestamp: Date.now() };
+		if (behavior === "steer") this.agent.steer(message);
+		else this.agent.followUp(message);
 	}
 
 	/**
@@ -2353,10 +2457,14 @@ export class AgentSession {
 	 * @returns Object with steering and followUp arrays
 	 */
 	clearQueue(): { steering: string[]; followUp: string[] } {
-		const steering = [...this._steeringMessages];
-		const followUp = [...this._followUpMessages];
+		const inFlight = (behavior: "steer" | "followUp") =>
+			this._queuedInFlight.filter((entry) => entry.behavior === behavior).map((entry) => entry.text);
+		const steering = [...this._steeringMessages, ...inFlight("steer")];
+		const followUp = [...this._followUpMessages, ...inFlight("followUp")];
+		this._queuedInFlight = [];
 		this._steeringMessages = [];
 		this._followUpMessages = [];
+		this._queueGeneration++;
 		this.agent.clearAllQueues();
 		this._emitQueueUpdate();
 		return { steering, followUp };
@@ -2388,6 +2496,7 @@ export class AgentSession {
 		if (this._isAgentRunActive) {
 			this._agentRunAbortRequested = true;
 		}
+		if (this._preparingPrompt) this._preparationAbortRequested = true;
 		this.abortRetry();
 		this.abortCompaction();
 		this.abortBranchSummary();
@@ -2431,6 +2540,7 @@ export class AgentSession {
 		if (!(await this._modelRuntime.checkAuth(model.provider))) {
 			throw new Error(`No API key for ${model.provider}/${model.id}`);
 		}
+		if (options.onlyIf && !options.onlyIf()) return;
 
 		const previousModel = this.model;
 		const thinkingLevel = this._getThinkingLevelForModelSwitch(model);
@@ -2715,7 +2825,15 @@ export class AgentSession {
 	 * @param customInstructions Optional instructions for the compaction summary
 	 */
 	async compact(customInstructions?: string): Promise<CompactionResult> {
-		await this.abort();
+		// fork: one manual compaction at a time; a second one shared and cleared its state.
+		if (this._compactionAbortController !== undefined || this._manualCompactionStarting)
+			throw new Error("Compaction is already in progress.");
+		this._manualCompactionStarting = true;
+		try {
+			await this.abort();
+		} finally {
+			this._manualCompactionStarting = false;
+		}
 		this._compactionAbortController = new AbortController();
 		this._emit({ type: "compaction_start", reason: "manual" });
 		let fromExtension = false;
@@ -2737,7 +2855,7 @@ export class AgentSession {
 				if (lastEntry?.type === "compaction") {
 					throw new Error("Already compacted");
 				}
-				throw new Error("Nothing to compact (session too small)");
+				throw new Error("The conversation is too short to summarize yet.");
 			}
 
 			let extensionCompaction: CompactionResult | undefined;
@@ -3169,8 +3287,8 @@ export class AgentSession {
 				const errorMessage = aborted
 					? undefined
 					: reason === "overflow"
-						? `Context overflow recovery failed: ${message}`
-						: `Auto-compaction failed: ${message}`;
+						? fill("Context overflow recovery failed: {0}", message)
+						: fill("Auto-compaction failed: {0}", message);
 				this._emit({
 					type: "compaction_end",
 					reason,
@@ -3378,9 +3496,9 @@ export class AgentSession {
 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
 				refreshTools: () => this._refreshToolRegistry(),
 				getCommands,
-				setModel: async (model) => {
+				setModel: async (model, options) => {
 					if (!this._modelRuntime.hasConfiguredAuth(model.provider)) return false;
-					await this.setModel(model);
+					await this.setModel(model, { onlyIf: options?.onlyIf });
 					return true;
 				},
 				getThinkingLevel: () => this.thinkingLevel,
@@ -3572,7 +3690,20 @@ export class AgentSession {
 				)
 			: createAllToolDefinitions(this._cwd, {
 					read: { autoResizeImages },
-					bash: { commandPrefix: shellCommandPrefix, shellPath },
+					bash: {
+						commandPrefix: shellCommandPrefix,
+						shellPath,
+						// fork: in the sandbox when the permission gate turned it on for this session;
+						// fork: without the secrets of the environment.
+						operations: withoutSecrets(
+							createSandboxableBashOperations(
+								() => sessionSandbox(this.sessionManager),
+								shellPath,
+								shellCommandPrefix,
+							),
+							shellCommandPrefix,
+						),
+					},
 				});
 
 		this._baseToolDefinitions = new Map(
@@ -3802,6 +3933,14 @@ export class AgentSession {
 		const shellPath = this.settingsManager.getShellPath();
 		const resolvedCommand = prefix ? `${prefix}\n${command}` : command;
 
+		// fork: its start and its end are told to every client (see the event types).
+		let recorded = false;
+		this._emit({
+			type: "bash_execution_start",
+			id: options?.id,
+			command,
+			excludeFromContext: options?.excludeFromContext ?? false,
+		});
 		try {
 			const result = await executeBashWithOperations(
 				resolvedCommand,
@@ -3817,9 +3956,11 @@ export class AgentSession {
 			);
 
 			this.recordBashResult(command, result, options);
+			recorded = true;
 			return result;
 		} finally {
 			this._bashAbortControllers.delete(abortController);
+			if (!recorded) this._emit({ type: "bash_execution_end", id: options?.id });
 		}
 	}
 
@@ -3827,7 +3968,11 @@ export class AgentSession {
 	 * Record a bash execution result in session history.
 	 * Used by executeBash and by extensions that handle bash execution themselves.
 	 */
-	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void {
+	recordBashResult(
+		command: string,
+		result: BashResult,
+		options?: { excludeFromContext?: boolean; id?: string },
+	): void {
 		const bashMessage: BashExecutionMessage = {
 			role: "bashExecution",
 			command,
@@ -3844,9 +3989,11 @@ export class AgentSession {
 		if (this.isStreaming) {
 			// Queue for later - will be flushed on agent_end
 			this._pendingBashMessages.push(bashMessage);
+			this._emit({ type: "bash_execution_end", id: options?.id, message: bashMessage, pending: true });
 		} else {
 			this.sessionManager.appendMessage(bashMessage);
 			this._refreshFinalizedContext();
+			this._emit({ type: "bash_execution_end", id: options?.id, message: bashMessage });
 		}
 	}
 
@@ -3916,7 +4063,8 @@ export class AgentSession {
 		targetId: string,
 		options: { summarize?: boolean; customInstructions?: string; replaceInstructions?: boolean; label?: string } = {},
 	): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean; summaryEntry?: BranchSummaryEntry }> {
-		if (this.isStreaming) {
+		// fork: a prompt being prepared counts as a response.
+		if (this.isStreaming || this._preparingPrompt) {
 			throw new Error("Wait for the current response to finish before navigating the session tree.");
 		}
 		if (this.isCompacting) {
@@ -3934,7 +4082,7 @@ export class AgentSession {
 
 		// Model required for summarization
 		if (options.summarize && !this.model) {
-			throw new Error("No model available for summarization");
+			throw new Error(t("No model available for summarization"));
 		}
 
 		const targetEntry = this.sessionManager.getEntry(targetId);
@@ -4035,6 +4183,9 @@ export class AgentSession {
 				summaryDetails = extensionSummary.details;
 				summaryUsage = extensionSummary.usage;
 			}
+
+			// fork: cancelled while a hook ran: the session stays where it was.
+			if (this._branchSummaryAbortController.signal.aborted) return { cancelled: true, aborted: true };
 
 			// Determine the new leaf position based on target type
 			let newLeafId: string | null;
@@ -4192,6 +4343,24 @@ export class AgentSession {
 		const contextWindow = model.contextWindow ?? 0;
 		if (contextWindow <= 0) return undefined;
 
+		// fork: the footer asks on every frame and the answer walks the whole session. It only
+		// depends on the path to the leaf (entries are append-only) and on the model's window.
+		const key = [
+			this.sessionManager,
+			this.sessionManager.getSessionId(),
+			this.sessionManager.getLeafId(),
+			contextWindow,
+		];
+		const cached = this._contextUsageCache;
+		if (cached?.key.every((v, i) => v === key[i])) return { ...cached.value };
+		const value = this._computeContextUsage(contextWindow);
+		this._contextUsageCache = { key, value };
+		return { ...value };
+	}
+
+	private _contextUsageCache: { key: unknown[]; value: ContextUsage } | undefined;
+
+	private _computeContextUsage(contextWindow: number): ContextUsage {
 		// After compaction, the last assistant usage reflects pre-compaction context size.
 		// We can only trust usage from an assistant that responded after the latest compaction.
 		// If no such assistant exists, context token count is unknown until the next LLM response.
@@ -4237,7 +4406,10 @@ export class AgentSession {
 	 * @returns Path to exported file
 	 */
 	async exportToHtml(outputPath?: string, options: { themeName?: string } = {}): Promise<string> {
-		const themeName = [options.themeName, this.settingsManager.getTheme()].find(
+		// fork: a light/dark pair setting (the default, `prism-light/prism`) resolves to the
+		// theme the terminal shows, so the export matches it.
+		const settingTheme = resolveThemeSetting(this.settingsManager.getThemeSetting(), getTerminalTheme());
+		const themeName = [options.themeName, settingTheme].find(
 			(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
 		);
 
@@ -4272,7 +4444,7 @@ export class AgentSession {
 	async summarizeForBugReport(options: { hint?: string; signal: AbortSignal }): Promise<string> {
 		const model = this.model;
 		if (!model) {
-			throw new Error("No model selected");
+			throw new Error(t("No model selected"));
 		}
 		return generateBugReportSummary({
 			...(await this._getSummarizationRequestAuth(model, options.signal)),

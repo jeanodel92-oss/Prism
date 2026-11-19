@@ -1,5 +1,6 @@
 import type { Terminal, WheelScrollLines } from "@earendil-works/pi-tui";
 import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
+import { t } from "../../fork/i18n/index.ts"; // fork: display text only
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { keyDisplayText } from "./components/keybinding-hints.ts";
@@ -20,6 +21,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions & { readonly
 export function createInteractiveTui(options: InteractiveTuiOptions & { readonly tuiMode: "regular" }): TuiMainScreen;
 export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScreen | TuiAltScreen;
 export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScreen | TuiAltScreen {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	const terminal = options.terminal ?? new ProcessTerminal();
 	if (options.tuiMode === "fullscreen") {
 		const styleSearchMatch = (text: string) => theme.bg("searchMatchBg", theme.fg("searchMatchText", text));
@@ -29,7 +31,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			searchNavigationButtonStyle: (text, hovered) => (hovered ? theme.underline(text) : text),
 			scrollToEndIndicator: () => {
 				const shortcut = keyDisplayText("tui.altScreen.bottom");
-				const label = ` ↓ Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;
+				const label = ` ↓ ${t("Jump to latest message")}${shortcut ? ` · ${shortcut}` : ""} `;
 				return theme.bg("selectedBg", theme.fg("text", label));
 			},
 			openUrl: openBrowser,
@@ -44,6 +46,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 					return error instanceof Error ? error.message : String(error);
 				}
 			},
+			translateFlash: t, // fork: "Copied!" in the interface language
 		});
 	}
 	return new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);

@@ -1,0 +1,17 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "keys", "text": "/l", "why": "the llama.cpp module is loaded and its router answers (drive-all.sh): /llama exists in the engine" },
+	{ "do": "wait", "selector": "#completion li", "text": "login" },
+	{ "do": "absent", "selector": "#completion li", "text": "llama", "why": "owner's decision, 2026-11-04: the window does not offer /llama" },
+	{ "do": "shot", "name": "llama-hidden-completion" },
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+	{ "do": "wait", "selector": "#completion", "gone": true },
+	{ "do": "type", "text": "/llama" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "available in the terminal only", "why": "typed, it is refused as a terminal command" },
+	{ "do": "absent", "selector": ".panel.native-command" },
+	{ "do": "absent", "selector": ".msg.user", "text": "/llama" },
+	{ "do": "shot", "name": "llama-hidden-typed" },
+	{ "do": "transcript-clean" },
+	{ "do": "quit" }
+]

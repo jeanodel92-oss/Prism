@@ -1,5 +1,4 @@
 import {
-	type Component,
 	Container,
 	fuzzyFilter,
 	getKeybindings,
@@ -9,7 +8,9 @@ import {
 	type SelectListLayoutOptions,
 	Spacer,
 	Text,
+	type TuiMouseEvent,
 } from "@earendil-works/pi-tui";
+import { t } from "../../../fork/i18n/index.ts";
 import { getSelectListTheme, theme } from "../theme/theme.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -22,6 +23,13 @@ export interface SelectSubmenuOptions {
 	searchable?: boolean;
 	/** Override the select list layout (column widths). */
 	layout?: SelectListLayoutOptions;
+	/** fork: repeat the chosen row's whole description under the list, wrapped. */
+	selectedDescription?: boolean;
+	/**
+	 * fork: keeps the height of the tallest view at this width, whichever item is selected: rows that wrap
+	 * would otherwise move what is under them at each key. Blank lines go under the list.
+	 */
+	stableHeight?: boolean;
 }
 
 /**
@@ -37,6 +45,9 @@ export class SelectSubmenu extends Container {
 	private onSelectCb: (value: string) => void;
 	private onCancelCb: () => void;
 	private onSelectionChangeCb?: (value: string) => void;
+	private selectedDescription: Text | undefined;
+	private readonly stableHeight: boolean;
+	private measured: { width: number; height: number } | undefined;
 
 	constructor(
 		title: string,
@@ -57,12 +68,12 @@ export class SelectSubmenu extends Container {
 		this.onSelectionChangeCb = onSelectionChange;
 
 		// Title
-		this.addChild(new Text(theme.bold(theme.fg("accent", title)), 0, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", t(title))), 0, 0));
 
 		// Description
 		if (description) {
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("muted", description), 0, 0));
+			this.addChild(new Text(theme.fg("muted", t(description)), 0, 0));
 		}
 
 		// Search input
@@ -82,29 +93,75 @@ export class SelectSubmenu extends Container {
 		this.selectList = this.buildSelectList(options, currentValue);
 		this.listChildIndex = this.children.length;
 		this.addChild(this.selectList);
+		this.stableHeight = submenuOptions?.stableHeight === true;
+		if (submenuOptions?.selectedDescription) {
+			this.addChild(new Spacer(1));
+			this.selectedDescription = new Text("", 0, 0);
+			this.addChild(this.selectedDescription);
+			this.showSelectedDescription();
+		}
 
 		// Hint
 		this.addChild(new Spacer(1));
 		const hint = submenuOptions?.searchable
 			? "  Type to filter \u00b7 Enter to select \u00b7 Esc to go back"
 			: "  Enter to select \u00b7 Esc to go back";
-		this.addChild(new Text(theme.fg("dim", hint), 0, 0));
+		this.addChild(new Text(theme.fg("dim", t(hint)), 0, 0));
+	}
+
+	override render(width: number): string[] {
+		const lines = super.render(width);
+		if (!this.stableHeight) return lines;
+		if (this.measured?.width !== width) this.measured = { width, height: this.tallest(width) };
+		const above = this.children
+			.slice(0, this.listChildIndex + 1)
+			.reduce((rows, child) => rows + child.render(width).length, 0);
+		lines.splice(above, 0, ...Array<string>(Math.max(0, this.measured.height - lines.length)).fill(""));
+		return lines;
+	}
+
+	/** The height with each item selected in turn; the selection stays where it was. */
+	private tallest(width: number): number {
+		const selected = this.selectList.getSelectedIndex();
+		let height = 0;
+		for (let index = 0; index < this.selectList.getItemCount(); index++) {
+			this.selectList.setSelectedIndex(index);
+			this.showSelectedDescription();
+			height = Math.max(height, super.render(width).length);
+		}
+		this.selectList.setSelectedIndex(selected);
+		this.showSelectedDescription();
+		return height;
 	}
 
 	private buildSelectList(options: SelectItem[], preselect: string): SelectList {
-		const list = new SelectList(options, Math.min(options.length, 10), getSelectListTheme(), this.listLayout);
+		const list = new SelectList(
+			options.map((item) => ({
+				...item,
+				label: t(item.label),
+				description: item.description ? t(item.description) : undefined,
+			})),
+			Math.min(options.length, 10),
+			getSelectListTheme(),
+			this.listLayout,
+		);
 
 		const idx = options.findIndex((o) => o.value === preselect);
 		if (idx !== -1) list.setSelectedIndex(idx);
 
 		list.onSelect = (item) => this.onSelectCb(item.value);
 		list.onCancel = this.onCancelCb;
-		if (this.onSelectionChangeCb) {
-			const cb = this.onSelectionChangeCb;
-			list.onSelectionChange = (item) => cb(item.value);
-		}
+		const cb = this.onSelectionChangeCb;
+		list.onSelectionChange = (item) => {
+			this.showSelectedDescription(item);
+			cb?.(item.value);
+		};
 
 		return list;
+	}
+
+	private showSelectedDescription(item = this.selectList.getSelectedItem() ?? undefined): void {
+		this.selectedDescription?.setText(theme.fg("muted", item?.description ?? ""));
 	}
 
 	private applyFilter(query: string): void {
@@ -115,6 +172,7 @@ export class SelectSubmenu extends Container {
 		const newList = this.buildSelectList(filtered, "");
 		this.children[this.listChildIndex] = newList;
 		this.selectList = newList;
+		this.showSelectedDescription();
 	}
 
 	handleInput(data: string): void {
@@ -180,7 +238,7 @@ export class SteppedSubmenu extends Container {
 	private readonly onComplete: (context: Record<string, string>) => void;
 	private readonly onCancel: () => void;
 	private readonly opts: SteppedSubmenuOptions;
-	private activeComponent: Component;
+	private activeComponent: SelectSubmenu;
 	private context: Record<string, string>;
 
 	constructor(
@@ -198,10 +256,10 @@ export class SteppedSubmenu extends Container {
 		this.activeComponent = this.buildStep(opts.startAtStep ?? 0);
 	}
 
-	private buildStep(stepIndex: number): Component {
+	private buildStep(stepIndex: number): SelectSubmenu {
 		const step = this.steps[stepIndex];
 		const total = this.steps.length;
-		const stepLabel = total > 1 ? `Step ${stepIndex + 1}/${total} \u00b7 ` : "";
+		const stepLabel = total > 1 ? t(`Step ${stepIndex + 1}/${total} \u00b7 `) : "";
 
 		const title = typeof step.title === "function" ? step.title(this.context) : step.title;
 		const desc = typeof step.description === "function" ? step.description(this.context) : step.description;
@@ -210,7 +268,7 @@ export class SteppedSubmenu extends Container {
 
 		return new SelectSubmenu(
 			title,
-			`${stepLabel}${desc}`,
+			`${stepLabel}${t(desc)}`,
 			items,
 			preselect,
 			(value) => {
@@ -250,6 +308,11 @@ export class SteppedSubmenu extends Container {
 
 	handleInput(data: string): void {
 		this.activeComponent.handleInput?.(data);
+	}
+
+	// fork: the step shown is drawn here, not added as a child, so clicks go to it.
+	handleMouse(event: TuiMouseEvent) {
+		return this.activeComponent.handleMouse(event);
 	}
 
 	invalidate(): void {

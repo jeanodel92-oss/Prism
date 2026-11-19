@@ -1,6 +1,14 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import { fill, t } from "../../../fork/i18n/index.ts"; // fork
+import { OUTPUT_LIMIT_STOP } from "../../../fork/model-settings.ts"; // fork
+import {
+	type AssistantBlock,
+	type AssistantMessageRender,
+	HookRenderCache,
+	renderHooks,
+} from "../../../fork/render-hooks.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 
@@ -22,6 +30,9 @@ export class AssistantMessageComponent extends Container {
 	private hasToolCalls = false;
 	private isStreaming = false;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
+	/** fork: thinking regions and whether each shows the hidden-thinking label. */
+	private thinkingRegions = new WeakMap<MouseRegion, boolean>();
+	private hookCache = new HookRenderCache<AssistantMessageRender | undefined>(); // fork
 
 	constructor(
 		message?: AssistantMessage,
@@ -50,9 +61,15 @@ export class AssistantMessageComponent extends Container {
 
 	override invalidate(): void {
 		super.invalidate();
+		this.hookCache.clear(); // fork
 		if (this.lastMessage) {
 			this.updateContent(this.lastMessage);
 		}
+	}
+
+	// fork: the global expansion command also resets thinking click overrides.
+	setExpanded(expanded: boolean): void {
+		this.setHideThinkingBlock(!expanded);
 	}
 
 	setHideThinkingBlock(hide: boolean): void {
@@ -77,8 +94,13 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
+	/** fork: true for a message with nothing to draw, such as a turn with only tool calls. */
+	drawsNothing(): boolean {
+		return this.contentContainer.children.length === 0;
+	}
+
 	override render(width: number): string[] {
-		const lines = super.render(width);
+		const lines = this.renderHooked(width) ?? super.render(width);
 		if (this.hasToolCalls || lines.length === 0) {
 			return lines;
 		}
@@ -88,7 +110,33 @@ export class AssistantMessageComponent extends Container {
 		return lines;
 	}
 
+	// fork: render hook for the Prism pack, which draws the blocks with its own gutter.
+	private renderHooked(width: number): string[] | undefined {
+		const hook = renderHooks.assistantMessage;
+		if (!hook) return undefined;
+		// a finished message is decorated once, not on every frame.
+		const rendered = this.hookCache.get(width, !this.isStreaming, () => {
+			const blocks = this.contentContainer.children.map((component): AssistantBlock => {
+				if (component instanceof Spacer) return { component, kind: "spacer" };
+				if (component instanceof MouseRegion) {
+					return { component, kind: this.thinkingRegions.get(component) ? "thinking-hidden" : "thinking" };
+				}
+				return { component, kind: component instanceof Text ? "notice" : "text" };
+			});
+			return hook(width, blocks, this.isStreaming);
+		});
+		if (!rendered) return undefined;
+		this.contentContainer.setMouseLayout({ width, children: rendered.layout });
+		this.setMouseLayout({ width, children: [{ component: this.contentContainer, height: rendered.lines.length }] });
+		// render() marks the first and last lines: never on the cached array.
+		const lines = [...rendered.lines];
+		// fork: a thinking block shown or hidden by a click unfolds or folds.
+		return renderHooks.unfolding?.(this, "thinking", lines) ?? lines;
+	}
+
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
+		// fork: translate display wrappers; keep data and model content unchanged.
+		this.hookCache.clear(); // fork
 		this.lastMessage = message;
 		this.isStreaming = isStreaming;
 
@@ -160,14 +208,15 @@ export class AssistantMessageComponent extends Container {
 								),
 							},
 						);
-				this.contentContainer.addChild(
-					new MouseRegion(thinkingComponent, (event) => {
-						if (event.type !== "click" || event.button !== "left") return undefined;
-						this.thinkingVisibilityOverrides.set(runIndex, !hidden);
-						if (this.lastMessage) this.updateContent(this.lastMessage);
-						return { handled: true };
-					}),
-				);
+				const thinkingRegion = new MouseRegion(thinkingComponent, (event) => {
+					if (event.type !== "click" || event.button !== "left") return undefined;
+					this.thinkingVisibilityOverrides.set(runIndex, !hidden);
+					renderHooks.unfold?.(this, "thinking"); // fork
+					if (this.lastMessage) this.updateContent(this.lastMessage);
+					return { handled: true };
+				});
+				this.thinkingRegions.set(thinkingRegion, hidden); // fork
+				this.contentContainer.addChild(thinkingRegion);
 				if (hasVisibleContentAfter) {
 					this.contentContainer.addChild(new Spacer(1));
 				}
@@ -182,7 +231,8 @@ export class AssistantMessageComponent extends Container {
 		if (message.stopReason === "length") {
 			this.contentContainer.addChild(new Spacer(1));
 			this.contentContainer.addChild(
-				new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0),
+				// fork: say which limit stopped it and where to raise it.
+				new Text(theme.fg("error", t(OUTPUT_LIMIT_STOP)), this.outputPad, 0),
 			);
 		} else if (!hasToolCalls) {
 			if (message.stopReason === "aborted") {
@@ -191,11 +241,19 @@ export class AssistantMessageComponent extends Container {
 						? message.errorMessage
 						: "Operation aborted";
 				this.contentContainer.addChild(new Spacer(1));
-				this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
+				this.contentContainer.addChild(
+					new Text(
+						theme.fg("error", abortMessage === "Operation aborted" ? t("Operation aborted") : abortMessage),
+						this.outputPad,
+						0,
+					),
+				);
 			} else if (message.stopReason === "error") {
-				const errorMsg = message.errorMessage || "Unknown error";
+				const errorMsg = message.errorMessage || t("Unknown error");
 				this.contentContainer.addChild(new Spacer(1));
-				this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
+				this.contentContainer.addChild(
+					new Text(theme.fg("error", fill("Error: {0}", errorMsg)), this.outputPad, 0),
+				);
 			}
 		}
 	}

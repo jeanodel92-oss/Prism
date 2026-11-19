@@ -1,0 +1,68 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+
+	{ "do": "type", "text": "slow" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='true']" },
+
+	{ "do": "type", "text": "later one" },
+	{ "do": "key", "selector": "#input", "key": "Enter", "mods": { "altKey": true }, "why": "app.message.followUp (alt+enter)" },
+	{ "do": "wait", "selector": ".queue-tray .queue-item", "text": "later one" },
+	{ "do": "absent", "selector": "#input", "text": "later one" },
+	{ "do": "shot", "name": "k1-queued" },
+
+	{ "do": "key", "selector": "#input", "key": "ArrowUp", "mods": { "altKey": true }, "why": "app.message.dequeue (alt+up)" },
+	{ "do": "wait", "selector": "#input", "text": "later one" },
+	{ "do": "wait", "selector": ".queue-tray .queue-item", "gone": true },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Restored 1 queued message(s)" },
+
+	{ "do": "key", "selector": "#input", "key": "Enter", "mods": { "altKey": true } },
+	{ "do": "wait", "selector": ".queue-tray .queue-item", "text": "later one" },
+	{ "do": "key", "selector": "#input", "key": "Escape", "why": "app.interrupt: the queued message comes back, the reply stops" },
+	{ "do": "wait", "selector": "#input", "text": "later one" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 15000 },
+	{ "do": "absent", "selector": ".queue-tray .queue-item" },
+
+	{ "do": "key", "key": "t", "mods": { "ctrlKey": true }, "why": "app.thinking.toggle (ctrl+t)" },
+	{ "do": "wait", "selector": "details.thinking[open]" },
+	{ "do": "key", "key": "t", "mods": { "ctrlKey": true } },
+	{ "do": "absent", "selector": "details.thinking[open]" },
+
+	{ "do": "focus", "selector": "#input" },
+	{ "do": "key", "selector": "#input", "key": "Tab", "mods": { "shiftKey": true }, "why": "app.thinking.cycle (shift+tab)" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Thinking level: high" },
+
+	{ "do": "key", "key": "m", "mods": { "altKey": true }, "why": "extension shortcut of the permissions module (alt+m)" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Permission mode:" },
+
+	{ "do": "key", "key": "g", "mods": { "altKey": true }, "why": "app.goal.menu (alt+g) runs /goal" },
+	{ "do": "wait", "selector": ".native-menu-action", "text": "Start a goal" },
+	{ "do": "click", "selector": ".native-menu-action", "text": "Close" },
+	{ "do": "wait", "selector": "#surface > .panel.native-command:not(.closing)", "gone": true },
+
+	{"do": "log", "text": "permission mode is broad since alt+m: the write is not asked"},
+	{"do": "type", "text": "call write {\"path\": \"lines.txt\", \"content\": \"1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\\n12\\n13\\n14\\n15\\n16\\n17\\n18\\n19\\n20\\n21\\n22\\n23\\n24\\n25\\n26\\n27\\n28\\n29\\n30\"}"},
+	{"do": "send"},
+	{"do": "wait", "selector": ".composer[data-busy='false']"},
+	{"do": "type", "text": "call read {\"path\":\"lines.txt\"}"},
+	{"do": "send", "why": "sent before the write was accepted: it must wait in the composer, not be lost"},
+	{"do": "wait", "selector": "#input", "text": "call read"},
+	{"do": "wait", "selector": ".tool[data-status='done'] .tool-target", "text": "lines.txt"},
+	{"do": "wait", "selector": ".composer[data-busy='false']"},
+	{"do": "send"},
+	{"do": "wait", "selector": ".tool[data-status='done'] .tool-output button", "text": "Show all"},
+	{"do": "wait", "selector": ".composer[data-busy='false']"},
+	{"do": "key", "key": "o", "mods": {"ctrlKey": true}, "why": "app.tools.expand (ctrl+o)"},
+	{"do": "wait", "selector": ".tool-output button", "text": "Show less"},
+	{"do": "absent", "selector": ".tool-output button", "text": "Show all"},
+	{"do": "key", "key": "o", "mods": {"ctrlKey": true}},
+	{"do": "absent", "selector": ".tool-output button", "text": "Show less"},
+	{"do": "key", "key": "l", "mods": {"ctrlKey": true}, "why": "app.model.select (ctrl+l) opens the model choice"},
+	{"do": "focused", "selector": "#surface .panel.picker-panel", "why": "the model picker opens on the surface, the keyboard in its list"},
+	{"do": "wait", "selector": ".panel.picker-panel .listbox li.current", "why": "the model in use is marked"},
+	{"do": "key", "key": "l", "mods": {"ctrlKey": true}, "why": "the same key closes it"},
+	{"do": "absent", "selector": "#surface .panel.picker-panel"},
+
+	{ "do": "log", "text": "keys-ok" },
+	{ "do": "quit" }
+]

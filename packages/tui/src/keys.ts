@@ -526,7 +526,7 @@ let _lastEventType: KeyEventType = "press";
  */
 export function isKeyRelease(data: string): boolean {
 	// Don't treat bracketed paste content as key release, even if it contains
-	// patterns like ":3F" (e.g., bluetooth MAC addresses like "90:62:3F:A5").
+	// patterns like ":3F".
 	// Terminal.ts re-wraps paste content with bracketed paste markers before
 	// passing to TUI, so pasted data will always contain \x1b[200~.
 	if (data.includes("\x1b[200~")) {
@@ -785,12 +785,43 @@ function formatKeyNameWithModifiers(keyName: string, modifier: number): string |
 	return mods.length > 0 ? `${mods.join("+")}+${keyName}` : keyName;
 }
 
+const KEY_ID_MODIFIERS = new Set(["ctrl", "shift", "alt", "super"]);
+
+// fork: a modified F key arrives as CSI 1;<mod> P-S (F1-F4, xterm and kitty) or
+// CSI <n>;<mod> ~ (kitty's F3, and F5-F12).
+const MODIFIED_FUNCTION_KEY_FORMS: Record<string, readonly string[]> = {
+	f1: ["1P", "11~"],
+	f2: ["1Q", "12~"],
+	f3: ["1R", "13~"],
+	f4: ["1S", "14~"],
+	f5: ["15~"],
+	f6: ["17~"],
+	f7: ["18~"],
+	f8: ["19~"],
+	f9: ["20~"],
+	f10: ["21~"],
+	f11: ["23~"],
+	f12: ["24~"],
+};
+
+function matchesModifiedFunctionKey(data: string, key: string, modifier: number): boolean {
+	const match = data.match(/^\x1b\[(\d+);(\d+)(?::([12]))?([PQRS~])$/);
+	if (!match) return false;
+	if (((parseInt(match[2]!, 10) - 1) & ~LOCK_MASK) !== (modifier & ~LOCK_MASK)) return false;
+	return MODIFIED_FUNCTION_KEY_FORMS[key]?.includes(`${match[1]}${match[4]}`) ?? false;
+}
+
 function parseKeyId(
 	keyId: string,
 ): { key: string; ctrl: boolean; shift: boolean; alt: boolean; super: boolean } | null {
-	const parts = keyId.toLowerCase().split("+");
-	const key = parts[parts.length - 1];
+	// fork: "+" is also the plus key, so "+" and "ctrl++" end with it.
+	const id = keyId.toLowerCase();
+	const key = id === "+" || id.endsWith("++") ? "+" : id.slice(id.lastIndexOf("+") + 1);
 	if (!key) return null;
+	const head = id.slice(0, id.length - key.length);
+	const parts = head ? head.slice(0, -1).split("+") : [];
+	// fork: an unknown modifier ("ctl+c") no longer falls back to the bare key.
+	if (parts.some((part) => !KEY_ID_MODIFIERS.has(part))) return null;
 	return {
 		key,
 		ctrl: parts.includes("ctrl"),
@@ -1138,7 +1169,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 		case "f11":
 		case "f12": {
 			if (modifier !== 0) {
-				return false;
+				return matchesModifiedFunctionKey(data, key, modifier);
 			}
 			const functionKey = key as keyof typeof LEGACY_KEY_SEQUENCES;
 			return matchesLegacySequence(data, LEGACY_KEY_SEQUENCES[functionKey]);

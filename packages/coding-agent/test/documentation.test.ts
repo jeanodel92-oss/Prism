@@ -149,6 +149,8 @@ describe("coding-agent documentation", () => {
 
 		const reachable = new Set<string>();
 		const pending = roots.filter((path) => isFile(resolve(docsRoot, path)));
+		// fork: French pages are reached from /docs when the interface is in French, not from docs.json.
+		pending.push(...allPages.filter((path) => path.startsWith("fr/")));
 		const brokenLinks: string[] = [];
 		while (pending.length > 0) {
 			const source = pending.shift();

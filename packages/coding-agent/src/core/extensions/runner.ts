@@ -11,6 +11,7 @@ import {
 	type ProviderHeaders,
 } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
+import { cloneSharingStrings } from "../../fork/share-strings-clone.ts";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
 import type { CacheWarmingAction } from "../cache-warmer.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
@@ -221,6 +222,7 @@ type BoundaryBaseEvent =
 interface BoundaryDispatchResult {
 	entries: SessionBoundaryDraft[];
 	continue: boolean;
+	stop: boolean;
 	context: BoundaryContextPreview;
 	valid: boolean;
 }
@@ -573,7 +575,7 @@ export class ExtensionRunner {
 			confirm: (title, message, opts) => this.withUIPrompt("confirm", title, () => ui.confirm(title, message, opts)),
 			input: (title, placeholder, opts) =>
 				this.withUIPrompt("input", title, () => ui.input(title, placeholder, opts)),
-			editor: (title, prefill) => this.withUIPrompt("editor", title, () => ui.editor(title, prefill)),
+			editor: (title, prefill, opts) => this.withUIPrompt("editor", title, () => ui.editor(title, prefill, opts)),
 			custom: (factory, options) => this.withUIPrompt("custom", undefined, () => ui.custom(factory, options)),
 		};
 	}
@@ -1024,6 +1026,7 @@ export class ExtensionRunner {
 		const ctx = this.createContext();
 		let entries: SessionBoundaryDraft[] = [];
 		let shouldContinue = false;
+		let shouldStop = false;
 		let context = await buildContext(entries);
 		let valid = true;
 
@@ -1039,6 +1042,7 @@ export class ExtensionRunner {
 					const handlerResult = (await handler(event, ctx)) as BoundaryResult | undefined;
 					if (handlerResult?.entries !== undefined) entries = handlerResult.entries;
 					if (handlerResult?.continue !== undefined) shouldContinue = handlerResult.continue;
+					if (handlerResult?.stop !== undefined) shouldStop = handlerResult.stop;
 				} catch (err) {
 					this.emitError({
 						extensionPath: ext.path,
@@ -1064,8 +1068,8 @@ export class ExtensionRunner {
 		}
 
 		return valid
-			? { entries, continue: shouldContinue, context, valid: true }
-			: { entries: [], continue: false, context, valid: false };
+			? { entries, continue: shouldContinue, stop: shouldStop, context, valid: true }
+			: { entries: [], continue: false, stop: false, context, valid: false };
 	}
 
 	private isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEvent {
@@ -1288,7 +1292,7 @@ export class ExtensionRunner {
 	 */
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
 		const ctx = this.createContext();
-		let currentMessages = structuredClone(messages);
+		let currentMessages = cloneSharingStrings(messages); // structuredClone copied every text (RAM pass)
 
 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "context")) {
 			for (const handler of handlers) {

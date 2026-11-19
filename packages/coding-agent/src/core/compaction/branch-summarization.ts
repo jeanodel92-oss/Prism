@@ -9,6 +9,7 @@ import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@earendil-works/pi-ai";
 import { contentText, normalizeContext } from "@earendil-works/pi-ai";
 import type { Model, SimpleStreamOptions, Usage } from "@earendil-works/pi-ai/compat";
+import { branchSummaryBudget, branchSummarySources } from "../../fork/branch-summary-input.ts";
 import {
 	convertToLlm,
 	createBranchSummaryMessage,
@@ -213,16 +214,15 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 				}
 			}
 		}
+		// fork: every call of the branch, past the budget and nested in a tool result too.
+		if (entry.type === "message") extractFileOpsFromMessage(entry.message, fileOps);
 	}
 
 	// Second pass: walk from newest to oldest, adding messages until token budget
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i];
-		const message = getMessageFromEntry(entry);
-		if (!message) continue;
-
-		// Extract file ops from assistant messages (tool calls)
-		extractFileOpsFromMessage(message, fileOps);
+	// fork: the messages as the model saw them, compactions and context edits applied.
+	const sources = branchSummarySources(entries, getMessageFromEntry);
+	for (let i = sources.length - 1; i >= 0; i--) {
+		const { entry, message } = sources[i];
 
 		const tokens = estimateTokens(message);
 
@@ -309,8 +309,12 @@ export async function generateBranchSummary(
 	} = options;
 
 	// Token budget = context window minus reserved space for prompt + response
-	const contextWindow = model.contextWindow || 128000;
-	const tokenBudget = contextWindow - reserveTokens;
+	// fork: a reserve as large as the window no longer means "no limit".
+	const tokenBudget = branchSummaryBudget(
+		model,
+		reserveTokens,
+		SUMMARIZATION_SYSTEM_PROMPT + BRANCH_SUMMARY_PROMPT + (customInstructions ?? ""),
+	);
 
 	const { messages, fileOps } = prepareBranchEntries(entries, tokenBudget);
 

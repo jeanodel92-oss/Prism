@@ -1,0 +1,15 @@
+[
+	{ "do": "log", "text": "SEED_SETTINGS theme prism: one fixed terminal theme, as /onboarding writes it" },
+	{ "do": "pref", "id": "pref-theme", "value": "light" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "sleep", "ms": 3000, "why": "QA 2026-11-04: the engine's theme answer turned the window back to dark about two seconds in" },
+	{ "do": "wait", "selector": "html[data-appearance='light'][data-theme='prism-light']" },
+	{ "do": "shot", "name": "fixed-light" },
+	{ "do": "pref", "id": "pref-theme", "value": "system" },
+	{ "do": "pref", "id": "pref-theme", "value": "dark" },
+	{ "do": "wait", "selector": "html[data-appearance='dark'][data-theme='prism']" },
+	{ "do": "pref", "id": "pref-theme", "value": "light" },
+	{ "do": "wait", "selector": "html[data-appearance='light'][data-theme='prism-light']" },
+	{ "do": "transcript-clean" },
+	{ "do": "quit" }
+]

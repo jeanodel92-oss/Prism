@@ -1,0 +1,7 @@
+{
+	"identifier": "notices",
+	"description": "Android's notices for a conversation that waits for an answer or is done: showing one and removing the app's own only.",
+	"platforms": ["android"],
+	"windows": ["main"],
+	"permissions": ["notification:allow-notify", "notification:allow-remove-active"]
+}

@@ -1,0 +1,13 @@
+[package]
+name = "prism-host"
+version = "0.1.0"
+description = "Prism's engine host (fork.11, decision B1): the engines of `prism --mode rpc`, shared live by the PC window and the phones"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+
+# What the PC window (fork/gui/src-tauri) and the phone server (fork/android/server) have in common: one set of engines,
+# each of which any number of clients can attach to. No third-party crate beyond serde.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -28,6 +28,11 @@ import type { TSchema } from "typebox";
 import type { ToolAnnotations, ToolDefinition, ToolExposure, ToolNamespace } from "../../core/extensions/types.ts";
 import { formatToolCallWithArgs, getTextOutput, replaceTabs } from "../../core/tools/render-utils.ts";
 import { formatSize, truncateMiddle } from "../../core/tools/truncate.ts";
+import { fill } from "../../fork/i18n/index.ts"; // fork: display text only
+import { guardMcpBlock } from "../../fork/mcp-content.ts";
+import { mcpMarkerLine } from "../../fork/mcp-trust.ts";
+import { knownSecrets } from "../../fork/secrets/env.ts";
+import { maskValue } from "../../fork/secrets/mask.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
 import type { McpExposure } from "./config.ts";
@@ -86,8 +91,15 @@ export function createMcpToolName(
 ): string {
 	const name = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
 	if (name.length <= MAX_TOOL_NAME_LENGTH && !isTaken(name)) return name;
-	const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
-	return `${name.slice(0, MAX_TOOL_NAME_LENGTH - hash.length - 1)}_${hash}`;
+	// fork: the suffixed name can be taken too (a tool literally named `a_b_<hash>`), so
+	// it is checked as well, and a taken one moves to the hash of `server\0tool\0<attempt>`.
+	for (let attempt = 0; attempt < 1000; attempt++) {
+		const seed = attempt === 0 ? `${server}\0${tool}` : `${server}\0${tool}\0${attempt}`;
+		const hash = createHash("sha256").update(seed).digest("hex").slice(0, 8);
+		const candidate = `${name.slice(0, MAX_TOOL_NAME_LENGTH - hash.length - 1)}_${hash}`;
+		if (!isTaken(candidate)) return candidate;
+	}
+	throw new Error(`No free tool name for MCP tool "${tool}" of server "${server}"`);
 }
 
 function textOf(content: readonly (TextContent | ImageContent)[]): string {
@@ -201,7 +213,10 @@ export async function toModelContent(
 	blocks: readonly ContentBlock[],
 	options: ConvertMcpResultOptions = {},
 ): Promise<(TextContent | ImageContent)[]> {
-	return (await Promise.all(blocks.map((block) => blockToContent(server, block, options)))).flat();
+	// fork: a block of the wrong shape becomes a placeholder instead of breaking the result.
+	return (
+		await Promise.all(blocks.map((block) => guardMcpBlock(block, () => blockToContent(server, block, options))))
+	).flat();
 }
 
 /** Convert an MCP result. `isError` results become error results that keep the structured result. */
@@ -217,7 +232,9 @@ export async function convertMcpResult(
 	if (result.isError && textOf(converted) === "") {
 		converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
 	}
-	const { content, fullOutputPath } = await limitMcpContent(converted, options.saveOutput);
+	// fork: masked before the full output is saved, which the result's own masking
+	// comes too late for.
+	const { content, fullOutputPath } = await limitMcpContent(maskValue(converted, knownSecrets()), options.saveOutput);
 	const { _meta: _ignored, ...scriptResult } = result;
 	return {
 		content,
@@ -262,6 +279,7 @@ export function createMcpToolDefinition(options: {
 	/** Whether `read_mcp_resource` can read the server's resources. */
 	readableResources?: () => boolean;
 }): ToolDefinition<TSchema, McpToolDetails> {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	const { server, tool } = options;
 	const title = tool.title ?? tool.annotations?.title;
 	const annotations = toToolAnnotations(tool);
@@ -283,14 +301,19 @@ export function createMcpToolDefinition(options: {
 		renderResult(result, options, theme, context) {
 			const component = (context.lastComponent as Container | undefined) ?? new Container();
 			component.clear();
-			const output = getTextOutput(result, context.showImages).trim();
+			// fork.9 (SEC-03): the external-content marker, translated and apart from the output.
+			const { label, rest: output } = mcpMarkerLine(getTextOutput(result, context.showImages).trim());
+			if (label) {
+				component.addChild(new Spacer(1));
+				component.addChild(new Text(theme.fg("warning", label), 0, 0));
+			}
 			if (!output) return component;
 			const color = context.isError ? "error" : "toolOutput";
 			const styled = replaceTabs(output)
 				.split("\n")
 				.map((line) => theme.fg(color, line))
 				.join("\n");
-			component.addChild(new Spacer(1));
+			if (!label) component.addChild(new Spacer(1));
 			if (options.expanded) {
 				component.addChild(new Text(styled, 0, 0));
 			} else {
@@ -301,11 +324,12 @@ export function createMcpToolDefinition(options: {
 						maxVisualLines: OUTPUT_PREVIEW_LINES,
 						keep: "start",
 						formatHint: (hidden) =>
-							`${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+							`${theme.fg("muted", fill("... ({0} more lines,", String(hidden)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
 					}),
 				);
 				const fullOutputPath = result.details?.fullOutputPath;
-				if (fullOutputPath) component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+				if (fullOutputPath)
+					component.addChild(new Text(theme.fg("muted", fill("Full output: {0}", fullOutputPath)), 0, 0));
 			}
 			return component;
 		},

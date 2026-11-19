@@ -2,6 +2,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRadiusOAuth } from "../src/auth/oauth/radius.ts";
 import type { AuthEvent, ProviderAuthInteraction } from "../src/auth/types.ts";
 
+// fork: bind the callback server to a free port. The real one is fixed (1456), so two test runs
+// on one machine failed with EADDRINUSE. The test sends the browser callback to the port actually bound.
+const boundCallbackPorts = vi.hoisted(() => [] as string[]);
+vi.mock("../src/auth/oauth/callback-server.ts", async (importOriginal) => {
+	const original = await importOriginal<typeof import("../src/auth/oauth/callback-server.ts")>();
+	return {
+		...original,
+		startOAuthCallbackServer: async (...args: Parameters<typeof original.startOAuthCallbackServer>) => {
+			const server = await original.startOAuthCallbackServer({ ...args[0], port: 0 });
+			boundCallbackPorts.push(new URL(server.redirectUri).port);
+			return server;
+		},
+	};
+});
+
 const GATEWAY = "https://radius.example";
 const nativeFetch = globalThis.fetch;
 
@@ -155,6 +170,8 @@ describe("Radius OAuth", () => {
 					if (event.type !== "auth_url") return;
 					const authorize = new URL(event.url);
 					const callback = new URL(authorize.searchParams.get("redirect_uri") ?? "");
+					expect(callback.port).toBe("1456");
+					callback.port = boundCallbackPorts.at(-1) ?? "";
 					callback.searchParams.set("code", "browser-code");
 					callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
 					callbackPage = nativeFetch(callback);

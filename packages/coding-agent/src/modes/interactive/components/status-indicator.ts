@@ -1,5 +1,6 @@
 import { type Component, Loader, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import { fill, t } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
@@ -52,8 +53,15 @@ export class RetryStatusIndicator extends StatusIndicator {
 	private countdown: CountdownTimer | undefined;
 
 	constructor(ui: TUI, attempt: number, maxAttempts: number, delayMs: number) {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		const retryMessage = (seconds: number) =>
-			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s... (${keyText("app.interrupt")} to cancel)`;
+			fill(
+				"Retrying ({0}/{1}) in {2}s... ({3} to cancel)",
+				String(attempt),
+				String(maxAttempts),
+				String(seconds),
+				keyText("app.interrupt"),
+			);
 		super(
 			"retry",
 			ui,
@@ -84,11 +92,16 @@ export type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
 export class CompactionStatusIndicator extends StatusIndicator {
 	constructor(ui: TUI, reason: CompactionStatusReason) {
-		const cancelHint = `(${keyText("app.interrupt")} to cancel)`;
+		// fork: translate display wrappers; keep data and model content unchanged.
+		const cancelHint = fill("({0} to cancel)", keyText("app.interrupt"));
 		const label =
 			reason === "manual"
-				? `Compacting context... ${cancelHint}`
-				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting... ${cancelHint}`;
+				? fill("Summarizing older messages to make room... {0}", cancelHint)
+				: fill(
+						"{0}Automatically summarizing older messages... {1}",
+						reason === "overflow" ? t("The conversation exceeded the model's limit. ") : "",
+						cancelHint,
+					);
 		super(
 			"compaction",
 			ui,
@@ -101,12 +114,13 @@ export class CompactionStatusIndicator extends StatusIndicator {
 
 export class BranchSummaryStatusIndicator extends StatusIndicator {
 	constructor(ui: TUI) {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		super(
 			"branchSummary",
 			ui,
 			(spinner) => theme.fg("accent", spinner),
 			(text) => theme.fg("muted", text),
-			`Summarizing branch... (${keyText("app.interrupt")} to cancel)`,
+			fill("Summarizing branch... ({0} to cancel)", keyText("app.interrupt")),
 		);
 	}
 }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { hostCommand } from "../fork/host-program.ts";
 
 /** Undefined means the command failed; an empty buffer is a successful result. */
 export function runClipboardCommand(
@@ -8,7 +9,8 @@ export function runClipboardCommand(
 ): Promise<Buffer | undefined> {
 	return new Promise((resolve) => {
 		// Clipboard writers can daemonize. Do not give them output pipes to retain.
-		const child = spawn(command, args, {
+		// fork: never a `wl-copy` the sandbox could write.
+		const child = spawn(hostCommand(command), args, {
 			stdio: ["pipe", options?.input === undefined ? "pipe" : "ignore", "ignore"],
 			windowsHide: true,
 		});

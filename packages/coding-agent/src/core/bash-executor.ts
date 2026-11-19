@@ -7,9 +7,10 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CappedLog } from "../fork/capped-log.ts";
+import { fullOutputLog } from "../fork/full-output-log.ts";
 import { stripAnsi } from "../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../utils/shell.ts";
 import type { BashOperations } from "./tools/bash.ts";
@@ -58,7 +59,8 @@ export async function executeBashWithOperations(
 	const maxOutputBytes = DEFAULT_MAX_BYTES * 2;
 
 	let tempFilePath: string | undefined;
-	let tempFileStream: WriteStream | undefined;
+	// fork: capped at 32 MiB, first and last halves kept.
+	let tempFileStream: CappedLog | undefined;
 	let totalBytes = 0;
 
 	const ensureTempFile = () => {
@@ -67,11 +69,15 @@ export async function executeBashWithOperations(
 		}
 		const id = randomBytes(8).toString("hex");
 		tempFilePath = join(tmpdir(), `pi-bash-${id}.log`);
-		tempFileStream = createWriteStream(tempFilePath);
+		// fork: the known secrets masked, as in the bash tool's output.
+		tempFileStream = fullOutputLog(tempFilePath);
 		for (const chunk of outputChunks) {
 			tempFileStream.write(chunk);
 		}
 	};
+
+	// fork: return only once the full output is on disk; callers read fullOutputPath right away.
+	const closeTempFile = () => tempFileStream?.end() ?? Promise.resolve();
 
 	const decoder = new TextDecoder();
 
@@ -80,6 +86,9 @@ export async function executeBashWithOperations(
 
 		// Sanitize: strip ANSI, replace binary garbage, normalize newlines
 		const text = sanitizeBinaryOutput(stripAnsi(decoder.decode(data, { stream: true }))).replace(/\r/g, "");
+
+		// fork: a piece that cleans down to nothing (a lone carriage return) is not kept.
+		if (text.length === 0) return;
 
 		// Start writing to temp file if exceeds threshold
 		if (totalBytes > DEFAULT_MAX_BYTES) {
@@ -115,9 +124,7 @@ export async function executeBashWithOperations(
 		if (truncationResult.truncated) {
 			ensureTempFile();
 		}
-		if (tempFileStream) {
-			tempFileStream.end();
-		}
+		await closeTempFile();
 		const cancelled = options?.signal?.aborted ?? false;
 
 		return {
@@ -135,9 +142,7 @@ export async function executeBashWithOperations(
 			if (truncationResult.truncated) {
 				ensureTempFile();
 			}
-			if (tempFileStream) {
-				tempFileStream.end();
-			}
+			await closeTempFile();
 			return {
 				output: truncationResult.truncated ? truncationResult.content : fullOutput,
 				exitCode: undefined,
@@ -147,9 +152,7 @@ export async function executeBashWithOperations(
 			};
 		}
 
-		if (tempFileStream) {
-			tempFileStream.end();
-		}
+		await closeTempFile().catch(() => {});
 
 		throw err;
 	}

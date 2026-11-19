@@ -4,11 +4,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DEFAULT_RADIUS_GATEWAY } from "@earendil-works/pi-ai/providers/radius-config";
-import { type Container, type EditorComponent, hyperlink, type TUI } from "@earendil-works/pi-tui";
+import { type Component, type Container, type EditorComponent, hyperlink, type TUI } from "@earendil-works/pi-tui";
 import { getAuthCredential } from "../../cli/auth-command.ts";
 import { getShareViewerUrl } from "../../config.ts";
 import type { AgentSession } from "../../core/agent-session.ts";
 import { exportSessionToJsonl } from "../../core/session-export.ts";
+import { APP_DISPLAY_NAME } from "../../fork/brand.ts";
+import { hostCommand } from "../../fork/host-program.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 import { theme } from "./theme/theme.ts";
 
@@ -19,7 +21,19 @@ interface SessionShareContext {
 	editor: EditorComponent;
 	showStatus: (message: string) => void;
 	showError: (message: string) => void;
+	/** the progress shown while uploading, cancelled through `onAbort`; the terminal's BorderedLoader by default. */
+	createLoader?: (message: string) => ShareLoader;
 }
+
+/** what the upload needs from its progress view. */
+export type ShareLoader = Component & {
+	readonly signal: AbortSignal;
+	onAbort: (() => void) | undefined;
+	dispose(): void;
+};
+
+const shareLoader = (context: SessionShareContext, message: string): ShareLoader =>
+	context.createLoader?.(message) ?? new BorderedLoader(context.ui, theme, message);
 
 /** Trailing `pi.share` entry carrying the system prompt and tool schemas for the session viewer. */
 export function createShareTrailingEntries(
@@ -69,7 +83,7 @@ export async function shareSession(context: SessionShareContext): Promise<void> 
 		if (await tryShareViaRadius(jsonlFile, context)) return;
 
 		try {
-			const authResult = spawnSync("gh", ["auth", "status"], { encoding: "utf-8" });
+			const authResult = spawnSync(hostCommand("gh"), ["auth", "status"], { encoding: "utf-8" });
 			if (authResult.status !== 0) {
 				context.showError("GitHub CLI is not logged in. Run 'gh auth login' first.");
 				return;
@@ -104,7 +118,7 @@ async function tryShareViaRadius(tmpFile: string, context: SessionShareContext):
 	);
 	if (!token) return false;
 
-	const loader = new BorderedLoader(context.ui, theme, "Uploading to Radius...");
+	const loader = shareLoader(context, "Uploading to Radius...");
 	context.editorContainer.clear();
 	context.editorContainer.addChild(loader);
 	context.ui.setFocus(loader);
@@ -118,7 +132,7 @@ async function tryShareViaRadius(tmpFile: string, context: SessionShareContext):
 		const body = fs.readFileSync(tmpFile);
 		const url = new URL("/v1/artifacts", DEFAULT_RADIUS_GATEWAY);
 		url.searchParams.set("visibility", "organization");
-		url.searchParams.set("title", "Pi session");
+		url.searchParams.set("title", `${APP_DISPLAY_NAME} session`);
 		const response = await fetch(url, {
 			method: "POST",
 			headers: {
@@ -157,7 +171,7 @@ async function tryShareViaRadius(tmpFile: string, context: SessionShareContext):
 }
 
 async function shareViaGist(tmpFile: string, context: SessionShareContext): Promise<void> {
-	const loader = new BorderedLoader(context.ui, theme, "Creating gist...");
+	const loader = shareLoader(context, "Creating gist...");
 	context.editorContainer.clear();
 	context.editorContainer.addChild(loader);
 	context.ui.setFocus(loader);
@@ -170,9 +184,12 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 		context.showStatus("Share cancelled");
 	};
 
+	// fork: a share cancelled before its upload starts (the window's panel closed during
+	// the export) creates no gist.
+	if (loader.signal.aborted) return;
 	try {
-		const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve) => {
-			proc = spawn("gh", ["gist", "create", "--public=false", tmpFile]);
+		const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve, reject) => {
+			proc = spawn(hostCommand("gh"), ["gist", "create", "--public=false", tmpFile]);
 			let stdout = "";
 			let stderr = "";
 			proc.stdout?.on("data", (data) => {
@@ -182,6 +199,8 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 				stderr += data.toString();
 			});
 			proc.on("close", (code) => resolve({ stdout, stderr, code }));
+			// fork: gh failing to start (EAGAIN, moved binary) goes to the error path.
+			proc.on("error", reject);
 		});
 
 		if (loader.signal.aborted) return;
@@ -209,7 +228,7 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 	}
 }
 
-function restoreEditor(loader: BorderedLoader, context: SessionShareContext): void {
+function restoreEditor(loader: ShareLoader, context: SessionShareContext): void {
 	loader.dispose();
 	context.editorContainer.clear();
 	context.editorContainer.addChild(context.editor);

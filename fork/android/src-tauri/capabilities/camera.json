@@ -1,0 +1,12 @@
+{
+	"identifier": "camera",
+	"description": "The camera for the pairing QR code: scanning, cancelling and asking for its permission only.",
+	"platforms": ["android", "iOS"],
+	"windows": ["main"],
+	"permissions": [
+		"barcode-scanner:allow-request-permissions",
+		"barcode-scanner:allow-check-permissions",
+		"barcode-scanner:allow-scan",
+		"barcode-scanner:allow-cancel"
+	]
+}

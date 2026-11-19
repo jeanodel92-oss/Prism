@@ -7,6 +7,7 @@ import { getModel, normalizeContext, streamSimple } from "../src/compat.ts";
 import { findEnvKeys, getEnvApiKey } from "../src/env-api-keys.ts";
 import { getSupportedThinkingLevels } from "../src/models.ts";
 import type { Context, Model, Tool } from "../src/types.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 
 const originalFireworksApiKey = process.env.FIREWORKS_API_KEY;
 
@@ -159,25 +160,29 @@ describe("Fireworks models", () => {
 		expect(getSupportedThinkingLevels(getModel("fireworks", modelId))).toEqual(levels);
 	});
 
-	it("keeps toggle-only Messages models without a verified fallback on budget-based thinking", async () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
-		expect(model.compat?.forceAdaptiveThinking).toBeUndefined();
-		let payload: Record<string, unknown> | undefined;
-		await streamSimple(
-			model,
-			{ messages: [{ role: "user", content: "test", timestamp: 0 }] },
-			{
-				apiKey: "test-fireworks-key",
-				reasoning: "high",
-				onPayload: (value) => {
-					payload = value as Record<string, unknown>;
-					throw new Error("payload captured");
+	const nemotron = catalogModel<"anthropic-messages">("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+	it.skipIf(!nemotron)(
+		"keeps toggle-only Messages models without a verified fallback on budget-based thinking",
+		async () => {
+			const model = nemotron!;
+			expect(model.compat?.forceAdaptiveThinking).toBeUndefined();
+			let payload: Record<string, unknown> | undefined;
+			await streamSimple(
+				model,
+				{ messages: [{ role: "user", content: "test", timestamp: 0 }] },
+				{
+					apiKey: "test-fireworks-key",
+					reasoning: "high",
+					onPayload: (value) => {
+						payload = value as Record<string, unknown>;
+						throw new Error("payload captured");
+					},
 				},
-			},
-		).result();
-		expect(payload?.thinking).toEqual({ type: "enabled", budget_tokens: 16384, display: "summarized" });
-		expect(payload?.output_config).toBeUndefined();
-	});
+			).result();
+			expect(payload?.thinking).toEqual({ type: "enabled", budget_tokens: 16384, display: "summarized" });
+			expect(payload?.output_config).toBeUndefined();
+		},
+	);
 
 	it("resolves FIREWORKS_API_KEY from the environment", () => {
 		process.env.FIREWORKS_API_KEY = "test-fireworks-key";
@@ -186,8 +191,8 @@ describe("Fireworks models", () => {
 		expect(getEnvApiKey("fireworks")).toBe("test-fireworks-key");
 	});
 
-	it("sets Fireworks-specific compat for session affinity and unsupported tool fields", () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+	it.skipIf(!nemotron)("sets Fireworks-specific compat for session affinity and unsupported tool fields", () => {
+		const model = nemotron!;
 
 		expect(model.compat).toBeDefined();
 		expect(model.compat?.sendSessionAffinityHeaders).toBe(true);

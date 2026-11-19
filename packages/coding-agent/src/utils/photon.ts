@@ -47,7 +47,7 @@ function getFallbackWasmPaths(): string[] {
 	return [
 		path.join(execDir, WASM_FILENAME),
 		path.join(execDir, "photon", WASM_FILENAME),
-		path.join(process.cwd(), WASM_FILENAME),
+		// fork: never the current folder's: a project's WASM would run in Prism.
 	];
 }
 

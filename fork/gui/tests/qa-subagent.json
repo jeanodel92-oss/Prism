@@ -1,0 +1,239 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: what a subagent does, step by step, in its card"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"agent\",{\"agent\":\"luna\",\"task\":\"steps [[\\\"ls\\\",{\\\"path\\\":\\\".\\\"}],[\\\"find\\\",{\\\"pattern\\\":\\\"*.md\\\"}],[\\\"read\\\",{\\\"path\\\":\\\"nothing-here.txt\\\"}]]\"}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool[data-status='awaiting'] .dialog",
+		"timeout": 30000
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "click",
+		"selector": ".tool[data-status='awaiting'] .dialog button",
+		"text": "Allow once"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool[data-status='done'] .tool-output",
+		"text": "Started in the background (ag1): its answer will follow.",
+		"timeout": 30000,
+		"why": "fork.10.5: the agent works like a background task, the tool returns at once"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool .tool-target",
+		"text": "luna"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom",
+		"text": "luna answered (ag1)",
+		"timeout": 30000,
+		"why": "its answer comes as a message"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom details.agent-steps summary",
+		"text": "3 steps"
+	},
+	{
+		"do": "click",
+		"selector": ".msg.custom details.agent-steps summary"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom details.agent-steps pre",
+		"text": "✗ read nothing-here.txt"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom details.agent-steps pre",
+		"text": "✓ ls ."
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom details.agent-steps pre",
+		"text": "✓ find *.md"
+	},
+	{
+		"do": "shot",
+		"name": "done"
+	},
+	{
+		"do": "log",
+		"text": "fork.10.5: an agent's background task ends after its answer; the main session gets its report"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-busy='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"agent\",{\"agent\":\"luna\",\"task\":\"steps [[\\\"background\\\",{\\\"action\\\":\\\"run\\\",\\\"command\\\":\\\"sleep 2; echo fini-bg\\\"}]]\"}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool[data-status='awaiting'] .dialog",
+		"timeout": 30000
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "click",
+		"selector": ".tool[data-status='awaiting'] .dialog button",
+		"text": "Allow once"
+	},
+	{
+		"do": "wait",
+		"selector": "#surface li",
+		"text": "Allow once",
+		"timeout": 30000,
+		"why": "the agent's own question for its background command, named after it"
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "click",
+		"selector": "#surface li",
+		"text": "Allow once"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom",
+		"text": "Still running in luna's background: bg1",
+		"timeout": 30000
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom",
+		"text": "luna: background task ended",
+		"timeout": 30000
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom",
+		"text": "fini-bg"
+	},
+	{
+		"do": "shot",
+		"name": "background"
+	},
+	{
+		"do": "log",
+		"text": "fork.10.5: the user stops a running agent from its status; its open question closes"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-busy='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"agent\", {\"agent\": \"luna\", \"task\": \"steps [[\\\"bash\\\",{\\\"command\\\":\\\"sleep 60\\\"}]]\"}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool[data-status='awaiting'] .dialog",
+		"timeout": 30000
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "click",
+		"selector": ".tool[data-status='awaiting'] .dialog button",
+		"text": "Allow once"
+	},
+	{
+		"do": "wait",
+		"selector": "#surface li",
+		"text": "Allow once",
+		"timeout": 30000,
+		"why": "luna asks for its command and waits"
+	},
+	{
+		"do": "wait",
+		"selector": ".status-chip[data-key='agents']",
+		"text": "luna:",
+		"timeout": 15000
+	},
+	{
+		"do": "click",
+		"selector": ".status-chip[data-key='agents']"
+	},
+	{
+		"do": "wait",
+		"selector": ".agents-running .agents-run",
+		"text": "luna (ag3)",
+		"timeout": 15000
+	},
+	{
+		"do": "shot",
+		"name": "running"
+	},
+	{
+		"do": "click",
+		"selector": ".agents-run button[data-action='stop']"
+	},
+	{
+		"do": "click",
+		"selector": ".panel button[data-action='confirm']"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom",
+		"text": "luna stopped (ag3)",
+		"timeout": 15000
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.custom",
+		"text": "The user stopped this agent before it answered."
+	},
+	{
+		"do": "absent",
+		"selector": "#surface li",
+		"text": "Allow once",
+		"why": "the question of the stopped agent is closed"
+	},
+	{
+		"do": "absent",
+		"selector": ".status-chip[data-key='agents']"
+	},
+	{
+		"do": "shot",
+		"name": "stopped"
+	},
+	{
+		"do": "quit"
+	}
+]

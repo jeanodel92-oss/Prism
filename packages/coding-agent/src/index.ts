@@ -407,6 +407,15 @@ export type { CodemodeStoreEntryData, CodemodeToolDetails } from "./extensions/c
 export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
+// fork: pi-lsp starts its servers in the session's sandbox.
+export { type LspSpawn, lspSpawn } from "./fork/lsp-sandbox.ts";
+// fork: language servers on or off in /settings, for the vendored pi-lsp fork.
+export {
+	disabledLspServers,
+	type LspServerView,
+	lspStatusSummary,
+	registerLspSettings,
+} from "./fork/settings-servers.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage

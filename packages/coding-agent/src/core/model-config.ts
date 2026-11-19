@@ -185,6 +185,14 @@ const ProviderCompatSchema = Type.Union([
 	AnthropicMessagesCompatSchema,
 ]);
 
+// fork: per-model thinking budgets, same shape as the `thinkingBudgets` setting.
+const ThinkingBudgetsSchema = Type.Object({
+	minimal: Type.Optional(Type.Integer({ minimum: 1 })),
+	low: Type.Optional(Type.Integer({ minimum: 1 })),
+	medium: Type.Optional(Type.Integer({ minimum: 1 })),
+	high: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+
 const ModelDefinitionSchema = Type.Object({
 	id: Type.String({ minLength: 1 }),
 	name: Type.Optional(Type.String({ minLength: 1 })),
@@ -199,6 +207,7 @@ const ModelDefinitionSchema = Type.Object({
 	contextWindow: Type.Optional(Type.Number()),
 	maxTokens: Type.Optional(Type.Number()),
 	samplingParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+	thinkingBudgets: Type.Optional(ThinkingBudgetsSchema),
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 	compat: Type.Optional(ProviderCompatSchema),
 });
@@ -222,6 +231,7 @@ const ModelOverrideSchema = Type.Object({
 	contextWindow: Type.Optional(Type.Number()),
 	maxTokens: Type.Optional(Type.Number()),
 	samplingParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+	thinkingBudgets: Type.Optional(ThinkingBudgetsSchema),
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 	compat: Type.Optional(ProviderCompatSchema),
 });

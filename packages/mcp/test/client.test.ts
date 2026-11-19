@@ -207,6 +207,28 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
+	// fork: a progress whose message is not text, or whose total is not a
+	// number, never reaches onProgress.
+	it("drops progress notifications with a malformed message or total", async () => {
+		const { client, server } = await connect();
+		server.setHandler("tools/call", async (request) => {
+			const token = ((request.params as Record<string, unknown>)._meta as Record<string, unknown>)
+				.progressToken as number;
+			for (const extra of [{ message: 42 }, { message: null }, { total: "2" }, { message: "half", total: 2 }]) {
+				await server.transport.send({
+					jsonrpc: "2.0",
+					method: "notifications/progress",
+					params: { progressToken: token, progress: 1, ...extra },
+				});
+			}
+			return { content: [{ type: "text", text: "done" }] };
+		});
+		const progress = vi.fn();
+		await client.callTool("slow", {}, { onProgress: progress });
+		expect(progress.mock.calls).toEqual([[{ progressToken: 2, progress: 1, message: "half", total: 2 }]]);
+		await client.close();
+	});
+
 	it("cancels aborted and timed-out requests", async () => {
 		const { client, server } = await connect();
 		server.setHandler("tools/call", () => new Promise(() => {}));

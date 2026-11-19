@@ -43,10 +43,14 @@ export async function selectConfig(options: ConfigSelectorOptions): Promise<void
 					resolve();
 				}
 			},
+			// fork: Ctrl+C closes as Escape does, so the caller checks that the changes were saved.
 			() => {
-				ui.stop();
-				stopThemeWatcher();
-				process.exit(0);
+				if (!resolved) {
+					resolved = true;
+					ui.stop();
+					stopThemeWatcher();
+					resolve();
+				}
 			},
 			() => ui.requestRender(),
 			ui.terminal.rows,

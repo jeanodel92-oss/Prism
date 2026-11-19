@@ -79,6 +79,11 @@ export class AgentSessionRuntime {
 	private readonly createRuntime: CreateAgentSessionRuntimeFactory;
 	private _diagnostics: AgentSessionRuntimeDiagnostic[];
 	private _modelFallbackMessage?: string;
+	/** fork: a replacement is between its teardown and its new session. */
+	private _replacing = false;
+	/** fork: the session was torn down and no new one took its place. */
+	private _lost = false;
+	private onSessionLost?: (error: unknown) => void;
 
 	constructor(
 		_session: AgentSession,
@@ -130,6 +135,14 @@ export class AgentSessionRuntime {
 		this.beforeSessionInvalidate = beforeSessionInvalidate;
 	}
 
+	/**
+	 * fork: called when a replacement fails after the current session was torn down.
+	 * `session` is then a disposed session; the host must not keep serving it.
+	 */
+	setOnSessionLost(onSessionLost?: (error: unknown) => void): void {
+		this.onSessionLost = onSessionLost;
+	}
+
 	private async emitBeforeSwitch(
 		reason: "new" | "resume",
 		targetSessionFile?: string,
@@ -175,9 +188,11 @@ export class AgentSessionRuntime {
 		});
 		this.beforeSessionInvalidate?.();
 		this.session.dispose();
+		this._lost = true;
 	}
 
 	private apply(result: CreateAgentSessionRuntimeResult): void {
+		this._lost = false;
 		this._session = result.session;
 		this._services = result.services;
 		this._diagnostics = result.diagnostics;
@@ -188,12 +203,49 @@ export class AgentSessionRuntime {
 		if (this.rebindSession) {
 			await this.rebindSession(this.session);
 		}
+		// fork: the new session is in place; its own work may replace it again.
+		this._replacing = false;
 		if (withSession) {
 			await withSession(this.session.createReplacedSessionContext());
 		}
 	}
 
-	async switchSession(
+	/**
+	 * fork: one replacement at a time. Two that overlapped both tore the old session down;
+	 * the slower one then applied its session over the other's, which kept running unseen.
+	 */
+	private async oneReplacement<T>(replace: () => Promise<T>): Promise<T> {
+		if (this._replacing) throw new Error("Another session change is in progress. Wait for it to finish and retry.");
+		this._replacing = true;
+		try {
+			return await replace();
+		} catch (error) {
+			if (this._lost) this.onSessionLost?.(error);
+			throw error;
+		} finally {
+			this._replacing = false;
+		}
+	}
+
+	async switchSession(...args: Parameters<AgentSessionRuntime["replaceBySwitch"]>): Promise<{ cancelled: boolean }> {
+		return this.oneReplacement(() => this.replaceBySwitch(...args));
+	}
+
+	async newSession(...args: Parameters<AgentSessionRuntime["replaceByNew"]>): Promise<{ cancelled: boolean }> {
+		return this.oneReplacement(() => this.replaceByNew(...args));
+	}
+
+	async fork(
+		...args: Parameters<AgentSessionRuntime["replaceByFork"]>
+	): Promise<{ cancelled: boolean; selectedText?: string }> {
+		return this.oneReplacement(() => this.replaceByFork(...args));
+	}
+
+	async importFromJsonl(...args: Parameters<AgentSessionRuntime["replaceByImport"]>): Promise<{ cancelled: boolean }> {
+		return this.oneReplacement(() => this.replaceByImport(...args));
+	}
+
+	private async replaceBySwitch(
 		sessionPath: string,
 		options?: {
 			cwdOverride?: string;
@@ -223,7 +275,7 @@ export class AgentSessionRuntime {
 		return { cancelled: false };
 	}
 
-	async newSession(options?: {
+	private async replaceByNew(options?: {
 		parentSession?: string;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 		withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
@@ -259,7 +311,7 @@ export class AgentSessionRuntime {
 		return { cancelled: false };
 	}
 
-	async fork(
+	private async replaceByFork(
 		entryId: string,
 		options?: { position?: "before" | "at"; withSession?: (ctx: ReplacedSessionContext) => Promise<void> },
 	): Promise<{ cancelled: boolean; selectedText?: string }> {
@@ -356,7 +408,7 @@ export class AgentSessionRuntime {
 	 * @throws {SessionImportFileNotFoundError} When the input path does not exist.
 	 * @throws {MissingSessionCwdError} When the imported session cwd cannot be resolved and no override is provided.
 	 */
-	async importFromJsonl(inputPath: string, cwdOverride?: string): Promise<{ cancelled: boolean }> {
+	private async replaceByImport(inputPath: string, cwdOverride?: string): Promise<{ cancelled: boolean }> {
 		const resolvedPath = resolvePath(inputPath);
 		if (!existsSync(resolvedPath)) {
 			throw new SessionImportFileNotFoundError(resolvedPath);
@@ -402,6 +454,8 @@ export class AgentSessionRuntime {
 	}
 
 	async dispose(): Promise<void> {
+		// fork: already torn down by a replacement that failed.
+		if (this._lost) return;
 		await emitSessionShutdownEvent(this.session.extensionRunner, {
 			type: "session_shutdown",
 			reason: "quit",

@@ -9,6 +9,15 @@ import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { setTimeout as sleep } from "timers/promises";
 import { getAgentDir } from "../config.ts";
+import { realPath } from "../fork/real-path.ts";
+import { writeFileAtomicSync } from "../fork/secrets/atomic-write.ts";
+import { authLockTiming, lockFileSystem, lockLostError, watchLockHold } from "../fork/secrets/auth-lock.ts";
+import {
+	hasPendingKeyringMarkers,
+	KeyringAuthStorageBackend,
+	loadKeyringCredentials,
+	resolveKeyringContent,
+} from "../fork/secrets/keyring.ts";
 import { raceWithAbortSignal } from "../utils/abort.ts";
 import { getFileRevision, normalizePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
@@ -62,18 +71,28 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 
 	private ensureFileExists(): void {
 		if (!existsSync(this.authPath)) {
-			writeFileSync(this.authPath, "{}", AUTH_FILE_WRITE_OPTIONS);
+			// fork: created only if still missing; another process's file is never emptied.
+			try {
+				writeFileSync(this.authPath, "{}", { ...AUTH_FILE_WRITE_OPTIONS, flag: "wx" });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			}
 		}
 	}
 
-	private acquireLockSyncWithRetry(path: string): () => void {
+	private acquireLockSyncWithRetry(path: string, keep: () => boolean): () => void {
 		const maxAttempts = 10;
 		const delayMs = 20;
 		let lastError: unknown;
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			try {
-				return lockfile.lockSync(path, { realpath: false });
+				// fork: the asynchronous writers' threshold, so neither takes a lock the other still holds.
+				return lockfile.lockSync(path, {
+					realpath: false,
+					stale: authLockTiming.staleMs,
+					fs: lockFileSystem(keep),
+				});
 			} catch (error) {
 				const code =
 					typeof error === "object" && error !== null && "code" in error
@@ -98,12 +117,18 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 		this.ensureFileExists();
 
 		let release: (() => void) | undefined;
+		// fork: held without a pause long enough for the lock to go stale, it may be another writer's now.
+		let taken = Date.now();
+		const lost = () => Date.now() - taken >= authLockTiming.staleMs / 2;
 		try {
-			release = this.acquireLockSyncWithRetry(this.authPath);
+			release = this.acquireLockSyncWithRetry(realPath(this.authPath), lost);
+			taken = Date.now();
 			const current = existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined;
 			const { result, next } = fn(current);
+			if (next !== undefined && lost()) throw lockLostError();
 			if (next !== undefined) {
-				writeFileSync(this.authPath, next, AUTH_FILE_WRITE_OPTIONS);
+				// fork: replaced whole, never truncated by a crash.
+				writeFileAtomicSync(this.authPath, next);
 			}
 			return result;
 		} finally {
@@ -116,8 +141,9 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 	private async acquireLockAsync(
 		signal: AbortSignal | undefined,
 		onCompromised: (error: Error) => void,
+		keep: () => boolean,
 	): Promise<() => Promise<void>> {
-		const staleMs = 30_000;
+		const staleMs = authLockTiming.staleMs;
 		const maxDelayMs = 2_000;
 		const deadline = Date.now() + staleMs;
 		let retry = 0;
@@ -125,11 +151,13 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			signal?.throwIfAborted();
 			let release: (() => Promise<void>) | undefined;
 			try {
-				release = await lockfile.lock(this.authPath, {
+				// fork: the real file's lock, so two names of auth.json share one.
+				release = await lockfile.lock(realPath(this.authPath), {
 					realpath: false,
 					retries: 0,
 					stale: staleMs,
 					onCompromised,
+					fs: lockFileSystem(keep),
 				});
 			} catch (error) {
 				signal?.throwIfAborted();
@@ -163,6 +191,8 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 		this.ensureFileExists();
 
 		let release: (() => Promise<void>) | undefined;
+		let watch: ReturnType<typeof watchLockHold> | undefined;
+		let keepLock = false;
 		let lockCompromised = false;
 		let lockCompromisedError: Error | undefined;
 		const throwIfCompromised = () => {
@@ -172,10 +202,15 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 		};
 
 		try {
-			release = await this.acquireLockAsync(options?.signal, (error) => {
-				lockCompromised = true;
-				lockCompromisedError = error;
-			});
+			release = await this.acquireLockAsync(
+				options?.signal,
+				(error) => {
+					lockCompromised = true;
+					lockCompromisedError = error;
+				},
+				() => keepLock,
+			);
+			watch = watchLockHold();
 
 			throwIfCompromised();
 			options?.signal?.throwIfAborted();
@@ -183,12 +218,18 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			const { result, next } = await fn(current);
 			throwIfCompromised();
 			options?.signal?.throwIfAborted();
+			// fork: proper-lockfile reports a lost lock from a timer, too late after a blocked loop.
+			if (next !== undefined && watch.lost()) throw lockLostError();
 			if (next !== undefined) {
-				writeFileSync(this.authPath, next, AUTH_FILE_WRITE_OPTIONS);
+				// fork: replaced whole, never truncated by a crash.
+				writeFileAtomicSync(this.authPath, next);
 			}
 			throwIfCompromised();
 			return result;
 		} finally {
+			// fork: a lock that may be another writer's now is left to go stale, never removed.
+			keepLock = watch?.lost() ?? false;
+			watch?.stop();
 			if (release) {
 				try {
 					await release();
@@ -208,13 +249,17 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 		this.authPath = normalizePath(authPath);
 	}
 
-	private load(): AuthStorageData {
+	private async load(signal?: AbortSignal): Promise<AuthStorageData> {
 		if (this.data) return this.data;
 
 		let parsed: unknown;
 		try {
-			parsed = JSON.parse(stripBom(readFileSync(this.authPath, "utf-8")));
+			// fork: a keyring marker reads as its credential, read without blocking.
+			const content = readFileSync(this.authPath, "utf-8");
+			await loadKeyringCredentials(this.authPath, content, signal);
+			parsed = JSON.parse(stripBom(resolveKeyringContent(this.authPath, content, { cachedOnly: true }) ?? ""));
 		} catch (error) {
+			signal?.throwIfAborted();
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 				this.data = {};
 				return this.data;
@@ -257,7 +302,7 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 
 	async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		options?.signal?.throwIfAborted();
-		const credential = this.load()[providerId];
+		const credential = (await this.load(options?.signal))[providerId];
 		options?.signal?.throwIfAborted();
 		if (!credential) return undefined;
 		if (credential.type !== "api_key" || !credential.key || isCommandConfigValue(credential.key)) {
@@ -268,7 +313,7 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		options?.signal?.throwIfAborted();
-		const credentials = Object.entries(this.load()).map(([providerId, credential]) => ({
+		const credentials = Object.entries(await this.load(options?.signal)).map(([providerId, credential]) => ({
 			providerId,
 			type: credential.type,
 		}));
@@ -346,7 +391,11 @@ export class AuthStorage implements CredentialStore {
 
 	static create(authPath: string = join(getAgentDir(), "auth.json")): AuthStorage {
 		const normalizedAuthPath = normalizePath(authPath);
-		return new AuthStorage(new FileAuthStorageBackend(normalizedAuthPath), normalizedAuthPath);
+		// fork: new connections go to the Secret Service keyring (src/fork/secrets/keyring.ts).
+		return new AuthStorage(
+			new KeyringAuthStorageBackend(new FileAuthStorageBackend(normalizedAuthPath), normalizedAuthPath),
+			normalizedAuthPath,
+		);
 	}
 
 	static fromStorage(storage: AuthStorageBackend): AuthStorage {
@@ -383,6 +432,9 @@ export class AuthStorage implements CredentialStore {
 				revision = this.authPath ? getFileRevision(this.authPath) : undefined;
 				return { result: undefined };
 			});
+			// fork: this read does not wait for the keyring; with credentials still
+			// to read from it, the next asynchronous read reads auth.json again and them with it.
+			if (this.authPath && hasPendingKeyringMarkers(this.authPath, content)) revision = undefined;
 			this.updateReadState(this.parseStorageData(content), revision);
 		} catch {
 			// Preserve the last valid in-memory snapshot.
@@ -498,7 +550,11 @@ export function readStoredCredential(
 	authPath: string = join(getAgentDir(), "auth.json"),
 ): Credential | undefined {
 	try {
-		const data = JSON.parse(stripBom(readFileSync(normalizePath(authPath), "utf-8"))) as AuthStorageData;
+		const path = normalizePath(authPath);
+		// fork: a keyring marker reads as its credential.
+		const data = JSON.parse(
+			stripBom(resolveKeyringContent(path, readFileSync(path, "utf-8")) ?? ""),
+		) as AuthStorageData;
 		return data[providerId];
 	} catch {
 		return undefined;

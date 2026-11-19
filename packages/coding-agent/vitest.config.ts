@@ -9,7 +9,8 @@ export default mergeConfig(
 			environment: "node",
 			testTimeout: 30000,
 			// Tests run offline by default; opt in with allowNetwork() from test/test-network-env.ts.
-			env: { PI_OFFLINE: "1" },
+			// fork: no test writes to the developer's Secret Service keyring.
+			env: { PI_OFFLINE: "1", PRISM_SECRET_SERVICE: "off" },
 			unstubEnvs: true,
 			reporters: process.env.GITHUB_ACTIONS ? ["dot", "github-actions"] : ["dot"],
 			silent: "passed-only",

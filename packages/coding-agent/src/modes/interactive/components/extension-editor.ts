@@ -14,6 +14,7 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
+import { t } from "../../../fork/i18n/index.ts";
 import { editInExternalEditor } from "../external-editor.ts";
 import { getEditorTheme, theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -51,6 +52,7 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 		externalEditorCommand?: string,
 	) {
 		super();
+		title = title.split("\n").map(t).join("\n");
 
 		this.tui = tui;
 		this.keybindings = keybindings;
@@ -71,7 +73,7 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 		this.addChild(new Text(theme.fg("accent", title), 1, 0));
 		if (description) {
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("text", description), 1, 0));
+			this.addChild(new Text(theme.fg("text", description.split("\n").map(t).join("\n")), 1, 0));
 		}
 		this.addChild(new Spacer(1));
 
@@ -123,7 +125,8 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 	}
 
 	private async handleOpenExternalEditor(): Promise<void> {
-		const content = this.editor.getText();
+		// fork: the pasted text itself, not its "[paste #1]" marker.
+		const content = this.editor.getExpandedText();
 		this.tui.stop();
 		try {
 			const result = await editInExternalEditor({

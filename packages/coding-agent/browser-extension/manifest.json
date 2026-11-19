@@ -1,0 +1,43 @@
+{
+	"manifest_version": 3,
+	"name": "Prism",
+	"version": "0.1.2",
+	"description": "Lets the Prism coding agent open, read and use tabs of its own, after you link it from Prism (/browser).",
+	"icons": {
+		"16": "icons/icon-16.png",
+		"32": "icons/icon-32.png",
+		"48": "icons/icon-48.png",
+		"128": "icons/icon-128.png"
+	},
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAssVO8hYm2uq25zAqNJq12XvCCTxGAxyAEsHxuIiPce39bNlQnYsHwx+o+IrftWxzww2U+79SN4xM+hdQI1wBZsPfU5zKacTgR/GBkIW63QxAQ09z8CJmRGeDXHKa1SYqmVvhSQEzfZcVNOe6P33LPtfBefjZYq/tyX61jgaQefa6ZqXBTELRgaR8b4eJ19N0Tf1bnPgwBVNBwmnTuKG+3TGyZ4e/A3YNxNyQvbvcriCI6L6RUVqLuu1gzwzzKsNQX9zmaj/dCQYRpPQqRWvhCg6cNxLhiEuQIDi3zvyql3p4GdBnwBXD6kJPi6M5HF8hOOqJrH4gueGH5WqpOjSqtQIDAQAB",
+	"background": {
+		"service_worker": "background.js",
+		"scripts": [
+			"background.js"
+		]
+	},
+	"permissions": [
+		"nativeMessaging",
+		"tabs",
+		"scripting",
+		"debugger",
+		"tabGroups",
+		"storage",
+		"alarms"
+	],
+	"host_permissions": [
+		"<all_urls>"
+	],
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "prism-browser@odelserver.space",
+			"strict_min_version": "128.0",
+			"data_collection_permissions": {
+				"required": [
+					"websiteContent",
+					"browsingActivity"
+				]
+			}
+		}
+	}
+}

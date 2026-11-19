@@ -142,12 +142,54 @@ export interface NestedToolCallHost {
 	emit(event: NestedToolExecutionEvent): Promise<void>;
 }
 
+/**
+ * fork: admits concurrent calls as shared or exclusive, in arrival
+ * order. A shared call runs while no exclusive call runs or waits ahead of it; an exclusive call runs alone.
+ * Every nested call passes the gate of its caller's level, so a sequential tool never overlaps a sibling,
+ * whichever started first. Its own nested calls use a fresh gate, so a tool never waits for itself.
+ */
+class CallGate {
+	private shared = 0;
+	private exclusive = false;
+	private readonly waiting: { exclusive: boolean; grant: (release: () => void) => void }[] = [];
+
+	/** Returns the release function at once when the call may run now, otherwise undefined. */
+	tryAcquire(exclusive: boolean): (() => void) | undefined {
+		if (this.waiting.length > 0 || !this.admits(exclusive)) return undefined;
+		return this.take(exclusive);
+	}
+
+	wait(exclusive: boolean): Promise<() => void> {
+		return new Promise((grant) => this.waiting.push({ exclusive, grant }));
+	}
+
+	private admits(exclusive: boolean): boolean {
+		return !this.exclusive && (!exclusive || this.shared === 0);
+	}
+
+	private take(exclusive: boolean): () => void {
+		if (exclusive) this.exclusive = true;
+		else this.shared++;
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			if (exclusive) this.exclusive = false;
+			else this.shared--;
+			while (this.waiting.length > 0 && this.admits(this.waiting[0].exclusive)) {
+				const next = this.waiting.shift()!;
+				next.grant(this.take(next.exclusive));
+			}
+		};
+	}
+}
+
 /** Calls below one model-issued call share its recorder. */
 interface CallScope {
 	recorder: NestedCallRecorder;
 	nextId: number;
-	/** Set inside a call that holds the exclusive queue, so its own nested calls do not wait on it. */
-	holdsQueue: boolean;
+	/** The gate the calls made from this scope pass. */
+	gate: CallGate;
 }
 
 function textOf(result: AgentToolResult<unknown>): string {
@@ -161,8 +203,8 @@ export class NestedToolCallRunner {
 	private readonly host: NestedToolCallHost;
 	/** Scopes by the id of the calling tool call. */
 	private readonly scopes = new Map<string, CallScope>();
-	/** Serializes nested calls that must not run concurrently. */
-	private queueTail: Promise<void> = Promise.resolve();
+	/** The gate of calls made directly by model-issued calls. */
+	private readonly rootGate = new CallGate();
 
 	constructor(host: NestedToolCallHost) {
 		this.host = host;
@@ -180,7 +222,7 @@ export class NestedToolCallRunner {
 	): Promise<AgentToolCallOutcome> {
 		let scope = this.scopes.get(callerId);
 		if (!scope) {
-			scope = { recorder: new NestedCallRecorder(), nextId: 1, holdsQueue: false };
+			scope = { recorder: new NestedCallRecorder(), nextId: 1, gate: this.rootGate };
 			this.scopes.set(callerId, scope);
 		}
 		const toolCall: AgentToolCall = {
@@ -189,6 +231,15 @@ export class NestedToolCallRunner {
 			name,
 			arguments: (args ?? {}) as AgentToolCall["arguments"],
 		};
+		// fork: arguments that JSON cannot hold (a cycle, a BigInt) are refused
+		// as invalid, like any other validation error, before they are recorded or run.
+		try {
+			JSON.stringify(toolCall.arguments);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			const text = `Arguments for ${name} are not valid JSON: ${reason}`;
+			return { toolCall, result: { content: [{ type: "text", text }], details: {} }, isError: true };
+		}
 		const record = scope.recorder.start(toolCall);
 		await this.host.emit({
 			type: "tool_execution_start",
@@ -199,22 +250,10 @@ export class NestedToolCallRunner {
 		});
 
 		const exclusive =
-			!scope.holdsQueue &&
-			(this.host.isSequential() ||
-				this.host.getTools().find((tool) => tool.name === name)?.executionMode === "sequential");
-		let release: (() => void) | undefined;
-		if (exclusive) {
-			const previous = this.queueTail;
-			this.queueTail = new Promise((resolve) => {
-				release = resolve;
-			});
-			await previous;
-		}
-		this.scopes.set(toolCall.id, {
-			recorder: scope.recorder,
-			nextId: 1,
-			holdsQueue: scope.holdsQueue || exclusive,
-		});
+			this.host.isSequential() ||
+			this.host.getTools().find((tool) => tool.name === name)?.executionMode === "sequential";
+		const release = scope.gate.tryAcquire(exclusive) ?? (await scope.gate.wait(exclusive));
+		this.scopes.set(toolCall.id, { recorder: scope.recorder, nextId: 1, gate: new CallGate() });
 		let outcome: AgentToolCallOutcome;
 		try {
 			outcome = await this.host.runToolCall(toolCall, callerId, options.signal, async (partialResult) => {
@@ -230,7 +269,7 @@ export class NestedToolCallRunner {
 			});
 		} finally {
 			this.scopes.delete(toolCall.id);
-			release?.();
+			release();
 		}
 
 		scope.recorder.finish(record, outcome.isError, textOf(outcome.result));

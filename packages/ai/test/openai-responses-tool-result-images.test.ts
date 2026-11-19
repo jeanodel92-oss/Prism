@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { Api, Context, Model, StreamOptions, Tool, ToolResultMessage } from "../src/compat.ts";
 import { complete, getModel } from "../src/compat.ts";
 import { hasAzureOpenAICredentials, resolveAzureDeploymentName } from "./azure-utils.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 import { resolveApiKey } from "./oauth.ts";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -162,8 +163,9 @@ describe("Responses API tool result images", () => {
 		});
 	});
 
-	describe("GitHub Copilot Responses Provider (gpt-5-mini)", () => {
-		const model = getModel("github-copilot", "gpt-5-mini");
+	const copilotGpt5Mini = catalogModel<"openai-responses">("github-copilot", "gpt-5-mini");
+	describe.skipIf(!copilotGpt5Mini)("GitHub Copilot Responses Provider (gpt-5-mini)", () => {
+		const model = copilotGpt5Mini!;
 
 		it.skipIf(!githubCopilotToken)(
 			"should send tool result images in function_call_output",

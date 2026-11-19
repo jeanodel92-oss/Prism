@@ -1,5 +1,5 @@
 import type { Component } from "../tui.ts";
-import { applyBackgroundToLine, flattenLines, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
+import { applyBackgroundToLine, flattenLines, sanitizeTerminalText, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
 
 /**
  * Text component - displays multi-line text with word wrapping
@@ -9,17 +9,25 @@ export class Text implements Component {
 	private paddingX: number; // Left/right padding
 	private paddingY: number; // Top/bottom padding
 	private customBgFn?: (text: string) => string;
+	private trustedTerminalControls: boolean;
 
 	// Cache for rendered output
 	private cachedText?: string;
 	private cachedWidth?: number;
 	private cachedLines?: string[];
 
-	constructor(text: string = "", paddingX: number = 1, paddingY: number = 1, customBgFn?: (text: string) => string) {
+	constructor(
+		text: string = "",
+		paddingX: number = 1,
+		paddingY: number = 1,
+		customBgFn?: (text: string) => string,
+		trustedTerminalControls = false,
+	) {
 		this.text = text;
 		this.paddingX = paddingX;
 		this.paddingY = paddingY;
 		this.customBgFn = customBgFn;
+		this.trustedTerminalControls = trustedTerminalControls;
 	}
 
 	setText(text: string): void {
@@ -58,7 +66,10 @@ export class Text implements Component {
 		}
 
 		// Replace tabs with 3 spaces
-		const normalizedText = this.text.replace(/\t/g, "   ");
+		const normalizedText = (this.trustedTerminalControls ? this.text : sanitizeTerminalText(this.text)).replace(
+			/\t/g,
+			"   ",
+		);
 
 		// Reduce margins when necessary so content and padding fit within the available width.
 		const paddingX = Math.min(this.paddingX, Math.max(0, Math.floor((width - 1) / 2)));

@@ -1,0 +1,73 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: long previews squeezed the options to zero height and the keys went to the composer"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"ask_user_question\", {\"questions\": [{\"header\": \"Rythme\", \"question\": \"Combien de séances ?\", \"multiSelect\": false, \"options\": [{\"label\": \"Choix 1\", \"description\": \"Description du choix 1, sur une ligne.\", \"preview\": \"S01  Étape 1 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS02  Étape 2 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS03  Étape 3 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS04  Étape 4 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS05  Étape 5 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS06  Étape 6 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS07  Étape 7 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS08  Étape 8 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS09  Étape 9 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS10  Étape 10 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS11  Étape 11 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS12  Étape 12 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\"}, {\"label\": \"Choix 2\", \"description\": \"Description du choix 2, sur une ligne.\", \"preview\": \"S01  Étape 1 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS02  Étape 2 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS03  Étape 3 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS04  Étape 4 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS05  Étape 5 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS06  Étape 6 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS07  Étape 7 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS08  Étape 8 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS09  Étape 9 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS10  Étape 10 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS11  Étape 11 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS12  Étape 12 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\"}, {\"label\": \"Choix 3\", \"description\": \"Description du choix 3, sur une ligne.\", \"preview\": \"S01  Étape 1 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS02  Étape 2 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS03  Étape 3 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS04  Étape 4 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS05  Étape 5 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS06  Étape 6 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS07  Étape 7 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS08  Étape 8 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS09  Étape 9 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS10  Étape 10 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS11  Étape 11 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS12  Étape 12 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\"}]}, {\"header\": \"Éventail\", \"question\": \"Le contenu déborde-t-il ?\", \"multiSelect\": false, \"options\": [{\"label\": \"Choix 1\", \"description\": \"Description du choix 1, sur une ligne.\", \"preview\": \"S01  Étape 1 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS02  Étape 2 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS03  Étape 3 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS04  Étape 4 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS05  Étape 5 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS06  Étape 6 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS07  Étape 7 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS08  Étape 8 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS09  Étape 9 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS10  Étape 10 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS11  Étape 11 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS12  Étape 12 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\"}, {\"label\": \"Choix 2\", \"description\": \"Description du choix 2, sur une ligne.\", \"preview\": \"S01  Étape 1 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS02  Étape 2 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS03  Étape 3 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS04  Étape 4 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS05  Étape 5 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS06  Étape 6 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS07  Étape 7 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS08  Étape 8 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS09  Étape 9 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS10  Étape 10 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS11  Étape 11 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS12  Étape 12 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\"}, {\"label\": \"Choix 3\", \"description\": \"Description du choix 3, sur une ligne.\", \"preview\": \"S01  Étape 1 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS02  Étape 2 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS03  Étape 3 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS04  Étape 4 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS05  Étape 5 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS06  Étape 6 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS07  Étape 7 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS08  Étape 8 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS09  Étape 9 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS10  Étape 10 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS11  Étape 11 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\\nS12  Étape 12 : une ligne d'aperçu assez longue pour remplir la largeur du panneau\"}]}]}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"timeout": 20000
+	},
+	{
+		"do": "sleep",
+		"ms": 1000
+	},
+	{
+		"do": "shot",
+		"name": "q1"
+	},
+	{
+		"do": "sleep",
+		"ms": 1500
+	},
+	{
+		"do": "focused",
+		"selector": ".panel.question:not(.closing) .listbox",
+		"timeout": 500
+	},
+	{
+		"do": "in-view",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Choix 3",
+		"within": ".panel.question:not(.closing) .panel-body"
+	},
+	{
+		"do": "key",
+		"selector": ".panel.question:not(.closing) .listbox",
+		"key": "ArrowDown"
+	},
+	{
+		"do": "key",
+		"selector": ".panel.question:not(.closing) .listbox",
+		"key": "Enter"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .panel-title",
+		"text": "Éventail",
+		"timeout": 5000
+	},
+	{
+		"do": "sleep",
+		"ms": 600
+	},
+	{
+		"do": "shot",
+		"name": "q2"
+	},
+	{
+		"do": "quit"
+	}
+]

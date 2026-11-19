@@ -129,6 +129,8 @@ describe("InteractiveMode.showManagedToolStatus", () => {
 			managedToolStatusStarted: false,
 			lastStatusSpacer: undefined,
 			lastStatusText: undefined,
+			// fork: advanced mode shows the download notices that simple mode hides.
+			settingsManager: { getInterfaceMode: () => "advanced" },
 		};
 		const showManagedToolStatus = (InteractiveMode as any).prototype.showManagedToolStatus;
 

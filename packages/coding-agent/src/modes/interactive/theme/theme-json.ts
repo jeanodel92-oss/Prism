@@ -51,8 +51,9 @@ const ThemeJsonSchema = Type.Object({
 		toolErrorBg: ColorValueSchema,
 		toolTitle: ColorValueSchema,
 		toolOutput: ColorValueSchema,
-		// Markdown (10 colors)
+		// Markdown (10 colors, 1 optional)
 		mdHeading: ColorValueSchema,
+		mdBold: Type.Optional(ColorValueSchema), // fork
 		mdLink: ColorValueSchema,
 		mdLinkUrl: ColorValueSchema,
 		mdCode: ColorValueSchema,

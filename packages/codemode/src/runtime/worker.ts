@@ -13,7 +13,15 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { JSException, type JSValueHandle, MAX_STACK_SIZE, QuickJS } from "quickjs-wasi";
 import { PRELUDE_SOURCE } from "./prelude-source.ts";
-import { isHostToWorkerMessage, type WorkerData, type WorkerToHostMessage } from "./protocol.ts";
+import {
+	isHostToWorkerMessage,
+	MAX_OUTPUT_ITEMS,
+	MAX_OUTPUT_LENGTH,
+	outputLength,
+	outputLimitError,
+	type WorkerData,
+	type WorkerToHostMessage,
+} from "./protocol.ts";
 
 function post(message: WorkerToHostMessage): void {
 	parentPort?.postMessage(message);
@@ -61,6 +69,10 @@ async function main(data: WorkerData): Promise<void> {
 		wasi: discardOutput,
 	});
 
+	// fork: output is counted here, before it is copied to Prism; past the limit the script is stopped.
+	let outputTotal = 0;
+	let outputItems = 0;
+	let outputFull = false;
 	// Called from the prelude with primitives only.
 	const bridge = vm.newFunction("bridge", (kind, a, b, c) => {
 		switch (kind.toString()) {
@@ -74,15 +86,22 @@ async function main(data: WorkerData): Promise<void> {
 					args: c === undefined || c.isUndefined ? undefined : c.toString(),
 				});
 				break;
-			case "output":
-				post({
-					type: "output",
-					item:
-						a.toString() === "image"
-							? { type: "image", data: b.toString(), mimeType: c.toString() }
-							: { type: "text", text: b.toString() },
-				});
+			case "output": {
+				if (outputFull) break;
+				const item =
+					a.toString() === "image"
+						? { type: "image" as const, data: b.toString(), mimeType: c.toString() }
+						: { type: "text" as const, text: b.toString() };
+				outputTotal += outputLength(item);
+				if (++outputItems > MAX_OUTPUT_ITEMS || outputTotal > MAX_OUTPUT_LENGTH) {
+					outputFull = true;
+					post({ type: "done", ok: false, error: JSON.stringify(outputLimitError()) });
+					Atomics.store(interrupt, 0, 1);
+					break;
+				}
+				post({ type: "output", item });
 				break;
+			}
 			case "done":
 				if (a.toBoolean()) {
 					post({

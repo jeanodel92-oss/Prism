@@ -1,0 +1,52 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: the folders worked in lately are one click away"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "click",
+		"selector": "#choose-project"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.project .perm-heading",
+		"text": "Recent folders",
+		"timeout": 10000
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.project .project-recent li",
+		"text": "recent-project"
+	},
+	{
+		"do": "sleep",
+		"ms": 400
+	},
+	{
+		"do": "shot",
+		"name": "recent"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.project .project-recent li",
+		"text": "recent-project"
+	},
+	{
+		"do": "wait",
+		"selector": ".cwd",
+		"text": "recent-project",
+		"timeout": 20000
+	},
+	{
+		"do": "shot",
+		"name": "opened"
+	},
+	{
+		"do": "quit"
+	}
+]

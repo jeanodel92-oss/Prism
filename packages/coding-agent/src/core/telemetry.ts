@@ -1,13 +1,7 @@
 import type { SettingsManager } from "./settings-manager.ts";
 
-function isTruthyEnvFlag(value: string | undefined): boolean {
-	if (!value) return false;
-	return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
-}
-
-export function isInstallTelemetryEnabled(
-	settingsManager: SettingsManager,
-	telemetryEnv: string | undefined = process.env.PI_TELEMETRY,
-): boolean {
-	return telemetryEnv !== undefined ? isTruthyEnvFlag(telemetryEnv) : settingsManager.getEnableInstallTelemetry();
+// fork: install telemetry and provider attribution headers are always off,
+// regardless of PI_TELEMETRY or the enableInstallTelemetry setting.
+export function isInstallTelemetryEnabled(_settingsManager: SettingsManager, _telemetryEnv?: string): boolean {
+	return false;
 }

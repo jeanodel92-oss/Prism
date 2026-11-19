@@ -8,6 +8,7 @@ import {
 	type Usage,
 } from "@earendil-works/pi-ai";
 import { getProviderEnvValue } from "@earendil-works/pi-ai/utils/provider-env";
+import { fill } from "../fork/i18n/index.ts"; // fork: display text only
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { SessionEntry, SessionManager, UsageEntry } from "./session-manager.ts";
 import type { CacheWarmingMode } from "./settings-manager.ts";
@@ -449,5 +450,5 @@ export function formatCacheWarmingStatus(status: CacheWarmingStatus, now = Date.
 export function formatCacheWarmingUsage(entry: UsageEntry): string {
 	const note = entry.note ? ` (${entry.note})` : "";
 	const cost = entry.usage.cost.total.toFixed(6).replace(/(\.\d{3}\d*?)0+$/, "$1");
-	return `Cache warmed${note}: $${cost}`;
+	return fill("Cache warmed{0}: {1}", note, `$${cost}`); // fork
 }

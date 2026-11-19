@@ -2,6 +2,18 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
 import { type Static, Type } from "typebox";
+import { anchoredOpenSupported, publishFile } from "../../fork/anchored-open.ts";
+import {
+	type FileBinding,
+	openBoundOnce,
+	readBoundFile,
+	replaceBoundFile,
+	takeFileBinding,
+	withBoundFileQueue,
+} from "../../fork/file-binding.ts";
+import { realPath } from "../../fork/real-path.ts";
+import { assertEditableSize, assertNotSpecialFile } from "../../fork/regular-file.ts";
+import { hideSecrets, revealSecrets } from "../../fork/secrets/reveal.ts";
 import { splitBom } from "../../utils/text.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import {
@@ -13,7 +25,6 @@ import {
 	normalizeToLF,
 	restoreLineEndings,
 } from "./edit-diff.ts";
-import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
 import { type EditRenderState, editRenderers } from "./renderers/edit.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -91,8 +102,17 @@ export interface EditOperations {
 
 const defaultEditOperations: EditOperations = {
 	readFile: (path) => fsReadFile(path),
-	writeFile: (path, content) => fsWriteFile(path, content, "utf-8"),
-	access: (path) => fsAccess(path, constants.R_OK | constants.W_OK),
+	// fork: a complete new version replaces the file when it can (publishFile).
+	writeFile: (path, content) =>
+		anchoredOpenSupported
+			? Promise.resolve(publishFile(realPath(path), content))
+			: fsWriteFile(path, content, "utf-8"),
+	// fork: a FIFO or a device would hang the read or fill memory.
+	// fork: so would a huge file; above the limit the error tells the model to use bash.
+	access: (path) =>
+		fsAccess(path, constants.R_OK | constants.W_OK)
+			.then(() => assertNotSpecialFile(path))
+			.then(() => assertEditableSize(path)),
 };
 
 export interface EditToolOptions {
@@ -159,8 +179,12 @@ export function createEditToolDefinition(
 		async execute(_toolCallId, input: EditToolInput, signal?: AbortSignal, _onUpdate?, ctx?: ExtensionContext) {
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, ctx?.cwd || cwd);
+			// fork: open the object the permission judged, through no link put since; read
+			// and written through one descriptor, so the content read is the file written.
+			const binding = ops === defaultEditOperations ? takeFileBinding(_toolCallId, absolutePath) : undefined;
+			let bound: number | undefined;
 
-			return withFileMutationQueue(absolutePath, async () => {
+			return withBoundFileQueue(binding, absolutePath, async () => {
 				// Do not reject from an abort event listener here: that would release the
 				// mutation queue while an in-flight filesystem operation may still finish.
 				// Checking signal.aborted after each await observes the same aborts while
@@ -174,6 +198,7 @@ export function createEditToolDefinition(
 				// Check if file exists.
 				try {
 					await ops.access(absolutePath);
+					if (binding) bound = openBoundOnce(binding, "update");
 				} catch (error: unknown) {
 					throwIfAborted();
 					const errorMessage =
@@ -183,8 +208,9 @@ export function createEditToolDefinition(
 				throwIfAborted();
 
 				// Read the file.
-				const buffer = await ops.readFile(absolutePath);
-				const rawContent = buffer.toString("utf-8");
+				const buffer = bound === undefined ? await ops.readFile(absolutePath) : readBoundFile(bound);
+				// the keys the user let this call use read as their labels, as the model saw them (secrets/reveal.ts).
+				const rawContent = hideSecrets(_toolCallId, buffer.toString("utf-8"));
 				throwIfAborted();
 
 				// Strip BOM before matching. The model will not include an invisible BOM in oldText.
@@ -194,8 +220,9 @@ export function createEditToolDefinition(
 				const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path);
 				throwIfAborted();
 
-				const finalContent = bom + restoreLineEndings(newContent, originalEnding);
-				await ops.writeFile(absolutePath, finalContent);
+				const finalContent = revealSecrets(_toolCallId, bom + restoreLineEndings(newContent, originalEnding));
+				if (bound === undefined) await ops.writeFile(absolutePath, finalContent);
+				else replaceBoundFile(binding as FileBinding, bound, finalContent);
 				throwIfAborted();
 
 				const diffResult = generateDiffString(baseContent, newContent);

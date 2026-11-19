@@ -38,9 +38,9 @@ export function isAuthCommandHelp(args: string[]): boolean {
 
 export function printAuthCommandHelp(): void {
 	console.log(`Usage:
-  pi auth print-api-key [--provider <provider>] [--model <model>]
-  pi auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
-  pi auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]
+  ${APP_NAME} auth print-api-key [--provider <provider>] [--model <model>]
+  ${APP_NAME} auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
+  ${APP_NAME} auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]
 
 Auth commands require at least one of --provider or --model. Checks refresh expired OAuth credentials by default; --no-refresh prevents this. --credentials emits the credential, or includes it in JSON output.`);
 }
@@ -76,7 +76,8 @@ export function parseAuthCommand(args: string[]): AuthCommand | undefined {
 			const match = value ? /^(\d+)(ms|s|m|h)$/iu.exec(value) : undefined;
 			if (!match) throw new AuthCommandError("--min-expiry must use a duration such as 30m or 1h");
 			const amount = Number(match[1]);
-			const unit = match[2];
+			// fork: the regex is case-insensitive, so "30M" must mean minutes, not hours.
+			const unit = match[2].toLowerCase();
 			minExpiryMs = amount * (unit === "ms" ? 1 : unit === "s" ? 1_000 : unit === "m" ? 60_000 : 3_600_000);
 			continue;
 		}

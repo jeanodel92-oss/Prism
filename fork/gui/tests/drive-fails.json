@@ -1,0 +1,5 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "absent", "selector": "#composer", "why": "VAL-001: an assertion that fails, so the window must exit non-zero" },
+	{ "do": "quit" }
+]

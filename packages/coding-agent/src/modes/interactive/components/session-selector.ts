@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import * as os from "node:os";
 import {
 	type Component,
 	Container,
@@ -9,12 +8,17 @@ import {
 	getKeybindings,
 	Input,
 	Spacer,
+	sanitizeTerminalLabel,
 	Text,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
+import { shortenPath } from "../../../core/tools/render-utils.ts";
+import { hostCommand } from "../../../fork/host-program.ts";
+import { fill, t } from "../../../fork/i18n/index.ts";
 import { canonicalizePath as _canonicalizePath } from "../../../utils/paths.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -23,15 +27,6 @@ import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode }
 
 type SessionScope = "current" | "all";
 
-function shortenPath(path: string): string {
-	const home = os.homedir();
-	if (!path) return path;
-	if (path.startsWith(home)) {
-		return `~${path.slice(home.length)}`;
-	}
-	return path;
-}
-
 function formatSessionDate(date: Date): string {
 	const now = new Date();
 	const diffMs = now.getTime() - date.getTime();
@@ -39,13 +34,13 @@ function formatSessionDate(date: Date): string {
 	const diffHours = Math.floor(diffMs / 3600000);
 	const diffDays = Math.floor(diffMs / 86400000);
 
-	if (diffMins < 1) return "now";
+	if (diffMins < 1) return t("now");
 	if (diffMins < 60) return `${diffMins}m`;
 	if (diffHours < 24) return `${diffHours}h`;
-	if (diffDays < 7) return `${diffDays}d`;
-	if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
-	if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
-	return `${Math.floor(diffDays / 365)}y`;
+	if (diffDays < 7) return `${diffDays}${t("d")}`;
+	if (diffDays < 30) return `${Math.floor(diffDays / 7)}${t("w")}`;
+	if (diffDays < 365) return `${Math.floor(diffDays / 30)}${t("mo")}`;
+	return `${Math.floor(diffDays / 365)}${t("y")}`;
 }
 
 function canonicalizePath(path: string | undefined): string | undefined {
@@ -129,60 +124,70 @@ class SessionSelectorHeader implements Component {
 
 	render(width: number): string[] {
 		const title = this.scope === "current" ? "Resume Session (Current Folder)" : "Resume Session (All)";
-		const leftText = theme.bold(title);
+		const leftText = theme.bold(t(title));
 
 		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
-		const sortText = theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel);
+		const sortText = theme.fg("muted", t("Sort: ")) + theme.fg("accent", t(sortLabel));
 
 		const nameLabel = this.nameFilter === "all" ? "All" : "Named";
-		const nameText = theme.fg("muted", "Name: ") + theme.fg("accent", nameLabel);
+		const nameText = theme.fg("muted", t("Name: ")) + theme.fg("accent", t(nameLabel));
 
 		let scopeText: string;
 		if (this.loading) {
 			const progressText = this.loadProgress ? `${this.loadProgress.loaded}/${this.loadProgress.total}` : "...";
-			scopeText = `${theme.fg("muted", "○ Current Folder | ")}${theme.fg("accent", `Loading ${progressText}`)}`;
+			scopeText = `${theme.fg("muted", t("○ Current Folder | "))}${theme.fg("accent", fill("Loading {0}", progressText))}`;
 		} else if (this.scope === "current") {
-			scopeText = `${theme.fg("accent", "◉ Current Folder")}${theme.fg("muted", " | ○ All")}`;
+			scopeText = `${theme.fg("accent", t("◉ Current Folder"))}${theme.fg("muted", t(" | ○ All"))}`;
 		} else {
-			scopeText = `${theme.fg("muted", "○ Current Folder | ")}${theme.fg("accent", "◉ All")}`;
+			scopeText = `${theme.fg("muted", t("○ Current Folder | "))}${theme.fg("accent", t("◉ All"))}`;
 		}
 
-		const rightText = truncateToWidth(`${scopeText}  ${nameText}  ${sortText}`, width, "");
-		const availableLeft = Math.max(0, width - visibleWidth(rightText) - 1);
-		const left = truncateToWidth(leftText, availableLeft, "");
-		const spacing = Math.max(0, width - visibleWidth(left) - visibleWidth(rightText));
+		const rightText = `${scopeText}  ${nameText}  ${sortText}`;
+		// fork: on a narrow terminal the title goes and the filters and keys wrap; they were cut
+		// ("Rep", "Nom : Tou", "ctrl+p che…").
+		const top: string[] = [];
+		if (visibleWidth(leftText) + 1 + visibleWidth(rightText) <= width) {
+			top.push(`${leftText}${" ".repeat(width - visibleWidth(leftText) - visibleWidth(rightText))}${rightText}`);
+		} else {
+			for (const part of [scopeText, nameText, sortText]) {
+				const last = top.length - 1;
+				if (last >= 0 && visibleWidth(top[last]) + 2 + visibleWidth(part) <= width) top[last] += `  ${part}`;
+				else top.push(truncateToWidth(part, width, "…"));
+			}
+		}
+		const wrap = (text: string) => wrapTextWithAnsi(text, width);
 
 		// Build hint lines - changes based on state (all branches truncate to width)
 		let hintLine1: string;
 		let hintLine2: string;
 		if (this.confirmingDeletePath !== null) {
-			const confirmHint = `Delete session? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`;
-			hintLine1 = theme.fg("error", truncateToWidth(confirmHint, width, "…"));
+			const confirmHint = `${t("Delete session?")} ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`;
+			hintLine1 = theme.fg("error", confirmHint);
 			hintLine2 = "";
 		} else if (this.statusMessage) {
 			const color = this.statusMessage.type === "error" ? "error" : "accent";
-			hintLine1 = theme.fg(color, truncateToWidth(this.statusMessage.message, width, "…"));
+			hintLine1 = theme.fg(color, t(this.statusMessage.message));
 			hintLine2 = "";
 		} else {
 			const pathState = this.showPath ? "(on)" : "(off)";
 			const sep = theme.fg("muted", " · ");
 			const hint1 =
-				keyHint("tui.input.tab", "scope") + sep + theme.fg("muted", 're:<pattern> regex · "phrase" exact');
+				keyHint("tui.input.tab", "scope") + sep + theme.fg("muted", t('re:<pattern> regex · "phrase" exact'));
 			const hint2Parts = [
 				keyHint("app.session.toggleSort", "sort"),
 				keyHint("app.session.toggleNamedFilter", "named"),
 				keyHint("app.session.delete", "delete"),
-				keyHint("app.session.togglePath", `path ${pathState}`),
+				keyHint("app.session.togglePath", fill("path {0}", t(pathState))),
 			];
 			if (this.showRenameHint) {
 				hint2Parts.push(keyHint("app.session.rename", "rename"));
 			}
 			const hint2 = hint2Parts.join(sep);
-			hintLine1 = truncateToWidth(hint1, width, "…");
-			hintLine2 = truncateToWidth(hint2, width, "…");
+			hintLine1 = hint1;
+			hintLine2 = hint2;
 		}
 
-		return [`${left}${" ".repeat(spacing)}${rightText}`, hintLine1, hintLine2];
+		return [...top, ...wrap(hintLine1), ...wrap(hintLine2)];
 	}
 }
 
@@ -442,7 +447,9 @@ class SessionList implements Component, Focusable {
 				// "Current folder" scope - hint to try "all"
 				emptyMessage = "  No sessions in current folder. Press Tab to view all.";
 			}
-			lines.push(theme.fg("muted", truncateToWidth(emptyMessage, width, "…")));
+			// fork: wrapped, "Tab affiche toutes les se…" was cut.
+			for (const line of wrapTextWithAnsi(t(emptyMessage).trimStart(), width - 2))
+				lines.push(theme.fg("muted", `  ${line}`));
 			return lines;
 		}
 
@@ -467,7 +474,8 @@ class SessionList implements Component, Focusable {
 			// Session display text (name or first message)
 			const hasName = !!session.name;
 			const displayText = session.name ?? session.firstMessage;
-			const normalizedMessage = displayText.replace(/[\x00-\x1f\x7f]/g, " ").trim();
+			// fork: the shared primitive, which also removes ESC sequences and C1.
+			const normalizedMessage = sanitizeTerminalLabel(displayText).trim();
 
 			// Right side: message count and age
 			const age = formatSessionDate(session.modified);
@@ -651,12 +659,13 @@ type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) =
 /**
  * Delete a session file, trying the `trash` CLI first, then falling back to unlink
  */
-async function deleteSessionFile(
+export async function deleteSessionFile(
 	sessionPath: string,
 ): Promise<{ ok: boolean; method: "trash" | "unlink"; error?: string }> {
 	// Try `trash` first (if installed)
 	const trashArgs = sessionPath.startsWith("-") ? ["--", sessionPath] : [sessionPath];
-	const trashResult = spawnSync("trash", trashArgs, { encoding: "utf-8" });
+	// fork: never a `trash` the sandbox could write.
+	const trashResult = spawnSync(hostCommand("trash"), trashArgs, { encoding: "utf-8" });
 
 	const getTrashErrorHint = (): string | null => {
 		const parts: string[] = [];
@@ -889,13 +898,16 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.renameInput.focused = true;
 
 		const panel = new Container();
-		panel.addChild(new Text(theme.bold("Rename Session"), 1, 0));
+		panel.addChild(new Text(theme.bold(t("Rename Session")), 1, 0));
 		panel.addChild(new Spacer(1));
 		panel.addChild(this.renameInput);
 		panel.addChild(new Spacer(1));
 		panel.addChild(
 			new Text(
-				theme.fg("muted", `${keyText("tui.select.confirm")} to save · ${keyText("tui.select.cancel")} to cancel`),
+				theme.fg(
+					"muted",
+					fill("{0} to save · {1} to cancel", keyText("tui.select.confirm"), keyText("tui.select.cancel")),
+				),
 				1,
 				0,
 			),
@@ -933,6 +945,10 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		try {
 			await renameSession(target, next);
 			await this.refreshSessionsAfterMutation();
+		} catch (error) {
+			// fork: shown here, never an unhandled rejection; Ctrl+R tries again.
+			const message = error instanceof Error ? error.message : String(error);
+			this.header.setStatusMessage({ type: "error", message: `Failed to rename: ${message}` }, 4000);
 		} finally {
 			this.exitRenameMode();
 		}

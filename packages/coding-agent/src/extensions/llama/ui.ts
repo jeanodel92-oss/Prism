@@ -14,13 +14,20 @@ import {
 } from "@earendil-works/pi-tui";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
+import { fill, t } from "../../fork/i18n/index.ts"; // fork: display text only
 import { DynamicBorder } from "../../modes/interactive/components/dynamic-border.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
-import type { LlamaModelInfo, LlamaProgress } from "./client.ts";
+import { type LlamaModelInfo, type LlamaProgress, LlamaServerError } from "./client.ts";
 import type { HuggingFaceModel } from "./huggingface.ts";
 
 const DOWNLOAD_VALUE = "\0download";
+
+// fork: only the presentation changes; thrown errors and server messages stay in English/verbatim.
+export function llamaErrorMessage(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return error instanceof LlamaServerError ? message : t(message);
+}
 
 export type LlamaManagerAction = { type: "model"; model: LlamaModelInfo } | { type: "download" } | { type: "close" };
 
@@ -44,10 +51,10 @@ function contextLabel(model: LlamaModelInfo): string | undefined {
 function modelDescription(model: LlamaModelInfo): string {
 	const details: string[] = [];
 	const loaded = model.status.value === "loaded" || model.status.value === "sleeping";
-	if (loaded) details.push("loaded");
+	if (loaded) details.push(t("loaded"));
 	else if (model.status.value !== "unloaded") details.push(model.status.value);
 	const context = loaded ? contextLabel(model) : undefined;
-	if (context) details.push(`${context} context`);
+	if (context) details.push(fill("{0} context", context));
 	return details.join(" · ");
 }
 
@@ -106,7 +113,7 @@ class HuggingFaceSearch extends Container implements Focusable {
 	private filteredResults: HuggingFaceModel[] = [];
 	private selectedIndex = 0;
 	private query = "";
-	private status = "Type at least 2 characters";
+	private status = t("Type at least 2 characters");
 	private debounce: ReturnType<typeof setTimeout> | undefined;
 	private request: AbortController | undefined;
 	private closed = false;
@@ -127,7 +134,7 @@ class HuggingFaceSearch extends Container implements Focusable {
 		this.search = search;
 		this.cache = cache;
 		this.onSelectModel = onSelectModel;
-		this.addChild(new Text(theme.fg("dim", "Model name or owner/repository[:quant]"), 1, 0));
+		this.addChild(new Text(theme.fg("dim", t("Model name or owner/repository[:quant]")), 1, 0));
 		this.addChild(this.input);
 		this.addChild(new Spacer(1));
 		this.addChild(this.resultsContainer);
@@ -155,7 +162,7 @@ class HuggingFaceSearch extends Container implements Focusable {
 			const model = this.filteredResults[index];
 			if (!model) continue;
 			const prefix = index === this.selectedIndex ? "→ " : "  ";
-			const details = `${compactCount(model.downloads)} downloads`;
+			const details = fill("{0} downloads", compactCount(model.downloads));
 			this.resultsContainer.addChild(
 				new Text(
 					index === this.selectedIndex
@@ -173,7 +180,7 @@ class HuggingFaceSearch extends Container implements Focusable {
 		}
 		if (this.filteredResults.length === 0) {
 			this.resultsContainer.addChild(new Text(this.theme.fg("dim", `  ${this.status}`), 0, 0));
-		} else if (this.status === "Searching Hugging Face…") {
+		} else if (this.status === t("Searching Hugging Face…")) {
 			this.resultsContainer.addChild(new Text(this.theme.fg("dim", `  ${this.status}`), 0, 0));
 		}
 		this.tui.requestRender();
@@ -195,18 +202,18 @@ class HuggingFaceSearch extends Container implements Focusable {
 		this.request?.abort();
 		this.request = undefined;
 		if (this.query.length < 2) {
-			this.status = "Type at least 2 characters";
+			this.status = t("Type at least 2 characters");
 			this.filterResults();
 			return;
 		}
 		const cached = this.cache.get(this.query.toLowerCase());
 		if (cached) {
 			this.results = cached;
-			this.status = cached.length === 0 ? "No GGUF models found" : "";
+			this.status = cached.length === 0 ? t("No GGUF models found") : "";
 			this.filterResults();
 			return;
 		}
-		this.status = "Searching Hugging Face…";
+		this.status = t("Searching Hugging Face…");
 		this.filterResults();
 		this.debounce = setTimeout(() => void this.runSearch(this.query), 500);
 	}
@@ -220,12 +227,12 @@ class HuggingFaceSearch extends Container implements Focusable {
 			if (this.closed || request.signal.aborted || this.query !== query) return;
 			this.results = results;
 			this.selectedIndex = 0;
-			this.status = results.length === 0 ? "No GGUF models found" : "";
+			this.status = results.length === 0 ? t("No GGUF models found") : "";
 			this.filterResults();
 		} catch (error) {
 			if (this.closed || request.signal.aborted || this.query !== query) return;
 			this.results = [];
-			this.status = error instanceof Error ? error.message : String(error);
+			this.status = llamaErrorMessage(error);
 			this.filterResults();
 		} finally {
 			if (this.request === request) this.request = undefined;
@@ -290,7 +297,7 @@ class LlamaView implements LlamaUi, Focusable {
 		this.tui = tui;
 		this.theme = theme;
 		this.keybindings = keybindings;
-		this.content = frame(theme, "llama.cpp models", [new Text(theme.fg("muted", "Loading…"), 1, 1)]);
+		this.content = frame(theme, t("llama.cpp models"), [new Text(theme.fg("muted", t("Loading…")), 1, 1)]);
 	}
 
 	get focused(): boolean {
@@ -330,7 +337,11 @@ class LlamaView implements LlamaUi, Focusable {
 				label: model.id,
 				description: modelDescription(model),
 			})),
-			{ value: DOWNLOAD_VALUE, label: "Download model…", description: "Hugging Face owner/repository[:quant]" },
+			{
+				value: DOWNLOAD_VALUE,
+				label: t("Download model…"),
+				description: t("Hugging Face owner/repository[:quant]"),
+			},
 		];
 		return new Promise((resolve) => {
 			const list = new SelectList(items, Math.min(items.length, 12), selectTheme(this.theme), {
@@ -348,7 +359,7 @@ class LlamaView implements LlamaUi, Focusable {
 			this.setContent(
 				frame(
 					this.theme,
-					"llama.cpp models",
+					t("llama.cpp models"),
 					[new Text(this.theme.fg("dim", serverUrl), 1, 0), new Spacer(1), list],
 					`${keyHint("tui.select.confirm", "load/unload/download")} • ${keyHint("tui.select.cancel", "close")}`,
 				),
@@ -379,12 +390,15 @@ class LlamaView implements LlamaUi, Focusable {
 	}
 
 	async confirm(title: string, message: string): Promise<boolean> {
-		return (await this.select(`${title}\n${message}`, ["Yes", "No"])) === "Yes";
+		return (await this.select(`${title}\n${message}`, [t("Yes"), t("No")])) === t("Yes");
 	}
 
 	async connectionError(serverUrl: string, message: string): Promise<"retry" | "close"> {
-		const choice = await this.select(`llama.cpp unavailable\n${serverUrl}\n\n${message}`, ["Retry", "Close"]);
-		return choice === "Retry" ? "retry" : "close";
+		const choice = await this.select(fill("llama.cpp unavailable\n{0}\n\n{1}", serverUrl, message), [
+			t("Retry"),
+			t("Close"),
+		]);
+		return choice === t("Retry") ? "retry" : "close";
 	}
 
 	searchModels(
@@ -402,7 +416,7 @@ class LlamaView implements LlamaUi, Focusable {
 			this.setContent(
 				frame(
 					this.theme,
-					"Download model",
+					t("Download model"),
 					[new Spacer(1), component],
 					`${keyHint("tui.select.confirm", "select")} • ${keyHint("tui.select.cancel", "back")}`,
 				),
@@ -483,7 +497,7 @@ export async function showLlamaUi(ctx: ExtensionCommandContext, run: (ui: LlamaU
 		void run(view).then(
 			() => done(),
 			(error: unknown) => {
-				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+				ctx.ui.notify(llamaErrorMessage(error), "error");
 				done();
 			},
 		);

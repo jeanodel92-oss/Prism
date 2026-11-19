@@ -30,6 +30,13 @@ type TrustFile = Record<string, boolean | null | undefined>;
 const TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES = [
 	"settings.json",
 	"mcp.json",
+	"permissions.json",
+	"pi-lsp.json",
+	"lsp.json",
+	"MEMORY.md",
+	"commands",
+	"hooks",
+	"tools",
 	"extensions",
 	"skills",
 	"prompts",
@@ -186,7 +193,18 @@ function withTrustFileLock<T>(path: string, fn: () => T): T {
 export function hasTrustRequiringProjectResources(cwd: string): boolean {
 	const homeDir = canonicalizePath(resolvePath(process.env.HOME || homedir()));
 	const userAgentsSkillsDir = join(homeDir, ".agents", "skills");
-	let currentDir = canonicalizePath(resolvePath(cwd));
+	// fork: the loader walks the ancestors of the path as written (a resumed session
+	// keeps a linked cwd); the physical ones are checked too, so a link never hides what the loader reads.
+	const lexical = resolvePath(cwd);
+	const physical = canonicalizePath(lexical);
+	return (
+		holdsTrustRequiringResources(physical, userAgentsSkillsDir) ||
+		(lexical !== physical && holdsTrustRequiringResources(lexical, userAgentsSkillsDir))
+	);
+}
+
+function holdsTrustRequiringResources(start: string, userAgentsSkillsDir: string): boolean {
+	let currentDir = start;
 
 	const configDir = join(currentDir, CONFIG_DIR_NAME);
 	if (TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES.some((entry) => existsSync(join(configDir, entry)))) {
@@ -194,6 +212,16 @@ export function hasTrustRequiringProjectResources(cwd: string): boolean {
 	}
 
 	while (true) {
+		if (
+			["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"].some((name) =>
+				existsSync(join(currentDir, name)),
+			)
+		) {
+			return true;
+		}
+		if (existsSync(join(currentDir, "project", "handoff.md"))) {
+			return true;
+		}
 		const agentsSkillsDir = join(currentDir, ".agents", "skills");
 		if (agentsSkillsDir !== userAgentsSkillsDir && existsSync(agentsSkillsDir)) {
 			return true;

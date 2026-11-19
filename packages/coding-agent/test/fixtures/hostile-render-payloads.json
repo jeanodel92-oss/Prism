@@ -1,0 +1,18 @@
+{
+  "osc52": "\u001b]52;c;c2VjcmV0\u0007",
+  "osc8Mismatch": "\u001b]8;;https://attacker.example/secret\u001b\\shown as safe\u001b]8;;\u001b\\",
+  "osc2Title": "\u001b]2;attacker title\u0007title text",
+  "kittyApc": "\u001b_Ga=T;AAAA\u001b\\graphic",
+  "sixelDcs": "\u001bPq#0;2;0;0;0~\u001b\\sixel",
+  "clearScreen": "\u001b[2Jclear",
+  "cursorHome": "\u001b[Hhome",
+  "c1Csi": "\u009b2Jc1",
+  "remoteImage": "![secret](http://127.0.0.1:0/leak)",
+  "script": "<script>alert(1)</script>",
+  "imgOnerror": "<img src=x onerror=alert(1)>",
+  "javascriptLink": "[a](javascript:alert(1))",
+  "svgOnload": "<svg onload=alert(1)></svg>",
+  "textareaBreakout": "</textarea><script>alert(1)</script>",
+  "scriptBreakout": "</script><script>alert(1)</script>",
+  "coloredBash": "\u001b[31mred\u001b[0m"
+}

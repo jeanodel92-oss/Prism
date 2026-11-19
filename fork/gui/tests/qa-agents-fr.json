@@ -1,0 +1,22 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "pref", "id": "pref-language", "value": "fr" },
+	{ "do": "type", "text": "/agents" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.agents [data-action='new']", "text": "Nouvel agent" },
+	{ "do": "click", "selector": ".panel.agents [data-action='new']" },
+	{ "do": "type", "selector": ".panel.agents input[name='name']", "text": "fr-helper" },
+	{ "do": "type", "selector": ".panel.agents input[name='description']", "text": "Lire le projet" },
+	{ "do": "type", "selector": ".panel.agents textarea[name='instructions']", "text": "Lis les fichiers demandés.\nRésume ce que tu trouves." },
+	{ "do": "fits", "selector": ".panel.agents .panel-body" },
+	{ "do": "shot", "name": "agent-form-fr" },
+	{ "do": "click", "selector": ".panel.agents [data-action='save']" },
+	{ "do": "click", "selector": ".panel.agents [data-action='policy']" },
+	{ "do": "wait", "selector": ".panel.agents select[name='mode']", "text": "auto" },
+	{ "do": "fits", "selector": ".panel.agents .panel-body" },
+	{ "do": "shot", "name": "agent-policy-fr" },
+	{ "do": "key", "selector": ".panel.agents", "key": "Escape" },
+	{ "do": "focused", "selector": "#input" },
+	{ "do": "transcript-clean" },
+	{ "do": "quit" }
+]

@@ -1,0 +1,149 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: the context gauge and /context are one screen, which offers to compact"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "md"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.assistant + .turn-summary",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "/context"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context .ctx-compaction",
+		"text": "auto: at 92%",
+		"why": "/context says how compaction runs"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context .panel-actions button",
+		"text": "Compact now"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.context .segmented button",
+		"text": "System prompt"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context .panel-actions button",
+		"text": "Copy",
+		"why": "the other tabs keep their copy button"
+	},
+	{
+		"do": "absent",
+		"selector": ".panel.context .panel-actions button",
+		"text": "Compact now"
+	},
+	{
+		"do": "key",
+		"selector": ".panel.context",
+		"key": "Escape"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context",
+		"gone": true
+	},
+	{
+		"do": "click",
+		"selector": "#statusbar .context-gauge"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context .ctx-bar"
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "click",
+		"selector": ".panel.context .panel-actions button",
+		"text": "Compaction settings"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings-pane-title",
+		"text": "Conversation",
+		"why": "the compaction settings, not the first section"
+	},
+	{
+		"do": "wait",
+		"selector": "#settings",
+		"text": "Auto-compact threshold"
+	},
+	{
+		"do": "shot",
+		"name": "compaction-settings"
+	},
+	{
+		"do": "click",
+		"selector": "#settings button",
+		"text": "Close"
+	},
+	{
+		"do": "absent",
+		"selector": "#settings[open]"
+	},
+	{
+		"do": "click",
+		"selector": "#statusbar .context-gauge"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context .ctx-bar",
+		"why": "the gauge opens the same screen"
+	},
+	{
+		"do": "shot",
+		"name": "gauge"
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "click",
+		"selector": ".panel.context .panel-actions button",
+		"text": "Compact now"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.context",
+		"gone": true
+	},
+	{
+		"do": "wait",
+		"selector": "#toasts .toast",
+		"text": "too short to summarize",
+		"timeout": 20000,
+		"why": "/compact ran (a one-reply conversation is not summarised)"
+	},
+	{
+		"do": "shot",
+		"name": "compacted"
+	},
+	{
+		"do": "quit"
+	}
+]

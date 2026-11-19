@@ -12,7 +12,7 @@
           "path": "quickstart.md"
         },
         {
-          "title": "How Pi Works",
+          "title": "How Prism Works",
           "path": "how-pi-works.md"
         }
       ]
@@ -21,10 +21,10 @@
       "title": "Guides",
       "items": [
         {
-          "title": "Run Pi",
+          "title": "Run Prism",
           "items": [
             {
-              "title": "Use Pi in the Terminal",
+              "title": "Use Prism in the Terminal",
               "path": "usage.md"
             },
             {
@@ -36,11 +36,15 @@
               "path": "sessions.md"
             },
             {
-              "title": "Run Pi Safely",
+              "title": "Run Prism Safely",
               "path": "security.md"
             },
             {
-              "title": "Isolate Pi",
+              "title": "Permissions",
+              "path": "permissions.md"
+            },
+            {
+              "title": "Isolate Prism",
               "path": "containerization.md"
             },
             {
@@ -56,24 +60,24 @@
               "path": "shell-aliases.md"
             },
             {
-              "title": "Run Pi in tmux",
+              "title": "Run Prism in tmux",
               "path": "tmux.md"
             },
             {
-              "title": "Run Pi on Windows",
+              "title": "Run Prism on Windows",
               "path": "windows.md"
             },
             {
-              "title": "Run Pi on Android",
+              "title": "Run Prism on Android",
               "path": "termux.md"
             }
           ]
         },
         {
-          "title": "Customize Pi",
+          "title": "Customize Prism",
           "items": [
             {
-              "title": "Configure Pi",
+              "title": "Configure Prism",
               "path": "configuration.md"
             },
             {
@@ -89,7 +93,7 @@
               "path": "themes.md"
             },
             {
-              "title": "Use Pi Packages",
+              "title": "Use Prism Packages",
               "path": "packages.md"
             },
             {
@@ -99,7 +103,7 @@
           ]
         },
         {
-          "title": "Build on Pi",
+          "title": "Build on Prism",
           "items": [
             {
               "title": "Build Extensions",

@@ -15,6 +15,8 @@ import {
 	toToolDeclaration,
 	validateToolArguments,
 } from "@earendil-works/pi-ai";
+import { endFailedRun } from "./fork/failed-run.ts";
+import { settleOrAbort } from "./fork/settle-or-abort.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
 	AgentContext,
@@ -53,9 +55,13 @@ export function agentLoop(
 		},
 		signal,
 		streamFn,
-	).then((messages) => {
-		stream.end(messages);
-	});
+	).then(
+		(messages) => {
+			stream.end(messages);
+		},
+		// fork: a failed run ends its stream (src/fork/failed-run.ts).
+		(error) => endFailedRun(stream, config.model, error, signal?.aborted === true),
+	);
 
 	return stream;
 }
@@ -92,9 +98,13 @@ export function agentLoopContinue(
 		},
 		signal,
 		streamFn,
-	).then((messages) => {
-		stream.end(messages);
-	});
+	).then(
+		(messages) => {
+			stream.end(messages);
+		},
+		// fork: a failed run ends its stream (src/fork/failed-run.ts).
+		(error) => endFailedRun(stream, config.model, error, signal?.aborted === true),
+	);
 
 	return stream;
 }
@@ -239,7 +249,12 @@ async function runLoop(
 			}
 
 			// Stream assistant response
-			const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFunction);
+			// fork: after an interrupt during a tool, a request could only fail on the aborted signal and be
+			// reported as a model failure. The turn ends as an interrupted request does, without sending one.
+			const message =
+				signal?.aborted && lastCompletedTurn?.toolResults.length
+					? await emitAbortedResponse(currentContext, config, emit)
+					: await streamAssistantResponse(currentContext, config, signal, emit, streamFunction);
 			newMessages.push(message);
 
 			if (message.stopReason === "error" || message.stopReason === "aborted") {
@@ -363,6 +378,42 @@ function declareToolChanges(context: AgentContext, pendingMessages: AgentMessage
 }
 
 const NO_CHANGES: ToolStateChanges = { toolsAdded: [], toolsRemoved: [] };
+
+// fork: the response of a request that was not sent because of an interrupt.
+async function emitAbortedResponse(
+	context: AgentContext,
+	config: AgentLoopConfig,
+	emit: AgentEventSink,
+): Promise<AssistantMessage> {
+	const message: AssistantMessage = {
+		role: "assistant",
+		content: [],
+		api: config.model.api,
+		provider: config.model.provider,
+		model: config.model.id,
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "aborted",
+		timestamp: Date.now(),
+	};
+	context.messages.push(message);
+	await emit({ type: "message_start", message: { ...message } });
+	await emit({ type: "message_end", message });
+	return message;
+}
+
+// fork: result of a tool still running after the abort grace period.
+/** fork: deliveries of a tool's updates waiting for listeners, at most. */
+const MAX_UPDATES_IN_FLIGHT = 64;
+
+const TOOL_ABANDONED_MESSAGE =
+	"Operation aborted: the tool did not stop after the abort, so its result was discarded. It may still be running.";
 
 /** Copy a system message with its tool fields replaced by `changes`; empty lists omit the field. */
 function withToolChanges(message: SystemMessage, { toolsAdded, toolsRemoved }: ToolStateChanges): SystemMessage {
@@ -822,25 +873,61 @@ async function executePreparedToolCall(
 	signal: AbortSignal | undefined,
 	onUpdate: ToolUpdateSink,
 ): Promise<ExecutedToolCallOutcome> {
-	const updateEvents: Promise<void>[] = [];
+	// fork: a listener's rejection is caught when it happens and fails the call once the tool settled.
+	let updateFailure: { error: unknown } | undefined;
 	let acceptingUpdates = true;
+	// fork: at most MAX_UPDATES_IN_FLIGHT deliveries wait for slow
+	// listeners (an RPC reader that does not read); a later update then replaces the one waiting for a free slot,
+	// since each update is the tool's whole state so far. Settled deliveries are not kept.
+	let inFlight = 0;
+	let waiting: { partialResult: AgentToolResult<any> } | undefined;
+	let idle: (() => void) | undefined;
+	// From the tool, a listener that throws throws into the tool, as before; from the queue, it fails the call.
+	const deliver = (partialResult: AgentToolResult<any>, queued: boolean): void => {
+		const delivery = queued
+			? Promise.resolve().then(() => onUpdate(partialResult))
+			: Promise.resolve(onUpdate(partialResult));
+		inFlight++;
+		void delivery
+			.catch((error: unknown) => {
+				updateFailure ??= { error };
+			})
+			.then(() => {
+				inFlight--;
+				const next = waiting;
+				waiting = undefined;
+				if (next) deliver(next.partialResult, true);
+				else if (inFlight === 0) idle?.();
+			});
+	};
+	const updatesSettled = (): Promise<void> =>
+		inFlight === 0 && !waiting
+			? Promise.resolve()
+			: new Promise((resolve) => {
+					idle = resolve;
+				});
 
 	try {
-		const result = await prepared.tool.execute(
-			prepared.toolCall.id,
-			prepared.args as never,
+		// fork: a tool that ignores the abort cannot hold the turn (src/fork/settle-or-abort.ts).
+		const result = await settleOrAbort(
+			Promise.resolve(
+				prepared.tool.execute(prepared.toolCall.id, prepared.args as never, signal, (partialResult) => {
+					if (!acceptingUpdates) return;
+					if (inFlight < MAX_UPDATES_IN_FLIGHT) deliver(partialResult, false);
+					else waiting = { partialResult };
+				}),
+			),
 			signal,
-			(partialResult) => {
-				if (!acceptingUpdates) return;
-				updateEvents.push(Promise.resolve(onUpdate(partialResult)));
-			},
+			() => new Error(TOOL_ABANDONED_MESSAGE),
 		);
 		acceptingUpdates = false;
-		await Promise.all(updateEvents);
+		await updatesSettled();
+		if (updateFailure) throw updateFailure.error;
 		return { result, isError: result.isError === true };
 	} catch (error) {
 		acceptingUpdates = false;
-		await Promise.all(updateEvents);
+		await updatesSettled();
+		if (updateFailure) throw updateFailure.error;
 		return {
 			result: createErrorToolResult(error instanceof Error ? error.message : String(error)),
 			isError: true,

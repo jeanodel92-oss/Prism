@@ -1,0 +1,48 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+
+	{ "do": "type", "text": "! printf 'one\\ntwo\\n'" },
+	{ "do": "send" },
+	{ "do": "absent", "selector": "#input", "text": "printf" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='done'] .tool-output", "text": "two" },
+	{ "do": "wait", "selector": ".tool.user-bash .tool-name", "text": "$" },
+	{ "do": "wait", "selector": ".tool.user-bash .tool-target", "text": "printf" },
+
+	{ "do": "type", "text": "!! exit 3" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash.excluded[data-status='error'] .tool-state", "text": "(exit 3)" },
+
+	{ "do": "type", "text": "! echo started; sleep 30" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='running'] .tool-output", "text": "started", "why": "output streams before the command ends" },
+	{ "do": "type", "text": "! echo second" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "A bash command is already running" },
+	{ "do": "wait", "selector": "#input", "text": "! echo second" },
+	{ "do": "key", "selector": "#input", "key": "Escape", "why": "app.interrupt cancels the running ! command" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='error'] .tool-state", "text": "(cancelled)", "timeout": 5000 },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='done'] .tool-output", "text": "second" },
+	{ "do": "shot", "name": "u1-bash" },
+
+	{ "do": "type", "text": "slow" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='true']" },
+	{ "do": "type", "text": "! echo during" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='done'] .tool-output", "text": "during" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": ".transcript > :last-child.user-bash .tool-output", "text": "during", "why": "recorded after the reply, as the engine does" },
+
+	{ "do": "click", "selector": "#new-session", "why": "reopened from the file: the order the engine recorded", "sidebar": true },
+	{ "do": "wait", "selector": "#welcome" },
+	{ "do": "click", "selector": "#open-list li:not(.current) .close", "sidebar": true },
+	{ "do": "wait", "selector": "#history-list .session-link", "sidebar": true },
+	{ "do": "click", "selector": "#history-list .session-link", "sidebar": true },
+	{ "do": "wait", "selector": ".tool.user-bash.excluded .tool-state", "text": "(exit 3)" },
+	{ "do": "wait", "selector": ".transcript > :last-child.user-bash .tool-output", "text": "during" },
+	{ "do": "shot", "name": "u2-reloaded" },
+
+	{ "do": "log", "text": "bash-ok" },
+	{ "do": "quit" }
+]

@@ -1,0 +1,14 @@
+[
+	{ "do": "log", "text": "Owner's QA of 2026-11-13: a conversation started on the phone did not show in the window's list until a reload. One is started here by another engine, in the background, after a 3 s delay; the list must show it within the 20 s re-read, nothing clicked." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "type", "text": "!node -e 'setTimeout(()=>require(\"child_process\").spawn(process.env.PRISM_GUI_ENGINE,[...JSON.parse(process.env.PRISM_GUI_ENGINE_ARGS),\"-p\",\"elsewhere\"],{detached:true,stdio:\"ignore\"}).unref(),3000)'" },
+	{ "do": "send" },
+	{ "do": "sleep", "ms": 1500 },
+	{ "do": "count", "selector": "#history-list .session-link", "count": 0, "sidebar": true },
+	{ "do": "wait", "selector": "#history-list .session-link", "text": "elsewhere", "timeout": 30000, "sidebar": true },
+	{ "do": "shot", "name": "listed" },
+	{ "do": "quit" }
+]

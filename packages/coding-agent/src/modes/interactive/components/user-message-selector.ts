@@ -1,4 +1,13 @@
-import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	Container,
+	getKeybindings,
+	Spacer,
+	sanitizeTerminalLabel,
+	Text,
+	truncateToWidth,
+} from "@earendil-works/pi-tui";
+import { fill, t } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
@@ -6,6 +15,7 @@ interface UserMessageItem {
 	id: string; // Entry ID in the session
 	text: string; // The message text
 	timestamp?: string; // Optional timestamp if available
+	detail?: string; // fork: the line under an entry that is not a message (/fork's whole-conversation copy)
 }
 
 /**
@@ -31,10 +41,11 @@ class UserMessageList implements Component {
 	}
 
 	render(width: number): string[] {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		const lines: string[] = [];
 
 		if (this.messages.length === 0) {
-			lines.push(theme.fg("muted", "  No user messages found"));
+			lines.push(theme.fg("muted", t("  No user messages found")));
 			return lines;
 		}
 
@@ -51,7 +62,8 @@ class UserMessageList implements Component {
 			const isSelected = i === this.selectedIndex;
 
 			// Normalize message to single line
-			const normalizedMessage = message.text.replace(/\n/g, " ").trim();
+			// fork: the message as typed, without a terminal control, on one line.
+			const normalizedMessage = sanitizeTerminalLabel(message.text).trim();
 
 			// First line: cursor + message
 			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";
@@ -63,7 +75,13 @@ class UserMessageList implements Component {
 
 			// Second line: metadata (position in history)
 			const position = i + 1;
-			const metadata = `  Message ${position} of ${this.messages.length}`;
+			const metadata =
+				message.detail ??
+				fill(
+					"  Message {0} of {1}",
+					String(position),
+					String(this.messages.filter((item) => item.detail === undefined).length),
+				);
 			const metadataLine = theme.fg("muted", metadata);
 			lines.push(metadataLine);
 			lines.push(""); // Blank line between messages
@@ -116,14 +134,15 @@ export class UserMessageSelectorComponent extends Container {
 		onCancel: () => void,
 		initialSelectedId?: string,
 	) {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		super();
 
 		// Add header
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.bold("Fork from Message"), 1, 0));
+		this.addChild(new Text(theme.bold(t("Fork from Message")), 1, 0));
 		this.addChild(
 			new Text(
-				theme.fg("muted", "Select a user message to copy the active path up to that point into a new session"),
+				theme.fg("muted", t("Select a user message to copy the active path up to that point into a new session")),
 				1,
 				0,
 			),

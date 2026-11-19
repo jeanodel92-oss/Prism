@@ -31,7 +31,12 @@ export type RpcCommand =
 
 	// Model
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
-	| { id?: string; type: "cycle_model" }
+	| {
+			id?: string;
+			type: "cycle_model";
+			/** fork: the terminal's backward key cycles the other way. */
+			direction?: "forward" | "backward";
+	  }
 	| { id?: string; type: "get_available_models" }
 
 	// Thinking
@@ -71,7 +76,10 @@ export type RpcCommand =
 	| { id?: string; type: "get_messages" }
 
 	// Commands (available for invocation via prompt)
-	| { id?: string; type: "get_commands" };
+	| { id?: string; type: "get_commands" }
+
+	// fork: the sessions of the working directory, for a client's session list
+	| { id?: string; type: "list_sessions" };
 
 // ============================================================================
 // RPC Slash Command (for get_commands response)
@@ -87,6 +95,19 @@ export interface RpcSlashCommand {
 	source: "extension" | "prompt" | "skill";
 	/** Source metadata for the owning resource */
 	sourceInfo: SourceInfo;
+}
+
+/** fork: one session of the working directory, without its full text */
+export interface RpcSessionListItem {
+	path: string;
+	id: string;
+	cwd: string;
+	name?: string;
+	parentSessionPath?: string;
+	created: string;
+	modified: string;
+	messageCount: number;
+	firstMessage: string;
 }
 
 // ============================================================================
@@ -241,6 +262,15 @@ export type RpcResponse =
 			data: { commands: RpcSlashCommand[] };
 	  }
 
+	// fork
+	| {
+			id?: string;
+			type: "response";
+			command: "list_sessions";
+			success: true;
+			data: { sessions: RpcSessionListItem[] };
+	  }
+
 	// Error response (any command can fail)
 	| { id?: string; type: "response"; command: string; success: false; error: string };
 
@@ -250,8 +280,32 @@ export type RpcResponse =
 
 /** Emitted when an extension needs user input */
 export type RpcExtensionUIRequest =
-	| { type: "extension_ui_request"; id: string; method: "select"; title: string; options: string[]; timeout?: number }
-	| { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "select";
+			title: string;
+			options: string[];
+			timeout?: number;
+			/** fork */
+			toolCallId?: string;
+			/** fork: shown as a warning. */
+			tone?: "warning";
+			/** fork: a risk the answer accepts, shown in red. */
+			warning?: string;
+	  }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "confirm";
+			title: string;
+			message: string;
+			timeout?: number;
+			/** fork */
+			toolCallId?: string;
+			/** fork: a risk the answer accepts, shown in red. */
+			warning?: string;
+	  }
 	| {
 			type: "extension_ui_request";
 			id: string;
@@ -259,6 +313,10 @@ export type RpcExtensionUIRequest =
 			title: string;
 			placeholder?: string;
 			timeout?: number;
+			/** fork */
+			toolCallId?: string;
+			/** fork: mask the typed text. */
+			secret?: boolean;
 	  }
 	| { type: "extension_ui_request"; id: string; method: "editor"; title: string; prefill?: string }
 	| {
@@ -285,6 +343,16 @@ export type RpcExtensionUIRequest =
 	  }
 	| { type: "extension_ui_request"; id: string; method: "setTitle"; title: string }
 	| { type: "extension_ui_request"; id: string; method: "set_editor_text"; text: string };
+
+/**
+ * fork: emitted when the agent closes a pending dialog itself (its timeout ran out or its
+ * abort signal fired), so the client removes it. A response sent afterwards is ignored.
+ */
+export interface RpcExtensionUIDismissed {
+	type: "extension_ui_dismissed";
+	id: string;
+	reason: "timeout" | "aborted";
+}
 
 // ============================================================================
 // Extension UI Commands (stdin)

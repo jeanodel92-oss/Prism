@@ -1,3 +1,4 @@
+import { SseEventSplitter } from "../fork/sse-lines.ts";
 import { calculateCost, clampThinkingLevel } from "../models.ts";
 import type {
 	AssistantMessage,
@@ -13,10 +14,11 @@ import type {
 	ToolCall,
 	TranscriptContext,
 } from "../types.ts";
+import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { parseStreamingJson } from "../utils/json-parse.ts";
+import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
@@ -304,14 +306,27 @@ async function requestMistralStream(
 	baseUrl.pathname = `${baseUrl.pathname.replace(/\/+$/u, "")}/`;
 	const url = new URL("v1/chat/completions", baseUrl);
 	const headers = buildMistralHeaders(model, apiKey, options);
-	const timeoutSignal = AbortSignal.timeout(options?.timeoutMs ?? 60_000);
-	const signal = options?.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-	const response = await (options?.fetch ?? globalThis.fetch)(url, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(toMistralWirePayload(payload)),
-		signal,
-	});
+	// The timeout covers only the wait for response headers. Long streams (e.g. extended thinking)
+	// must not be cut off by a fixed deadline; body stalls are left to the HTTP client idle timeout.
+	const timeoutMs = options?.timeoutMs ?? 60_000;
+	const headerTimeoutSignal = AbortSignal.timeout(timeoutMs);
+	const combinedSignal = combineAbortSignals([options?.signal, headerTimeoutSignal]);
+	let response: Response;
+	try {
+		response = await (options?.fetch ?? globalThis.fetch)(url, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(toMistralWirePayload(payload)),
+			signal: combinedSignal.signal,
+		});
+	} catch (error) {
+		if (headerTimeoutSignal.aborted && !options?.signal?.aborted) {
+			throw new Error(`Mistral response headers timed out after ${timeoutMs}ms`);
+		}
+		throw error;
+	} finally {
+		combinedSignal.cleanup();
+	}
 
 	await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 
@@ -323,7 +338,7 @@ async function requestMistralStream(
 		throw new Error("Mistral response has no body");
 	}
 
-	return readMistralEvents(response.body, signal);
+	return readMistralEvents(response.body, options?.signal);
 }
 
 class MistralHttpError extends Error {
@@ -444,41 +459,38 @@ const MISTRAL_STREAM_DONE = Symbol("mistral-stream-done");
 
 async function* readMistralEvents(
 	body: ReadableStream<Uint8Array>,
-	signal: AbortSignal,
+	signal: AbortSignal | undefined,
 ): AsyncGenerator<MistralCompletionEvent> {
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
-	let buffer = "";
+	// fork: split in linear time, an event bounded (same defect as AS-032).
+	const events = new SseEventSplitter();
 	const onAbort = () => {
 		void reader.cancel().catch(() => {});
 	};
-	signal.addEventListener("abort", onAbort, { once: true });
+	signal?.addEventListener("abort", onAbort, { once: true });
 
 	try {
 		while (true) {
-			if (signal.aborted) throw signal.reason;
+			if (signal?.aborted) throw signal.reason;
 			const { done, value } = await reader.read();
-			if (signal.aborted) throw signal.reason;
-			buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-
-			let boundary = findMistralEventBoundary(buffer);
-			while (boundary) {
-				const event = parseMistralEvent(buffer.slice(0, boundary.index));
-				buffer = buffer.slice(boundary.index + boundary.length);
+			if (signal?.aborted) throw signal.reason;
+			for (const raw of events.push(done ? decoder.decode() : decoder.decode(value, { stream: true }))) {
+				const event = parseMistralEvent(raw);
 				if (event === MISTRAL_STREAM_DONE) return;
 				if (event) yield event;
-				boundary = findMistralEventBoundary(buffer);
 			}
 
 			if (done) break;
 		}
 
-		if (buffer.trim()) {
-			const event = parseMistralEvent(buffer);
+		const last = events.end();
+		if (last?.trim()) {
+			const event = parseMistralEvent(last);
 			if (event !== MISTRAL_STREAM_DONE && event) yield event;
 		}
 	} finally {
-		signal.removeEventListener("abort", onAbort);
+		signal?.removeEventListener("abort", onAbort);
 		try {
 			await reader.cancel();
 		} catch {}
@@ -486,11 +498,6 @@ async function* readMistralEvents(
 			reader.releaseLock();
 		} catch {}
 	}
-}
-
-function findMistralEventBoundary(buffer: string): { index: number; length: number } | undefined {
-	const match = /\r\n\r\n|\r\n\r|\r\n\n|\r\r\n|\n\r\n|\r\r|\n\r|\n\n/u.exec(buffer);
-	return match?.index === undefined ? undefined : { index: match.index, length: match[0].length };
 }
 
 function parseMistralEvent(raw: string): MistralCompletionEvent | typeof MISTRAL_STREAM_DONE | undefined {
@@ -747,7 +754,7 @@ async function consumeChatStream(
 		const block = output.content[index];
 		if (block.type !== "toolCall") continue;
 		const toolBlock = block as ToolCall & { partialArgs?: string };
-		toolBlock.arguments = parseStreamingJson<ToolCall["arguments"]>(toolBlock.partialArgs);
+		Object.assign(toolBlock, parseToolCallArguments(toolBlock.partialArgs));
 		// Finalize in-place and strip the scratch buffer so replay only
 		// carries parsed arguments.
 		delete toolBlock.partialArgs;
@@ -930,7 +937,8 @@ function mapChatStopReason(reason: string | null): { stopReason: StopReason; err
 		case "tool_calls":
 			return { stopReason: "toolUse" };
 		case "error":
-			return { stopReason: "error", errorMessage: "Provider stopped with: error" };
+			// Mistral reports transient server failures this way; "server error" makes the message retryable.
+			return { stopReason: "error", errorMessage: "Provider stopped with: error (server error)" };
 		default:
 			return { stopReason: "error", errorMessage: `Provider stopped with: ${reason}` };
 	}

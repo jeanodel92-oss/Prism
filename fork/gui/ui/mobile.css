@@ -1,0 +1,450 @@
+/* Prism on a phone: the window's interface, unchanged, on a narrow screen. Everything below
+   the media query applies to widths up to 600 CSS px only, so wider windows render exactly as before. The side menu is
+   already an overlay drawer up to 760 px (style.css, da.css), opened by #toggle-sidebar; this file makes it, the header,
+   the composer and the dialogs fit a phone and sized for a finger. Loaded last, so it wins at equal specificity. */
+
+/* ------------------------------------------------------------ pairing screen (pair-screen.js) */
+
+/* Shown by the phone app only, at any width: a full-screen card over the window until the phone is linked. */
+.pair-screen {
+	position: fixed;
+	inset: 0;
+	z-index: 20;
+	display: grid;
+	place-items: center;
+	overflow: auto;
+	padding: 1rem;
+	background: var(--bg);
+	color: var(--ink);
+}
+
+.pair-card {
+	width: min(30rem, 100%);
+}
+
+.pair-card h1 {
+	margin: 0 0 1rem;
+	font-size: 1.3rem;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+}
+
+.pair-panel {
+	display: grid;
+	gap: 0.85rem;
+}
+
+.pair-state {
+	display: grid;
+	gap: 0.15rem;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+}
+
+.pair-known {
+	display: grid;
+	gap: 0.4rem;
+}
+
+.pair-known[hidden] {
+	display: none;
+}
+
+.pair-known-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.45rem 0.45rem 0.45rem 0.85rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	overflow-wrap: anywhere;
+}
+
+.pair-known-row button {
+	min-height: 2.75rem;
+	flex: none;
+}
+
+.pair-note {
+	color: var(--ink-2);
+	font-size: 0.85rem;
+}
+
+.pair-failed,
+.pair-error {
+	color: var(--error);
+}
+
+.pair-help,
+.pair-error {
+	margin: 0;
+	font-size: 0.9rem;
+	overflow-wrap: anywhere;
+}
+
+.pair-help {
+	color: var(--ink-2);
+}
+
+.pair-label {
+	display: grid;
+	gap: 0.35rem;
+	font-size: 0.85rem;
+	color: var(--ink-2);
+}
+
+.pair-code {
+	min-height: 5.5rem;
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	resize: none;
+	overflow-wrap: anywhere;
+}
+
+.pair-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.pair-actions button {
+	min-height: 2.75rem;
+}
+
+/* The camera while it looks for a QR code (pair-screen.js scanCode): the plugin draws it behind the page, so the page
+   turns transparent and shows only a frame to aim with, a hint and Cancel. */
+html.scanning,
+html.scanning body {
+	background: transparent !important;
+}
+
+/* Everything but the overlay, open dialogs and their veils included: a dialog the scan started from (the settings) sits
+   in the top layer, and its ::backdrop would cover the camera. A descendant's own `visibility: visible` cannot win. */
+html.scanning body *:not(.scan-overlay, .scan-overlay *) {
+	visibility: hidden !important;
+}
+
+html.scanning ::backdrop {
+	background: transparent !important;
+	backdrop-filter: none !important;
+}
+
+.scan-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+	width: auto;
+	height: auto;
+	max-width: none;
+	max-height: none;
+	margin: 0;
+	border: 0;
+	background: transparent;
+	display: grid;
+	grid-template-rows: 1fr auto auto;
+	justify-items: center;
+	gap: 1rem;
+	padding: 1.5rem 1rem 2rem;
+	color: #fff;
+}
+
+.scan-overlay:not([open]) {
+	display: none;
+}
+
+.scan-frame {
+	align-self: center;
+	width: min(70vw, 18rem);
+	aspect-ratio: 1;
+	border: 2px solid #fff;
+	border-radius: 1rem;
+	/* The camera outside the frame, dimmed. */
+	box-shadow: 0 0 0 100vmax rgb(0 0 0 / 55%);
+}
+
+.scan-hint {
+	position: relative;
+	margin: 0;
+	text-align: center;
+	text-shadow: 0 1px 3px #000;
+}
+
+.scan-actions {
+	position: relative;
+}
+
+.scan-actions button {
+	min-height: 2.75rem;
+	min-width: 8rem;
+}
+
+.pair-update {
+	margin-top: 0.85rem;
+}
+
+/* The switch of the permanent notification that keeps the link up (pair-screen.js keepLinkSwitch). */
+.pair-keep {
+	display: flex;
+	gap: 0.7rem;
+	align-items: flex-start;
+	margin-top: 0.85rem;
+}
+
+.pair-keep > span {
+	display: grid;
+	gap: 0.2rem;
+}
+
+.pair-keep-box {
+	width: 1.25rem;
+	height: 1.25rem;
+	margin-top: 0.1rem;
+	accent-color: var(--c-accent);
+}
+
+.pair-heading {
+	margin: 0 0 0.6rem;
+	font-size: 0.95rem;
+	font-weight: 500;
+}
+
+.settings-link {
+	padding-bottom: 1rem;
+	margin-bottom: 1rem;
+	border-bottom: 1px solid var(--line);
+}
+
+/* ------------------------------------------------------------ small screens */
+
+/* A finger cannot hover: what only showed under the pointer shows always. */
+@media (hover: none) {
+	.session-list .close {
+		opacity: 1;
+	}
+}
+
+@media (max-width: 600px) {
+	:root {
+		--topbar-height: calc(3.25rem + 1px);
+		--statusbar-height: 2.9rem;
+	}
+
+	/* Touch targets of at least 44 px. */
+	button,
+	select,
+	summary {
+		min-height: 44px;
+	}
+
+	/* Made taller than their text, buttons keep it in the middle: a grid or block button puts it at the top (the
+	   rows of Goal's menu, owner's QA of 2026-11-13). */
+	button {
+		align-content: center;
+	}
+
+	button.icon,
+	button.ghost.icon {
+		min-width: 44px;
+	}
+
+	.rail-button {
+		width: 44px;
+		min-height: 44px;
+	}
+
+	/* The drawer: the rail and its panel over the conversation, never wider than the screen. */
+	.sidebar {
+		width: min(var(--sidebar), 92vw);
+		max-width: 100vw;
+		padding-top: env(safe-area-inset-top);
+	}
+
+	.side-panel {
+		min-width: 0;
+		overflow-y: auto;
+	}
+
+	.session-list .session-link,
+	.session-list .close {
+		min-height: 44px;
+	}
+
+	.session-list .close {
+		min-width: 44px;
+	}
+
+	/* Header: the menu button and the title on one line, the title cut by an ellipsis. */
+	.topbar {
+		gap: 0.25rem;
+		padding: 0.4rem 0.5rem;
+	}
+
+	.title-button {
+		max-width: 100%;
+	}
+
+	.title-field {
+		max-width: 100%;
+		width: 100%;
+	}
+
+	/* The conversation and the composer use the whole width. */
+	.column {
+		max-width: none;
+		padding: 0 0.6rem;
+	}
+
+	/* The composer keeps its bottom margin (the rule above reset it), and its glass frame follows the column's
+	   margins, so the row inside stays inside the frame: Send and + touched or crossed its edge (emulator, 2026-11-13). */
+	.composer {
+		padding-bottom: 0.6rem;
+	}
+
+	.composer::before,
+	.composer::after {
+		right: 0.6rem;
+		left: 0.6rem;
+	}
+
+	.scroller > .column {
+		padding-top: 1rem;
+		padding-bottom: 1.25rem;
+	}
+
+	.scroller pre,
+	.scroller table {
+		max-width: 100%;
+		overflow-x: auto;
+	}
+
+	.scroller img,
+	.scroller svg,
+	.scroller video {
+		max-width: 100%;
+		height: auto;
+	}
+
+	/* Composer: attachment, model and reasoning level on the first line, the switches and Send on the next. */
+	.composer-row {
+		flex-wrap: wrap;
+		row-gap: 0.25rem;
+	}
+
+	.picker {
+		min-height: 44px;
+		align-items: center;
+	}
+
+	.picker-label {
+		max-width: 38vw;
+	}
+
+	.attach-button {
+		min-width: 44px;
+		padding: 0;
+		justify-content: center;
+	}
+
+	.mode-switches {
+		flex: 1 1 auto;
+		flex-wrap: wrap;
+		order: 5;
+		margin-left: 0;
+	}
+
+	.mode-switch {
+		min-height: 44px;
+	}
+
+	#send {
+		order: 6;
+		min-width: 5rem;
+		min-height: 44px;
+		margin-left: auto;
+	}
+
+	/* The status bar keeps its one line and scrolls sideways: nothing is cut at the right edge of the screen (seen in the
+	   emulator, 2026-11-13). Its buttons get the room a finger needs. */
+	.statusbar {
+		padding: 0 0.4rem;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	/* The folder gives way first, as on a narrow window (footer-narrow): the line scrolls only past that. */
+	.statusbar button.cwd {
+		max-width: 12rem;
+	}
+
+	.statusbar button {
+		min-height: 44px;
+	}
+
+	/* Panels of the interaction surface and dialogs: the screen's width, scrolling inside. */
+	.surface,
+	.panel {
+		max-width: 100%;
+	}
+
+	.panel-body {
+		overflow-x: auto;
+	}
+
+	/* The last request (/sent) and the other inspectors on a phone: the tabs on one line that scrolls sideways, the
+	   facts tighter, the search on one line, so the request itself shows in the panel instead of below its fold
+	   (owner's QA of fork.11). */
+	.inspector .segmented {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+	}
+
+	.inspector .segmented button {
+		flex: none;
+	}
+
+	.inspector .facts {
+		gap: 0.1rem 0.8rem;
+		font-size: 0.8rem;
+	}
+
+	.inspector .inspector-pages {
+		flex-wrap: nowrap;
+	}
+
+	.inspector .inspector-pages .field {
+		flex: 1;
+		min-width: 0;
+	}
+
+	dialog {
+		width: calc(100vw - 1rem);
+		max-width: none;
+		padding: 1rem;
+	}
+
+	#settings {
+		width: 100vw;
+		height: 100dvh;
+		max-height: none;
+		padding: 0;
+	}
+
+	.field-row {
+		flex-wrap: wrap;
+	}
+
+	.field-row select {
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.toasts {
+		right: 0.5rem;
+		left: 0.5rem;
+		max-width: none;
+		bottom: calc(var(--statusbar-height) + 0.5rem);
+	}
+}

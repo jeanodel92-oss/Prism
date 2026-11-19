@@ -285,7 +285,9 @@ describe("AgentSession compaction characterization", () => {
 		// Auth is resolved only when Pi summarizes itself, after checking there is something to compact.
 		seedCompactableSession(harness);
 
-		await expect(harness.session.compact()).rejects.toThrow(`No API key found for ${harness.getModel().provider}.`);
+		await expect(harness.session.compact()).rejects.toThrow(
+			`No access key is available for ${harness.getModel().provider}.`,
+		);
 	});
 
 	it("manually compacts with a custom streamFn when registry auth is absent", async () => {

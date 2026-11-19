@@ -1,0 +1,15 @@
+[
+	{ "do": "wait", "selector": "#welcome" },
+	{ "do": "shot", "name": "l1-welcome", "settle": 1500 },
+	{ "do": "type", "text": "Crée un fichier hello.txt contenant « bonjour » avec l'outil write, puis réponds en une phrase avec un petit tableau Markdown de deux lignes." },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='true']" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog", "timeout": 240000 },
+	{ "do": "shot", "name": "l2-permission" },
+	{ "do": "sleep", "ms": 500 },
+	{ "do": "click", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Allow once" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 300000 },
+	{ "do": "shot", "name": "l3-answer" },
+	{ "do": "metrics", "label": "local" },
+	{ "do": "quit" }
+]

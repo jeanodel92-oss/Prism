@@ -1,0 +1,12 @@
+[
+	{ "do": "log", "text": "QA 2026-11-01: /schedule is a screen: the form refuses what the engine refuses, nothing is written before the confirmation." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/schedule" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#surface .panel.schedule button[data-action='new']" },
+	{ "do": "shot", "name": "s1-open" },
+	{ "do": "key", "selector": ".panel.schedule", "key": "Escape" },
+	{ "do": "wait", "selector": "#surface .panel.schedule", "gone": true },
+	{ "do": "log", "text": "qa-schedule-ok" },
+	{ "do": "quit" }
+]

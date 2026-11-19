@@ -1,3 +1,4 @@
+import { imageDecodeRefusal } from "../fork/image-pixel-limit.ts";
 import { applyExifOrientation } from "./exif-orientation.ts";
 import { loadPhoton } from "./photon.ts";
 
@@ -63,6 +64,8 @@ export async function resizeImageInProcess(
 ): Promise<ResizedImage | null> {
 	const opts = { ...DEFAULT_OPTIONS, ...options };
 	const inputBase64Size = Math.ceil(inputBytes.byteLength / 3) * 4;
+	// fork: never decode a picture whose header declares too many pixels.
+	if (imageDecodeRefusal(inputBytes)) return null;
 
 	const photon = await loadPhoton();
 	if (!photon) {
@@ -97,11 +100,12 @@ export async function resizeImageInProcess(
 		let targetHeight = originalHeight;
 
 		if (targetWidth > opts.maxWidth) {
-			targetHeight = Math.round((targetHeight * opts.maxWidth) / targetWidth);
+			// fork: a very thin image must keep at least one pixel on each side.
+			targetHeight = Math.max(1, Math.round((targetHeight * opts.maxWidth) / targetWidth));
 			targetWidth = opts.maxWidth;
 		}
 		if (targetHeight > opts.maxHeight) {
-			targetWidth = Math.round((targetWidth * opts.maxHeight) / targetHeight);
+			targetWidth = Math.max(1, Math.round((targetWidth * opts.maxHeight) / targetHeight));
 			targetHeight = opts.maxHeight;
 		}
 

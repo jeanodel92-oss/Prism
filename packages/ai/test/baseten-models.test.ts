@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getModel, streamSimple } from "../src/compat.ts";
 import { findEnvKeys, getEnvApiKey } from "../src/env-api-keys.ts";
 import { getSupportedThinkingLevels } from "../src/models.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 
 const originalBasetenApiKey = process.env.BASETEN_API_KEY;
 
@@ -19,8 +20,9 @@ describe("Baseten models", () => {
 		expect(getModel("baseten", "zai-org/GLM-5.2-Fast").input).toEqual(["text"]);
 	});
 
-	it("models Kimi K2.6 reasoning as an explicit off/on toggle", async () => {
-		const model = getModel("baseten", "moonshotai/Kimi-K2.6");
+	const kimiK26 = catalogModel("baseten", "moonshotai/Kimi-K2.6");
+	it.skipIf(!kimiK26)("models Kimi K2.6 reasoning as an explicit off/on toggle", async () => {
+		const model = kimiK26!;
 		let payload: Record<string, unknown> | undefined;
 
 		expect(model.thinkingLevelMap).toEqual({

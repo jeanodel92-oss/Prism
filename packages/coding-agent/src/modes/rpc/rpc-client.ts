@@ -5,8 +5,10 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { join } from "node:path";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { getPackageDir } from "../../config.ts";
 import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
@@ -26,7 +28,7 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : n
 type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
 
 export interface RpcClientOptions {
-	/** Path to the CLI entry point (default: searches for dist/cli.js) */
+	/** Path to the CLI entry point; a relative one is from `cwd` (default: this package's dist/cli.js) */
 	cliPath?: string;
 	/** Working directory for the agent */
 	cwd?: string;
@@ -60,6 +62,8 @@ export class RpcClient {
 	private pendingRequests: Map<string, { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }> =
 		new Map();
 	private requestId = 0;
+	/** fork: requests given up on, whose late response is not an event. */
+	private expiredRequests = new Set<string>();
 	private stderr = "";
 	private exitError: Error | null = null;
 	private options: RpcClientOptions;
@@ -78,7 +82,8 @@ export class RpcClient {
 
 		this.exitError = null;
 
-		const cliPath = this.options.cliPath ?? "dist/cli.js";
+		// fork: this package's own entry, never the `dist/cli.js` of the folder it opens.
+		const cliPath = this.options.cliPath ?? join(getPackageDir(), "dist", "cli.js");
 		const args = ["--mode", "rpc"];
 
 		if (this.options.provider) {
@@ -488,9 +493,19 @@ export class RpcClient {
 	/**
 	 * Collect events until agent becomes idle.
 	 */
-	collectEvents(timeout = 60000): Promise<JsonAgentSessionEvent[]> {
+	collectEvents(timeout = 60000, signal?: AbortSignal): Promise<JsonAgentSessionEvent[]> {
 		return new Promise((resolve, reject) => {
 			const events: JsonAgentSessionEvent[] = [];
+			// fork: an abort ends the collection with what came so far.
+			signal?.addEventListener(
+				"abort",
+				() => {
+					clearTimeout(timer);
+					unsubscribe();
+					resolve(events);
+				},
+				{ once: true },
+			);
 			const timer = setTimeout(() => {
 				unsubscribe();
 				reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
@@ -511,8 +526,16 @@ export class RpcClient {
 	 * Send prompt and wait for completion, returning all events.
 	 */
 	async promptAndWait(message: string, images?: ImageContent[], timeout = 60000): Promise<JsonAgentSessionEvent[]> {
-		const eventsPromise = this.collectEvents(timeout);
-		await this.prompt(message, images);
+		// fork: the collector is subscribed before the prompt, for early events,
+		// and stopped when the prompt is refused or handled without a turn.
+		const stop = new AbortController();
+		const eventsPromise = this.collectEvents(timeout, stop.signal);
+		try {
+			if ((await this.prompt(message, images)) === "handled") stop.abort();
+		} catch (error) {
+			stop.abort();
+			throw error;
+		}
 		return eventsPromise;
 	}
 
@@ -525,6 +548,8 @@ export class RpcClient {
 			const data = JSON.parse(line);
 
 			// Check if it's a response to a pending request
+			// fork: the late response to a request that timed out is dropped, not passed on as an event.
+			if (data.type === "response" && data.id && this.expiredRequests.delete(data.id)) return;
 			if (data.type === "response" && data.id && this.pendingRequests.has(data.id)) {
 				const pending = this.pendingRequests.get(data.id)!;
 				this.pendingRequests.delete(data.id);
@@ -553,6 +578,15 @@ export class RpcClient {
 		this.pendingRequests.clear();
 	}
 
+	private static readonly ANSWERED_AT_THE_END = new Set<string>([
+		"bash",
+		"compact",
+		"new_session",
+		"switch_session",
+		"fork",
+		"clone",
+	]);
+
 	private async send(command: RpcCommandBody): Promise<RpcResponse> {
 		const childProcess = this.process;
 		const stdin = childProcess?.stdin;
@@ -577,15 +611,23 @@ export class RpcClient {
 		const fullCommand = { ...command, id } as RpcCommand;
 
 		return new Promise((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				this.pendingRequests.delete(id);
-				reject(new Error(`Timeout waiting for response to ${command.type}. Stderr: ${this.stderr}`));
-			}, 30000);
+			// fork: these commands answer when the work they start ends (a shell
+			// command, a compaction, a session change and its hooks), which may take minutes. They wait for that answer;
+			// the process exiting still rejects them. The others answer at once and keep the 30 s limit.
+			const timeout = RpcClient.ANSWERED_AT_THE_END.has(command.type)
+				? undefined
+				: setTimeout(() => {
+						this.pendingRequests.delete(id);
+						this.expiredRequests.add(id);
+						reject(new Error(`Timeout waiting for response to ${command.type}. Stderr: ${this.stderr}`));
+					}, 30000);
 
 			this.pendingRequests.set(id, {
 				resolve: (response) => {
 					clearTimeout(timeout);
-					resolve(response);
+					// fork: a refusal rejects, for the methods that return nothing too.
+					if (!response.success) reject(new Error(response.error));
+					else resolve(response);
 				},
 				reject: (error) => {
 					clearTimeout(timeout);

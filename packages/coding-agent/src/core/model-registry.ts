@@ -191,6 +191,11 @@ export class ModelRegistry {
 		return this.runtime.getProvider(provider)?.name ?? provider;
 	}
 
+	/** removes the provider's stored credential, for a server removed from /settings. */
+	logout(provider: string): Promise<void> {
+		return this.runtime.logout(provider);
+	}
+
 	getProviderAuth(provider: string): Promise<AuthResult | undefined> {
 		return this.runtime.getAuth(provider);
 	}

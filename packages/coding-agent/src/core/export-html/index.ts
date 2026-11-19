@@ -1,7 +1,12 @@
+import { randomBytes } from "node:crypto";
 import type { AgentState } from "@earendil-works/pi-agent-core";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";
+import { pastedCodeDisplay, prismExportCss } from "../../fork/export-html.ts";
+import { knownSecrets } from "../../fork/secrets/env.ts";
+import { maskValue } from "../../fork/secrets/mask.ts";
+import { pairToolCalls, toolCallKey } from "../../fork/tool-call-occurrences.ts";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/interactive/theme/theme.ts";
 import { normalizePath, resolvePath } from "../../utils/paths.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
@@ -133,8 +138,10 @@ interface SessionData {
 	leafId: string | null;
 	systemPrompt?: string;
 	tools?: Array<Pick<ToolDefinition, "name" | "description" | "parameters">>;
-	/** Pre-rendered HTML for custom tool calls/results, keyed by tool call ID */
+	/** Pre-rendered HTML for custom tool calls/results, keyed by toolCallKey() */
 	renderedTools?: Record<string, RenderedToolHtml>;
+	/** fork: user messages with pasted code fenced for display, keyed by entry ID */
+	userDisplay?: Record<string, string>;
 }
 
 /**
@@ -157,21 +164,32 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 	const infoBg = themeExport.infoBg ?? derivedExportColors.infoBg;
 
 	// Base64 encode session data to avoid escaping issues
-	const sessionDataBase64 = Buffer.from(JSON.stringify(sessionData)).toString("base64");
+	// fork: no known secret in an export or a share, even from a session saved before.
+	const sessionDataBase64 = Buffer.from(
+		JSON.stringify(
+			maskValue({ ...sessionData, userDisplay: pastedCodeDisplay(sessionData.entries) }, knownSecrets()), // fork
+		),
+	).toString("base64");
+	const scriptNonce = randomBytes(18).toString("base64");
 
 	// Build the CSS with theme variables injected
 	const css = templateCss
 		.replace("{{THEME_VARS}}", themeVars)
 		.replace("{{BODY_BG}}", bodyBg)
 		.replace("{{CONTAINER_BG}}", containerBg)
-		.replace("{{INFO_BG}}", infoBg);
+		.replace("{{INFO_BG}}", infoBg)
+		// fork: Prism's export styling, appended so it overrides upstream's; it depends on the theme.
+		.concat(prismExportCss(themeName));
 
+	// fork: functions insert the assets literally; as strings, "$$" and "$&" in
+	// template.js and highlight.js were taken for replacement patterns.
 	return template
-		.replace("{{CSS}}", css)
-		.replace("{{JS}}", templateJs)
-		.replace("{{SESSION_DATA}}", sessionDataBase64)
-		.replace("{{MARKED_JS}}", markedJs)
-		.replace("{{HIGHLIGHT_JS}}", hljsJs);
+		.replaceAll("{{NONCE}}", () => scriptNonce)
+		.replace("{{CSS}}", () => css)
+		.replace("{{JS}}", () => templateJs)
+		.replace("{{SESSION_DATA}}", () => sessionDataBase64)
+		.replace("{{MARKED_JS}}", () => markedJs)
+		.replace("{{HIGHLIGHT_JS}}", () => hljsJs);
 }
 
 /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
@@ -185,6 +203,8 @@ function preRenderCustomTools(
 	toolRenderer: ToolHtmlRenderer,
 ): Record<string, RenderedToolHtml> {
 	const renderedTools: Record<string, RenderedToolHtml> = {};
+	// fork: keyed by the call's occurrence, since turns may reuse a call id.
+	const { ownerOfResult } = pairToolCalls(entries);
 
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
@@ -196,17 +216,19 @@ function preRenderCustomTools(
 				if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
 					const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
 					if (callHtml) {
-						renderedTools[block.id] = { callHtml };
+						renderedTools[toolCallKey(entry.id, block.id)] = { callHtml };
 					}
 				}
 			}
 		}
 
 		// Find tool results
-		if (msg.role === "toolResult" && msg.toolCallId) {
+		const ownerId = ownerOfResult.get(entry.id);
+		if (msg.role === "toolResult" && msg.toolCallId && ownerId) {
+			const key = toolCallKey(ownerId, msg.toolCallId);
 			const toolName = msg.toolName || "";
 			// Only render if we have a pre-rendered call OR it's not template-rendered
-			const existing = renderedTools[msg.toolCallId];
+			const existing = renderedTools[key];
 			if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
 				const rendered = toolRenderer.renderResult(
 					msg.toolCallId,
@@ -216,7 +238,7 @@ function preRenderCustomTools(
 					msg.isError || false,
 				);
 				if (rendered) {
-					renderedTools[msg.toolCallId] = {
+					renderedTools[key] = {
 						...existing,
 						resultHtmlCollapsed: rendered.collapsed,
 						resultHtmlExpanded: rendered.expanded,
@@ -248,7 +270,8 @@ export async function exportSessionToHtml(
 		throw new Error("Nothing to export yet - start a conversation first");
 	}
 
-	const entries = sm.getEntries();
+	// fork: masked before the tools are rendered, whose HTML escapes a secret.
+	const entries = maskValue(sm.getEntries(), knownSecrets());
 
 	// Pre-render custom tools if a tool renderer is provided
 	let renderedTools: Record<string, RenderedToolHtml> | undefined;

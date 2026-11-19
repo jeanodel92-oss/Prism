@@ -1,0 +1,13 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": "#welcome:not([hidden]) h2" },
+	{ "do": "sleep", "ms": 800, "why": "the welcome's words have arrived" },
+	{ "do": "still-while-shown", "selector": "#welcome h2", "click": "#mode-switches [data-mode='goal']", "ms": 1000, "why": "QA 2026-11-04: the words rose above the opening panel while they faded" },
+	{ "do": "wait", "selector": ".panel.native-command .native-menu-action", "text": "Close" },
+	{ "do": "shot", "name": "welcome-under-panel" },
+	{ "do": "click", "selector": ".panel.native-command .native-menu-action", "text": "Close" },
+	{ "do": "wait", "selector": "#surface > .panel.native-command", "gone": true },
+	{ "do": "style", "selector": "#welcome", "property": "opacity", "value": "1", "why": "back once the panel is gone" },
+	{ "do": "shot", "name": "welcome-back" },
+	{ "do": "quit" }
+]

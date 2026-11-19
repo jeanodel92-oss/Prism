@@ -1,7 +1,10 @@
+import { imageDecodeRefusal } from "../fork/image-pixel-limit.ts";
 import { applyExifOrientation } from "./exif-orientation.ts";
 import { loadPhoton } from "./photon.ts";
 
 export async function convertImageBytesToPng(bytes: Uint8Array): Promise<Uint8Array | null> {
+	// fork: never decode a picture whose header declares too many pixels.
+	if (imageDecodeRefusal(bytes)) return null;
 	const photon = await loadPhoton();
 	if (!photon) {
 		// Photon not available, can't convert

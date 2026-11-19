@@ -179,7 +179,9 @@ describe("openai-completions thinking token budget", () => {
 			}),
 			{ reasoning: "high" },
 		);
+		// fork: the chat-template format always asks the template to keep earlier reasoning.
 		expect(params.chat_template_kwargs).toEqual({
+			preserve_thinking: true,
 			enable_thinking: true,
 			thinking_budget: 16384 - 1024,
 		});
@@ -197,6 +199,6 @@ describe("openai-completions thinking token budget", () => {
 			}),
 			{ reasoning: undefined },
 		);
-		expect(params.chat_template_kwargs).toEqual({ enable_thinking: false });
+		expect(params.chat_template_kwargs).toEqual({ preserve_thinking: true, enable_thinking: false }); // fork
 	});
 });

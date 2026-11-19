@@ -1,0 +1,18 @@
+[
+	{ "do": "log", "text": "QG-04: no command opens a terminal view; a conversation first, so /fork, /copy and /export-zip reach their screens" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "fais le tour" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 60000 },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{
+		"do": "views-audit",
+		"why": "skipped: commands that leave the window, reach the network, the model or the files outside the test",
+		"skip": ["quit", "new", "clone", "compact", "handoff", "reload", "share", "import", "export", "login", "logout", "exit"],
+		"extra": ["help", "session", "tree", "trust", "changelog", "resume", "fork", "model", "thinking", "name", "copy", "expand", "perm window extra", "perm help extra", "perm scope extra", "state x", "doctor export", "doctor foo", "doctor details extra"]
+	},
+	{ "do": "log", "text": "terminal-views-ok" },
+	{ "do": "quit" }
+]

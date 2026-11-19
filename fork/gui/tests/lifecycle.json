@@ -1,0 +1,23 @@
+[
+	{ "do": "log", "text": "One engine per conversation: opened up to 30, then closed. scripts/lifecycle.py samples at each 'measure' line, during the pause after it." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "log", "text": "measure 1" },
+	{ "do": "sleep", "ms": 9000, "why": "the sampler's pause: settle, memory, then CPU over 5 s" },
+	{ "do": "open-sessions", "count": 10 },
+	{ "do": "log", "text": "measure 10" },
+	{ "do": "sleep", "ms": 9000 },
+	{ "do": "open-sessions", "count": 20 },
+	{ "do": "log", "text": "measure 20" },
+	{ "do": "sleep", "ms": 9000 },
+	{ "do": "open-sessions", "count": 30 },
+	{ "do": "log", "text": "measure 30" },
+	{ "do": "sleep", "ms": 9000 },
+	{ "do": "close-sessions", "keep": 10 },
+	{ "do": "log", "text": "measure closed-to-10" },
+	{ "do": "sleep", "ms": 9000 },
+	{ "do": "close-sessions", "keep": 1, "why": "closing the last conversation opens a new one, as the window always has one" },
+	{ "do": "log", "text": "measure closed-to-1" },
+	{ "do": "sleep", "ms": 9000 },
+	{ "do": "log", "text": "lifecycle-ok" },
+	{ "do": "quit" }
+]

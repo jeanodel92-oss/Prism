@@ -8,7 +8,6 @@ dist/
 packages/*/dist/
 packages/*/dist-chrome/
 packages/*/dist-firefox/
-packages/ai/src/providers/data/
 packages/ai/src/providers/.model-generation-*/
 *.cpuprofile
 
@@ -43,3 +42,9 @@ plans/
 .pi/hf-sessions-backup/
 collect.sh
 packages/agent/docs/extensions/pi-server-artifact/index.md
+
+# fork (R1.8a): third-party plugins vendored unchanged, published files included.
+!packages/coding-agent/vendor/node_modules/
+!packages/coding-agent/vendor/node_modules/**/dist/
+# fork (R1.18): forked plugins, published files included.
+!packages/coding-agent/vendor/forks/**/dist/

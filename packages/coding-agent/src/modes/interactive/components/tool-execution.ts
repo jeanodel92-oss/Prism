@@ -12,6 +12,8 @@ import {
 	type TuiMouseEvent,
 } from "@earendil-works/pi-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderResultOptions } from "../../../core/extensions/types.ts";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
+import { HookRenderCache, renderHooks, type ToolExecutionView } from "../../../fork/render-hooks.ts";
 import type { Theme } from "../theme/theme.ts";
 
 /**
@@ -35,6 +37,7 @@ export interface ToolRenderers {
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { convertToPng } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
+import { AssistantMessageComponent } from "./assistant-message.ts";
 import { keyHint } from "./keybinding-hints.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
@@ -50,6 +53,10 @@ export class ToolExecutionComponent extends Container {
 	private contentTextRegion: MouseRegion;
 	private selfRenderContainer: Container;
 	private selfRenderHeight = 0;
+	private hookedHeight: number | undefined; // fork: lines drawn by the Prism render hook
+	private hookCache = new HookRenderCache<string[] | undefined>(); // fork
+	private chatSlot?: { container: Container; index: number }; // fork
+	private compactCall = false; // fork: the hook drew one line under its blank
 	private callRendererComponent?: Component;
 	private resultRendererComponent?: Component;
 	private rendererState: any = {};
@@ -157,6 +164,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private createResultFallback(): Component | undefined {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		const output = this.getTextOutput();
 		if (!output) {
 			return undefined;
@@ -167,7 +175,7 @@ export class ToolExecutionComponent extends Container {
 		const remaining = lines.length - displayLines.length;
 		let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+			text += `${theme.fg("muted", fill("\n... ({0} more lines,", String(remaining)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 		}
 		return new Text(text, 0, 0);
 	}
@@ -266,6 +274,17 @@ export class ToolExecutionComponent extends Container {
 			return [];
 		}
 
+		// fork: render hook for the Prism pack; reused once the call has finished.
+		const hook = renderHooks.toolExecution;
+		const hooked = hook && this.hookCache.get(width, !this.isPartial, () => hook(this.renderView(), width));
+		// fork: a one-line call right after another one joins its block, without the blank line.
+		this.compactCall = hooked?.length === 2 && hooked[0] === "";
+		const joined = hooked && this.compactCall && this.followsCompactCall() ? hooked.slice(1) : hooked;
+		// fork: details shown or hidden by a click unfold or fold.
+		const drawn = joined && renderHooks.unfolding ? renderHooks.unfolding(this, "tools", joined) : joined;
+		this.hookedHeight = drawn?.length;
+		if (drawn) return drawn;
+
 		if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
 			const contentLines = this.selfRenderContainer.render(width);
 			this.selfRenderHeight = contentLines.length;
@@ -294,7 +313,73 @@ export class ToolExecutionComponent extends Container {
 		return super.render(width);
 	}
 
+	/** fork: where this call sits in the chat, so it can join the one-line call drawn just before it. */
+	setChatSlot(container: Container): void {
+		this.chatSlot = { container, index: container.children.indexOf(this) };
+	}
+
+	// fork: the nearest call drawn above, past messages that draw nothing (a turn with only tool calls).
+	// It renders earlier in the same frame, so its compactCall is current.
+	private followsCompactCall(): boolean {
+		const slot = this.chatSlot;
+		if (!slot) return false;
+		const { children } = slot.container;
+		if (children[slot.index] !== this) slot.index = children.indexOf(this);
+		for (let i = slot.index - 1; i >= 0; i--) {
+			const previous = children[i];
+			if (previous instanceof ToolExecutionComponent) {
+				if (previous.hideComponent) continue;
+				return previous.compactCall;
+			}
+			if (!(previous instanceof AssistantMessageComponent) || !previous.drawsNothing()) return false;
+		}
+		return false;
+	}
+
+	// fork: what the Prism render hook reads from this component.
+	private renderView(): ToolExecutionView {
+		const shell = !this.hasRendererDefinition() ? "text" : this.getRenderShell() === "self" ? "self" : "renderer";
+		return {
+			toolName: this.toolName,
+			isPartial: this.isPartial,
+			isError: this.result?.isError === true,
+			expanded: this.expanded,
+			args: this.args,
+			shell,
+			renderSelf: (width) => {
+				const lines = this.selfRenderContainer.render(width);
+				this.selfRenderHeight = lines.length;
+				return lines;
+			},
+			renderParts: (width) => this.contentBox.children.flatMap((child) => child.render(width)),
+			renderText: (width) => this.contentTextRegion.render(width),
+			imageCount: this.imageComponents.length,
+			renderImages: (width) => {
+				const lines: string[] = [];
+				for (let i = 0; i < this.imageComponents.length; i++) {
+					const spacer = this.imageSpacers[i];
+					if (spacer) lines.push(...spacer.render(width));
+					lines.push(...this.imageComponents[i].render(width));
+				}
+				return lines;
+			},
+		};
+	}
+
 	override handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]> {
+		// fork: the hook redraws the whole block, so a click anywhere on it shows or hides the details.
+		if (this.hookedHeight !== undefined) {
+			if (event.y < 0 || event.y >= this.hookedHeight) return undefined;
+			if (!this.result || event.type !== "click" || event.button !== "left") return undefined;
+			this.setExpanded(!this.expanded);
+			renderHooks.unfold?.(this, "tools"); // fork
+			const origin = { originX: event.screenX - event.x, originY: event.screenY - event.y };
+			return {
+				handled: true,
+				render: true,
+				target: { component: this, ...origin, width: event.width, height: event.height },
+			};
+		}
 		if (!this.hasRendererDefinition() || this.getRenderShell() !== "self") return super.handleMouse(event);
 		if (event.y <= 0 || event.y > this.selfRenderHeight) return undefined;
 		return this.selfRenderContainer.handleMouse({
@@ -305,6 +390,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
+		this.hookCache.clear(); // fork
 		const bgFn = this.isPartial
 			? (text: string) => theme.bg("toolPendingBg", text)
 			: this.result?.isError

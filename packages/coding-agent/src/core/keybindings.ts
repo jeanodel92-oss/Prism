@@ -9,6 +9,7 @@ import {
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../config.ts";
+import { pasteTargets } from "../fork/paste-hint.ts";
 import { stripBom } from "../utils/text.ts";
 
 export interface AppKeybindings {
@@ -21,6 +22,10 @@ export interface AppKeybindings {
 	"app.model.cycleForward": true;
 	"app.model.cycleBackward": true;
 	"app.model.select": true;
+	"app.background.tasks": true;
+	"app.goal.menu": true;
+	"app.files.browse": true;
+	"app.panel.close": true;
 	"app.tools.expand": true;
 	"app.thinking.toggle": true;
 	"app.session.toggleNamedFilter": true;
@@ -88,7 +93,8 @@ export const KEYBINDINGS = {
 	},
 	"tui.altScreen.search": {
 		...TUI_KEYBINDINGS["tui.altScreen.search"],
-		defaultKeys: windowsKeybindings ? "ctrl+f" : "ctrl+shift+f",
+		// fork: ctrl+f everywhere; kitty takes ctrl+shift+f for its own windows.
+		defaultKeys: windowsKeybindings ? "ctrl+f" : ["ctrl+f", "ctrl+shift+f"],
 	},
 	"app.interrupt": { defaultKeys: "escape", description: "Cancel or abort" },
 	"app.clear": { defaultKeys: "ctrl+c", description: "Clear editor" },
@@ -114,6 +120,10 @@ export const KEYBINDINGS = {
 		description: "Cycle to previous model",
 	},
 	"app.model.select": { defaultKeys: "ctrl+l", description: "Open model selector" },
+	"app.background.tasks": { defaultKeys: "alt+j", description: "Show background tasks" },
+	"app.goal.menu": { defaultKeys: "alt+g", description: "Open the Goal menu" },
+	"app.files.browse": { defaultKeys: "alt+e", description: "Browse files" },
+	"app.panel.close": { defaultKeys: "space", description: "Close" },
 	"app.tools.expand": { defaultKeys: "ctrl+o", description: "Toggle tool output" },
 	"app.thinking.toggle": {
 		defaultKeys: "ctrl+t",
@@ -133,15 +143,15 @@ export const KEYBINDINGS = {
 	},
 	"app.message.followUp": {
 		defaultKeys: windowsKeybindings ? "ctrl+q" : "alt+enter",
-		description: "Queue follow-up message",
+		description: "Follow-up (message after working)",
 	},
 	"app.message.dequeue": {
 		defaultKeys: windowsKeybindings ? "alt+q" : "alt+up",
-		description: "Restore queued messages",
+		description: "Queued messages (waiting to be sent)",
 	},
 	"app.clipboard.pasteImage": {
 		defaultKeys: windowsKeybindings ? "alt+v" : "ctrl+v",
-		description: "Paste files on macOS, images, or text from clipboard",
+		description: `Paste ${pasteTargets()} from clipboard`,
 	},
 	"app.session.new": { defaultKeys: [], description: "Start a new session" },
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },

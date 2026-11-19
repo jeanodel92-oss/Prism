@@ -1,0 +1,430 @@
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+
+package app.tauri.barcodescanner
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.Context.MODE_PRIVATE
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.Drawable
+import android.net.Uri
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.provider.Settings
+import android.util.Size
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.widget.FrameLayout
+import androidx.activity.result.ActivityResult
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
+import app.tauri.Logger
+import app.tauri.PermissionState
+import app.tauri.annotation.ActivityCallback
+import app.tauri.annotation.Command
+import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
+import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSObject
+import app.tauri.plugin.Plugin
+import com.google.common.util.concurrent.ListenableFuture
+import android.graphics.Rect
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.ReaderException
+import com.google.zxing.common.HybridBinarizer
+import java.util.Collections
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+
+private const val PERMISSION_ALIAS_CAMERA = "camera"
+private const val PERMISSION_NAME = Manifest.permission.CAMERA
+
+@InvokeArg
+class ScanOptions {
+    var formats: Array<String>? = null
+    var windowed: Boolean = false
+    var cameraDirection: String? = null
+}
+
+@TauriPlugin(
+    permissions = [
+        Permission(strings = [Manifest.permission.CAMERA], alias = "camera")
+    ]
+)
+class BarcodeScannerPlugin(private val activity: Activity) : Plugin(activity),
+    ImageAnalysis.Analyzer {
+    private lateinit var webView: WebView
+    private var previewView: PreviewView? = null
+    private var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var graphicOverlay: GraphicOverlay? = null
+    private var camera: Camera? = null
+        set(value) {
+            field = value
+            activeCamera = value
+        }
+    private var vibrator: Vibrator? = null
+
+    // Prism fork: ZXing (Apache-2.0) instead of ML Kit, which comes from the non-free Google Play services. Frames are
+    // decoded on their own thread, ZXing being synchronous; null when no scan is running.
+    @Volatile
+    private var reader: MultiFormatReader? = null
+    private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+
+    private var requestPermissionResponse: JSObject? = null
+    private var windowed = false
+
+    // declare a map constant for allowed barcode formats
+    private val supportedFormats = supportedFormats()
+
+    private var savedInvoke: Invoke? = null
+    private var webViewBackground: Drawable? = null
+
+    override fun load(webView: WebView) {
+        super.load(webView)
+        this.webView = webView
+    }
+
+    private fun supportedFormats(): Map<String, BarcodeFormat> {
+        val map: MutableMap<String, BarcodeFormat> = HashMap()
+        map["UPC_A"] = BarcodeFormat.UPC_A
+        map["UPC_E"] = BarcodeFormat.UPC_E
+        map["EAN_8"] = BarcodeFormat.EAN_8
+        map["EAN_13"] = BarcodeFormat.EAN_13
+        map["CODE_39"] = BarcodeFormat.CODE_39
+        map["CODE_93"] = BarcodeFormat.CODE_93
+        map["CODE_128"] = BarcodeFormat.CODE_128
+        map["CODABAR"] = BarcodeFormat.CODABAR
+        map["ITF"] = BarcodeFormat.ITF
+        map["AZTEC"] = BarcodeFormat.AZTEC
+        map["DATA_MATRIX"] = BarcodeFormat.DATA_MATRIX
+        map["PDF_417"] = BarcodeFormat.PDF_417
+        map["QR_CODE"] = BarcodeFormat.QR_CODE
+        return Collections.unmodifiableMap(map)
+    }
+
+    private fun hasCamera(): Boolean {
+        return activity.packageManager
+            .hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+    }
+
+    private fun setupCamera(cameraDirection: String, windowed: Boolean) {
+        activity
+            .runOnUiThread {
+                val previewView = PreviewView(activity)
+                previewView.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                this.previewView = previewView
+
+                val graphicOverlay = GraphicOverlay(activity)
+                graphicOverlay.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                this.graphicOverlay = graphicOverlay
+
+                val parent = webView.parent as ViewGroup
+                parent.addView(previewView)
+                parent.addView(graphicOverlay)
+
+                this.windowed = windowed
+                if (windowed) {
+                    webView.bringToFront()
+                    webViewBackground = webView.background
+                    webView.setBackgroundColor(Color.TRANSPARENT)
+                }
+
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(activity)
+                cameraProviderFuture.addListener(
+                    {
+                        try {
+                            val cameraProvider = cameraProviderFuture.get()
+                            bindPreview(
+                                cameraProvider,
+                                if (cameraDirection == "front") CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                            )
+                            this.cameraProvider = cameraProvider
+                        } catch (e: InterruptedException) {
+                            // ignored
+                        } catch (_: ExecutionException) {
+                            // ignored
+                        }
+                    },
+                    ContextCompat.getMainExecutor(activity)
+                )
+                this.cameraProviderFuture = cameraProviderFuture
+            }
+    }
+
+    private fun bindPreview(cameraProvider: ProcessCameraProvider, cameraDirection: Int) {
+        activity
+            .runOnUiThread {
+                val preview = Preview.Builder().build()
+                val cameraSelector =
+                    CameraSelector.Builder().requireLensFacing(cameraDirection).build()
+                preview.setSurfaceProvider(previewView?.surfaceProvider)
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setTargetResolution(Size(1280, 720))
+                    .build()
+                imageAnalysis.setAnalyzer(analysisExecutor, this)
+
+                try {
+                    camera = cameraProvider.bindToLifecycle(
+                        activity as LifecycleOwner,
+                        cameraSelector,
+                        preview,
+                        imageAnalysis
+                    )
+                } catch (e: Exception) {
+                    // TODO
+                }
+            }
+    }
+
+    private fun dismantleCamera() {
+        activity
+            .runOnUiThread {
+                if (cameraProvider != null) {
+                    cameraProvider?.unbindAll()
+                    val parent = webView.parent as ViewGroup
+                    parent.removeView(previewView)
+                    parent.removeView(graphicOverlay)
+                    camera = null
+                    previewView = null
+                    graphicOverlay = null
+                }
+            }
+    }
+
+    private fun getFormats(args: ScanOptions): List<BarcodeFormat> {
+        val formats = ArrayList<BarcodeFormat>()
+        for (format in args.formats ?: arrayOf()) {
+            val targetedBarcodeFormat = supportedFormats[format]
+            if (targetedBarcodeFormat != null) {
+                formats.add(targetedBarcodeFormat)
+            }
+        }
+        return formats
+    }
+
+    private fun prepare(direction: String, windowed: Boolean) {
+        dismantleCamera()
+        setupCamera(direction, windowed)
+    }
+
+    private fun destroy() {
+        reader = null
+        dismantleCamera()
+        savedInvoke = null
+        if (windowed) {
+            if (webViewBackground != null) {
+                webView.background = webViewBackground
+                webViewBackground = null
+            } else {
+                webView.setBackgroundColor(Color.WHITE)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun configureCamera(formats: List<BarcodeFormat>) {
+        activity
+            .runOnUiThread {
+                val vibrator =
+                    activity.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                this.vibrator = vibrator
+                if (previewView == null) {
+                    throw Exception("Something went wrong configuring the BarcodeScanner")
+                }
+                // As with ML Kit: the formats asked for, QR codes always among them; every format when none is given.
+                val possible = if (formats.isEmpty()) supportedFormats.values.toList()
+                else (formats + BarcodeFormat.QR_CODE).distinct()
+                reader = MultiFormatReader().apply {
+                    setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to possible, DecodeHintType.TRY_HARDER to true))
+                }
+            }
+    }
+
+    override fun analyze(image: ImageProxy) {
+        try {
+            val reader = this.reader ?: return
+            // The luminance (Y) plane: ZXing needs no colour. Its rows may be padded to rowStride, and the last one may
+            // stop at the image's width.
+            val plane = image.planes[0]
+            val rowStride = plane.rowStride
+            val buffer = plane.buffer
+            val data = ByteArray(rowStride * image.height)
+            buffer.get(data, 0, minOf(buffer.remaining(), data.size))
+            val source =
+                PlanarYUVLuminanceSource(data, rowStride, image.height, 0, 0, image.width, image.height, false)
+            val result = try {
+                reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
+            } catch (e: ReaderException) {
+                null
+            } finally {
+                reader.reset()
+            }
+            if (result == null) return
+            val points = result.resultPoints?.filterNotNull().orEmpty()
+            val bounds = if (points.isEmpty()) null else Rect(
+                points.minOf { it.x }.toInt(), points.minOf { it.y }.toInt(),
+                points.maxOf { it.x }.toInt(), points.maxOf { it.y }.toInt()
+            )
+            val format = supportedFormats.entries.firstOrNull { it.value == result.barcodeFormat }?.key
+            val jsObject = JSObject()
+            jsObject.put("content", result.text ?: "")
+            jsObject.put("format", format)
+            jsObject.put("bounds", bounds?.flattenToString())
+            // One result per scan: frames already queued find no reader.
+            this.reader = null
+            activity.runOnUiThread {
+                savedInvoke?.resolve(jsObject)
+                destroy()
+            }
+        } catch (e: Exception) {
+            Logger.error(e.message ?: e.toString())
+        } finally {
+            image.close()
+        }
+    }
+
+    @Command
+    fun vibrate(invoke: Invoke) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator!!.vibrate(
+                VibrationEffect.createOneShot(
+                    50,
+                    VibrationEffect.DEFAULT_AMPLITUDE
+                )
+            )
+        }
+        invoke.resolve()
+    }
+
+    @Command
+    fun cancel(invoke: Invoke) {
+        // Reject the pending scan before destroy() clears savedInvoke, otherwise the
+        // scan() promise is never settled. Mirrors the iOS implementation.
+        savedInvoke?.reject("cancelled")
+        destroy()
+        invoke.resolve()
+    }
+
+    @Command
+    fun scan(invoke: Invoke) {
+        val args = invoke.parseArgs(ScanOptions::class.java)
+
+        savedInvoke = invoke
+        if (hasCamera()) {
+            if (getPermissionState("camera") != PermissionState.GRANTED) {
+                throw Exception("No permission to use camera. Did you request it yet?")
+            } else {
+                webViewBackground = null
+                prepare(args.cameraDirection ?: "back", args.windowed)
+                configureCamera(getFormats(args))
+            }
+        }
+    }
+
+    @SuppressLint("ObsoleteSdkInt")
+    @PermissionCallback
+    fun cameraPermissionCallback(invoke: Invoke) {
+        if (requestPermissionResponse == null) {
+            return
+        }
+
+        val requestPermissionResponse = requestPermissionResponse!!
+
+        val granted = getPermissionState(PERMISSION_ALIAS_CAMERA) === PermissionState.GRANTED
+
+        if (granted) {
+            requestPermissionResponse.put(PERMISSION_ALIAS_CAMERA, PermissionState.GRANTED)
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                requestPermissionResponse.put(PERMISSION_ALIAS_CAMERA, PermissionState.DENIED)
+            } else {
+                requestPermissionResponse.put(PERMISSION_ALIAS_CAMERA, PermissionState.GRANTED)
+            }
+        }
+
+        invoke.resolve(requestPermissionResponse)
+        this.requestPermissionResponse = null
+    }
+
+    @SuppressLint("ObsoleteSdkInt")
+    @Command
+    override fun requestPermissions(invoke: Invoke) {
+        val requestPermissionResponse = JSObject()
+        this.requestPermissionResponse = requestPermissionResponse
+        if (getPermissionState(PERMISSION_ALIAS_CAMERA) === PermissionState.GRANTED) {
+            requestPermissionResponse.put(PERMISSION_ALIAS_CAMERA, PermissionState.GRANTED)
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                requestPermissionForAlias(
+                    PERMISSION_ALIAS_CAMERA,
+                    invoke,
+                    "cameraPermissionCallback"
+                )
+                return
+            } else {
+                requestPermissionResponse.put(PERMISSION_ALIAS_CAMERA, PermissionState.GRANTED)
+            }
+        }
+        invoke.resolve(requestPermissionResponse)
+    }
+
+    @Command
+    fun openAppSettings(invoke: Invoke) {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", activity.packageName, null)
+        )
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivityForResult(invoke, intent, "openSettingsResult")
+    }
+
+    @ActivityCallback
+    private fun openSettingsResult(invoke: Invoke, result: ActivityResult) {
+        invoke.resolve()
+    }
+
+    companion object {
+        @Volatile
+        private var activeCamera: Camera? = null
+
+        /**
+         * The camera bound by an active scan, or `null` when no scan is running.
+         *
+         * Looked up through reflection by the torch plugin (`app.tauri.torch`): while a scan holds the
+         * camera, Android rejects `CameraManager.setTorchMode`, so the flash must be driven through
+         * this camera's `CameraControl` instead. Keep the name and signature stable.
+         */
+        @JvmStatic
+        fun getActiveCamera(): Camera? = activeCamera
+    }
+}

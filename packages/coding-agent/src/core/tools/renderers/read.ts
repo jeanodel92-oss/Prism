@@ -10,6 +10,7 @@ import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } 
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { getReadmePath } from "../../../config.ts";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { keyHint, keyText } from "../../../modes/interactive/components/keybinding-hints.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../../modes/interactive/theme/theme.ts";
 import { formatPathRelativeToCwdOrAbsolute } from "../../../utils/paths.ts";
@@ -91,7 +92,8 @@ function formatCompactReadCall(
 	args: ReadRenderArgs | undefined,
 	theme: Theme,
 ): string {
-	const expandHint = theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+	// fork: translate display wrappers; keep data and model content unchanged.
+	const expandHint = theme.fg("dim", fill(" ({0} to expand)", keyText("app.tools.expand")));
 	if (classification.kind === "skill") {
 		return (
 			theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
@@ -118,6 +120,7 @@ function formatReadResult(
 	_cwd: string,
 	isError: boolean,
 ): string {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	if (!options.expanded && !isError) {
 		return "";
 	}
@@ -132,7 +135,7 @@ function formatReadResult(
 	const remaining = lines.length - maxLines;
 	let text = `\n${displayLines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
 	if (remaining > 0) {
-		text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+		text += `${theme.fg("muted", fill("\n... ({0} more lines,", String(remaining)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 	}
 
 	const truncation = result.details?.truncation;

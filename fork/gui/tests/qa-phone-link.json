@@ -1,0 +1,42 @@
+[
+	{ "do": "log", "text": "owner's decision, 2026-11-13: 'Link a phone' in the PC window, a welcome step and a settings button; the window starts the phone server and shows its code as a QR image and as text, with the addresses the phone tries" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": "#welcome-phone:not([hidden]) button", "text": "Link a phone", "why": "no phone linked yet: the welcome offers it" },
+	{ "do": "wait", "selector": "#welcome-phone .welcome-phone-app img.link-phone-qr", "why": "the app's download as a QR code for the phone's camera" },
+	{ "do": "fits", "selector": "#welcome-phone" },
+	{ "do": "shot", "name": "p1-welcome" },
+
+	{ "do": "click", "selector": "#settings-button", "sidebar": true },
+	{ "do": "click", "selector": ".settings-section[data-section='window']" },
+	{ "do": "wait", "selector": "#settings-link:not([hidden]) button", "text": "Link a phone" },
+	{ "do": "shot", "name": "p2-settings" },
+	{ "do": "click", "selector": "#settings-link button", "text": "Link a phone" },
+	{ "do": "wait", "selector": ".panel.link-phone .link-phone-row button", "text": "Run while Prism is open", "timeout": 15000 },
+	{ "do": "wait", "selector": ".panel.link-phone .panel-text", "text": "Stopped: no phone can reach this PC." },
+	{ "do": "absent", "selector": ".panel.link-phone .link-phone-qr:not(.small)", "why": "no server, no code" },
+	{ "do": "wait", "selector": ".panel.link-phone code.link-phone-host", "text": "https://prism.odelserver.space/releases/android/prism-android-arm64.apk", "why": "the app's download, with or without a server" },
+	{ "do": "wait", "selector": ".panel.link-phone img.link-phone-qr.small" },
+	{ "do": "shot", "name": "p3-stopped" },
+
+	{ "do": "click", "selector": ".panel.link-phone .link-phone-row button", "text": "Run while Prism is open" },
+	{ "do": "wait", "selector": ".panel.link-phone .link-phone-qr:not(.small)", "timeout": 15000 },
+	{ "do": "wait", "selector": ".panel.link-phone .panel-text", "text": "Running while Prism is open." },
+	{ "do": "wait", "selector": ".panel.link-phone textarea.link-phone-code", "text": "prism-pair:v1" },
+	{ "do": "wait", "selector": ".panel.link-phone .link-phone-hosts li", "text": "127.0.0.1local network: at home only" },
+	{ "do": "wait", "selector": ".panel.link-phone .panel-text.muted", "text": "No phone linked yet." },
+	{ "do": "fits", "selector": ".panel.link-phone .link-phone-qr:not(.small)" },
+	{ "do": "shot", "name": "p4-code" },
+	{ "do": "click", "selector": ".panel.link-phone .link-phone-row button", "text": "New code" },
+	{ "do": "wait", "selector": ".panel.link-phone .link-phone-row button:not([disabled])", "text": "New code", "why": "the buttons wait while a code is asked for" },
+	{ "do": "wait", "selector": ".panel.link-phone textarea.link-phone-code", "text": "prism-pair:v1" },
+
+	{ "do": "click", "selector": ".panel.link-phone .link-phone-row button", "text": "Stop" },
+	{ "do": "wait", "selector": ".panel.link-phone .panel-text", "text": "Stopped: no phone can reach this PC.", "timeout": 15000 },
+	{ "do": "absent", "selector": ".panel.link-phone .link-phone-qr:not(.small)" },
+
+	{ "do": "toasts" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "absent", "selector": ".pair-error" },
+	{ "do": "log", "text": "qa-phone-link-ok" },
+	{ "do": "quit" }
+]

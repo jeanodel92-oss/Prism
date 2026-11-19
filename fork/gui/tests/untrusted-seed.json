@@ -1,0 +1,8 @@
+[
+	{ "do": "wait", "selector": "#welcome" },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']" },
+	{ "do": "quit" }
+]

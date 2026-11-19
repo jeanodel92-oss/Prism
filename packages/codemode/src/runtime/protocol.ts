@@ -27,6 +27,27 @@ export interface WorkerData {
 /** JSON-encoded `{ name?, message, stack? }` of an error thrown by the script. */
 export type ScriptErrorJson = string;
 
+/**
+ * fork: what a script may output, at most, in characters (an image's
+ * base64 data counts) and in items. Past either, the script fails with what it output so far: each call copied its
+ * value out of the VM's memory limit, to the worker and to Prism, without bound.
+ */
+export const MAX_OUTPUT_LENGTH = 16 * 1024 * 1024;
+export const MAX_OUTPUT_ITEMS = 10_000;
+
+/** The script error a script past its output limit fails with. */
+export function outputLimitError(): { name: string; message: string } {
+	return {
+		name: "RangeError",
+		message: `Output exceeds ${MAX_OUTPUT_ITEMS} items or ${MAX_OUTPUT_LENGTH} characters; the script was stopped`,
+	};
+}
+
+/** The length an output item counts for. */
+export function outputLength(item: { type: "text"; text: string } | { type: "image"; data: string }): number {
+	return item.type === "text" ? item.text.length : item.data.length;
+}
+
 export type WorkerToHostMessage =
 	| { type: "call"; id: number; target: "tool" | "global"; name: string; args: string | undefined }
 	| { type: "output"; item: CodemodeOutputItem }

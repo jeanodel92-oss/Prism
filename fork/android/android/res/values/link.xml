@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The permanent notification that keeps the link to the PC up (LinkService.kt). -->
+<resources>
+    <string name="link_channel">Link to the PC</string>
+    <string name="link_title">Prism stays linked to your PC</string>
+    <string name="link_text">Answers keep coming while the app is in the background. Turn it off in the settings, Linked PC.</string>
+</resources>

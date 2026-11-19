@@ -1,0 +1,12 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "wall" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .text p", "timeout": 20000 },
+	{ "do": "sleep", "ms": 2500, "why": "the reply is longer than the view and still growing" },
+	{ "do": "scroll-hold", "by": -300, "ms": 1200, "why": "QA 2026-11-04: a scroll up during a long reply was undone at the next frame" },
+	{ "do": "scroll-hold", "by": 100, "ms": 1200 },
+	{ "do": "scroll-hold", "by": -200, "ms": 1200 },
+	{ "do": "wait", "selector": "#composer[data-busy='false']", "timeout": 60000 },
+	{ "do": "quit" }
+]

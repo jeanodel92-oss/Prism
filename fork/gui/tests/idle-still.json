@@ -1,0 +1,8 @@
+[
+	{ "do": "pref", "id": "pref-animations", "value": "off" },
+	{ "do": "wait", "selector": "#welcome", "timeout": 30000 },
+	{ "do": "stamp", "label": "ready" },
+	{ "do": "sleep", "ms": 14000 },
+	{ "do": "pref", "id": "pref-animations", "value": "system" },
+	{ "do": "quit" }
+]

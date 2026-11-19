@@ -1,0 +1,21 @@
+# fork: licences cargo-about accepts for the Rust programs Prism ships (fork/scripts/rust-notices/generate.sh).
+# A crate under any other licence stops the release until the maintainer has looked at it.
+accepted = [
+	"MIT",
+	"Apache-2.0",
+	"Apache-2.0 WITH LLVM-exception",
+	"BSD-2-Clause",
+	"BSD-3-Clause",
+	"ISC",
+	"Zlib",
+	"Unicode-3.0",
+	"Unicode-DFS-2016",
+	"Unlicense",
+	"MPL-2.0",
+	"CC0-1.0",
+	"BSL-1.0",
+]
+# Targets the shipped programs are built for: Linux x64 (window, phone server) and Android arm64 (the app).
+targets = ["x86_64-unknown-linux-gnu", "aarch64-linux-android"]
+# The fork's own crates are covered by Prism's own licence (LICENSE).
+private = { ignore = true }

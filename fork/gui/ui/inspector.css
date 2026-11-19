@@ -1,0 +1,5 @@
+.inspector-pages, .inspector-export { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.inspector-export .field { flex: 1; min-width: 100px; }
+.inspector .ctx-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.inspector .check > div { padding: 10px; }
+.inspector .check summary { flex-wrap: wrap; }

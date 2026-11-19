@@ -1,0 +1,20 @@
+[
+	{ "do": "log", "text": "Memory with a long conversation: the calling script puts one session file (fork/tools/bench-transcript.py) in the profile's sessions folder and samples at each 'measure' line, during the pause after it." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 60000 },
+	{ "do": "log", "text": "measure empty" },
+	{ "do": "sleep", "ms": 12000, "why": "the sampler's pause" },
+	{ "do": "type", "text": "/resume" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#surface .panel.sessions .sessions-row", "timeout": 120000 },
+	{ "do": "click", "selector": ".panel.sessions .sessions-open" },
+	{ "do": "wait", "selector": ".panel.sessions", "gone": true, "timeout": 300000 },
+	{ "do": "wait", "selector": ".msg.user", "timeout": 300000, "why": "a user message drawn: the window opens a long session at its end, so the first one is not in the page" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 300000 },
+	{ "do": "close-sessions", "keep": 1, "why": "the session opens beside the empty conversation: close that one, so one engine is left" },
+	{ "do": "wait", "selector": ".msg.user", "timeout": 60000 },
+	{ "do": "metrics", "label": "loaded" },
+	{ "do": "log", "text": "measure loaded" },
+	{ "do": "sleep", "ms": 12000, "why": "the sampler's pause" },
+	{ "do": "log", "text": "bench-long-session-ok" },
+	{ "do": "quit" }
+]

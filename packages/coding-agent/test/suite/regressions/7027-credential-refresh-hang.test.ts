@@ -162,6 +162,7 @@ describe("post-login model discovery", () => {
 			showWarning: vi.fn(),
 			maybeWarnAboutAnthropicSubscriptionAuth: vi.fn(),
 			checkDaxnutsEasterEgg: vi.fn(),
+			warnLowCompactionThreshold: vi.fn(), // fork
 			ui: { requestRender: vi.fn() },
 		};
 		await complete.call(context, "radius", "Radius", "oauth", unknownModel);

@@ -1,0 +1,17 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "click", "selector": "#mode-switches [data-mode='goal']" },
+	{ "do": "click", "selector": ".native-menu-action", "text": "Settings" },
+	{ "do": "wait", "selector": ".panel.native-command:not(.closing) .native-menu[data-kind='settings']" },
+	{ "do": "key", "selector": ".panel.native-command:not(.closing) .native-menu", "key": "q", "mods": { "ctrlKey": true } },
+	{ "do": "wait", "selector": ".native-menu-action", "text": "Start a goal" },
+	{ "do": "click", "selector": ".panel.native-command:not(.closing) .panel-close" },
+	{ "do": "wait", "selector": ".panel.native-command", "gone": true },
+	{ "do": "click", "selector": "#mode-switches [data-mode='goal']" },
+	{ "do": "wait", "selector": ".panel.native-command:not(.closing) .native-menu-action[data-item='start']" },
+	{ "do": "focused", "selector": ".panel.native-command:not(.closing) .native-menu-action[data-item='start']", "why": "a new menu must start on its default action, not the last field of its previous opening" },
+	{ "do": "click", "selector": ".panel.native-command:not(.closing) .panel-close" },
+	{ "do": "wait", "selector": ".panel.native-command", "gone": true },
+	{ "do": "focused", "selector": "#input" },
+	{ "do": "quit" }
+]

@@ -10,6 +10,7 @@ type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
 
 import { hasAzureOpenAICredentials, resolveAzureDeploymentName } from "./azure-utils.ts";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 import { resolveApiKey } from "./oauth.ts";
 
 // Resolve OAuth tokens at module level (async, runs before tests)
@@ -311,8 +312,9 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.BASETEN_API_KEY)("Baseten Provider (Kimi-K2.6)", () => {
-		const llm = getModel("baseten", "moonshotai/Kimi-K2.6");
+	const basetenKimi = catalogModel("baseten", "moonshotai/Kimi-K2.6");
+	describe.skipIf(!process.env.BASETEN_API_KEY || !basetenKimi)("Baseten Provider (Kimi-K2.6)", () => {
+		const llm = basetenKimi!;
 		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
@@ -324,8 +326,8 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.XIAOMI_API_KEY)("Xiaomi MiMo (API billing) Provider (mimo-v2.5-pro)", () => {
-		const llm = getModel("xiaomi", "mimo-v2.5-pro");
+	describe.skipIf(!process.env.XIAOMI_API_KEY)("Xiaomi MiMo (API billing) Provider (mimo-v2.6-pro)", () => {
+		const llm = getModel("xiaomi", "mimo-v2.6-pro");
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 			await handleToolWithImageResult(llm);
@@ -344,9 +346,9 @@ describe("Tool Results with Images", () => {
 	});
 
 	describe.skipIf(!process.env.XIAOMI_TOKEN_PLAN_CN_API_KEY)(
-		"Xiaomi MiMo Token Plan (CN) Provider (mimo-v2.5-pro)",
+		"Xiaomi MiMo Token Plan (CN) Provider (mimo-v2.6-pro)",
 		() => {
-			const llm = getModel("xiaomi-token-plan-cn", "mimo-v2.5-pro");
+			const llm = getModel("xiaomi-token-plan-cn", "mimo-v2.6-pro");
 
 			it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 				await handleToolWithImageResult(llm);
@@ -361,9 +363,9 @@ describe("Tool Results with Images", () => {
 	);
 
 	describe.skipIf(!process.env.XIAOMI_TOKEN_PLAN_AMS_API_KEY)(
-		"Xiaomi MiMo Token Plan (AMS) Provider (mimo-v2.5-pro)",
+		"Xiaomi MiMo Token Plan (AMS) Provider (mimo-v2.6-pro)",
 		() => {
-			const llm = getModel("xiaomi-token-plan-ams", "mimo-v2.5-pro");
+			const llm = getModel("xiaomi-token-plan-ams", "mimo-v2.6-pro");
 
 			it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 				await handleToolWithImageResult(llm);
@@ -378,9 +380,9 @@ describe("Tool Results with Images", () => {
 	);
 
 	describe.skipIf(!process.env.XIAOMI_TOKEN_PLAN_SGP_API_KEY)(
-		"Xiaomi MiMo Token Plan (SGP) Provider (mimo-v2.5-pro)",
+		"Xiaomi MiMo Token Plan (SGP) Provider (mimo-v2.6-pro)",
 		() => {
-			const llm = getModel("xiaomi-token-plan-sgp", "mimo-v2.5-pro");
+			const llm = getModel("xiaomi-token-plan-sgp", "mimo-v2.6-pro");
 
 			it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 				await handleToolWithImageResult(llm);

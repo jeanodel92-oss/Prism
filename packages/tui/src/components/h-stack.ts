@@ -1,3 +1,4 @@
+import { layoutViewport } from "../fork/layout-viewport.ts";
 import { compositeTuiLine } from "../tui.ts";
 import { visibleWidth } from "../utils.ts";
 import { allocateStackSizes, Stack, type StackChild, type StackOptions, visibleStackEntries } from "./stack.ts";
@@ -12,7 +13,8 @@ export class HStack extends Stack {
 	override render(width: number): string[] {
 		const safeWidth = Math.max(1, width);
 		const viewport = { width: safeWidth, height: Number.MAX_SAFE_INTEGER };
-		const entries = visibleStackEntries(this.entries, viewport);
+		// prism-fork: inside a layout pass, the same entries as the layout (src/fork/layout-viewport.ts).
+		const entries = visibleStackEntries(this.entries, layoutViewport() ?? viewport);
 		if (entries.length === 0) return [];
 
 		const intrinsicWidths = entries.map((entry) => {

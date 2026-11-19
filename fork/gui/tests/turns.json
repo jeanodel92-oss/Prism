@@ -1,0 +1,25 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "call read {\"path\":\"missing.txt\"}" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": ".msg.assistant + .turn-summary", "text": "1 tool · 1 failure · sent", "why": "the terminal's line, worded by the engine, after the turn's last message" },
+	{ "do": "absent", "selector": ".turn-slot" },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": ".turn-summary ~ .msg.user ~ .msg.assistant + .turn-summary" },
+	{ "do": "absent", "selector": ".turn-summary ~ .msg.user ~ .turn-summary", "text": "tool", "why": "the second turn ran no tool" },
+	{ "do": "shot", "name": "t1-live" },
+
+	{ "do": "click", "selector": "#new-session", "sidebar": true },
+	{ "do": "wait", "selector": "#welcome" },
+	{ "do": "click", "selector": "#open-list li:not(.current) .close", "sidebar": true },
+	{ "do": "wait", "selector": "#history-list .session-link", "sidebar": true },
+	{ "do": "click", "selector": "#history-list .session-link", "sidebar": true },
+	{ "do": "wait", "selector": ".msg.assistant + .turn-summary", "text": "1 failure", "why": "reopened: each line where the turn ended, from the session" },
+	{ "do": "wait", "selector": ".turn-summary ~ .msg.user ~ .msg.assistant + .turn-summary" },
+	{ "do": "shot", "name": "t2-reopened" },
+	{ "do": "log", "text": "turns-ok" },
+	{ "do": "quit" }
+]

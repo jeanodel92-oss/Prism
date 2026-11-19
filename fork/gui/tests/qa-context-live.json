@@ -1,0 +1,16 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "steps [[\"write\", {\"path\": \"a.md\", \"content\": \"a\"}], [\"write\", {\"path\": \"b.md\", \"content\": \"b\"}]]" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog", "why": "mid-work: the first reply has ended, the turn has not" },
+	{ "do": "wait", "selector": "#statusbar .context-gauge", "text": "Context 1%", "timeout": 3000, "why": "QA 2026-11-04: the gauge stayed at 0% until the end of the turn" },
+	{ "do": "shot", "name": "cl1-mid-turn" },
+	{ "do": "sleep", "ms": 500 },
+	{ "do": "click", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Allow once" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog" },
+	{ "do": "wait", "selector": "#statusbar .context-gauge", "text": "Context 3%", "timeout": 3000, "why": "and after each reply of the turn" },
+	{ "do": "sleep", "ms": 500 },
+	{ "do": "click", "selector": ".tool[data-status='awaiting'] .dialog button", "text": "Allow once" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "quit" }
+]

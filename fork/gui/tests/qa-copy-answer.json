@@ -1,0 +1,83 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: a button beside the turn's figures copies the model's final answer"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "copied",
+		"why": "keep what the window copies off the maintainer's clipboard"
+	},
+	{
+		"do": "type",
+		"text": "md"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".turn-summary .turn-copy:not([hidden])",
+		"timeout": 20000
+	},
+	{
+		"do": "sleep",
+		"ms": 400
+	},
+	{
+		"do": "shot",
+		"name": "copy"
+	},
+	{
+		"do": "click",
+		"selector": ".turn-summary .turn-copy"
+	},
+	{
+		"do": "copied",
+		"text": "## Résumé"
+	},
+	{
+		"do": "wait",
+		"selector": "#toasts .toast",
+		"text": "Copied"
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"read\", {\"path\": \"missing.txt\"}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.assistant",
+		"text": "ok",
+		"timeout": 20000
+	},
+	{
+		"do": "sleep",
+		"ms": 1500
+	},
+	{
+		"do": "count",
+		"selector": ".turn-summary .turn-copy:not([hidden])",
+		"count": 2
+	},
+	{
+		"do": "click",
+		"selector": ".turn-summary:last-child .turn-copy"
+	},
+	{
+		"do": "copied",
+		"text": "ok",
+		"absent": "Résumé",
+		"why": "the last turn's answer, after its tool call"
+	},
+	{
+		"do": "quit"
+	}
+]

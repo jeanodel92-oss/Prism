@@ -422,6 +422,11 @@ export interface ToolCall {
 	thoughtSignature?: string; // Google-specific: opaque signature for reusing thought context
 	/** OpenAI Responses namespace for calls to dynamically loaded or namespaced tools. */
 	namespace?: string;
+	/**
+	 * Set when the model's complete arguments text was not a valid JSON object. `arguments` is then `{}`.
+	 * Describes the problem and includes the text the model sent; tool argument validation fails with it.
+	 */
+	argumentsError?: string;
 }
 
 export interface Usage {
@@ -1127,6 +1132,12 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
 	maxTokens: number;
 	/** Default sampling parameters for this model. See {@link StreamOptions.samplingParams}; per-request keys override these. */
 	samplingParams?: Record<string, unknown>;
+	/** fork: token budgets per thinking level for this model; each one set wins over the request's. */
+	thinkingBudgets?: ThinkingBudgets;
+	/** fork: release date from models.dev, `YYYY-MM-DD` or `YYYY-MM`. Unset when unknown. */
+	releaseDate?: string;
+	/** fork: true when models.dev marks the model deprecated at this provider. */
+	deprecated?: boolean;
 	/** Compatibility overrides for OpenAI-compatible APIs. If not set, auto-detected from baseUrl. */
 	compat?: TApi extends "openai-completions"
 		? OpenAICompletionsCompat

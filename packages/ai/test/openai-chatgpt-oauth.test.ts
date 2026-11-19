@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openaiChatGPTOAuth } from "../src/auth/oauth/openai-chatgpt.ts";
 import type { OAuthCredential, ProviderAuthInteraction } from "../src/auth/types.ts";
+import { setOAuthPageBrand } from "../src/utils/oauth-page.ts";
 
 const TOKEN_URL = "https://auth.openai.com/api/accounts/oauth/token";
 const REQUIRED_SCOPE = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
@@ -106,6 +107,27 @@ describe("OpenAI ChatGPT OAuth", () => {
 			clientId: "oaiapp_issued",
 			scopes: REQUIRED_SCOPE.split(" "),
 		});
+	});
+
+	// fork: OpenAI proposed "Pi" as the agent's name in Prism; the hint is the harness's name.
+	it("proposes the harness's name as the agent name", async () => {
+		let authorizeUrl: URL | undefined;
+		stubTokenEndpoint(tokenResponse());
+		setOAuthPageBrand({ name: "Prism", logoSvg: "<svg></svg>" });
+		try {
+			await openaiChatGPTOAuth.login(
+				loginInteraction({
+					callbackClientId: "oaiapp_issued",
+					onAuthorize: (url) => {
+						authorizeUrl = url;
+					},
+				}),
+				{ getDeviceId: () => DEVICE_ID },
+			);
+		} finally {
+			delete (globalThis as Record<symbol, unknown>)[Symbol.for("pi.oauthPageBrand")];
+		}
+		expect(authorizeUrl?.searchParams.get("agent_name_hint")).toBe("Prism");
 	});
 
 	it("rejects registration without an issued client ID", async () => {

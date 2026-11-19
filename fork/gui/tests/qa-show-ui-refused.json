@@ -1,0 +1,67 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: a refused show_ui shows why in a few lines, not the document again"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"show_ui\", {\"title\": \"Rapport\", \"blocks\": [{\"type\": \"table\", \"columns\": [\"Mois\", \"Ventes\", \"Retours\", \"Net\"], \"rows\": [[\"M1\", 100, 3, 97], [\"M2\", 200, 6, 194], [\"M3\", 300, 9, 291], [\"M4\", 400, 12, 388], [\"M5\", 500, 15, 485], [\"M6\", 600, 18, 582], [\"M7\", 700, 21, 679], [\"M8\", 800, 24, 776], [\"M9\", 900, 27, 873], [\"M10\", 1000, 30, 970], [\"M11\", 1100, 33, 1067], [\"M12\", 1200, 36, 1164]]}, {\"type\": \"graph\", \"kind\": \"bar\", \"labels\": [\"a\"], \"series\": [{\"name\": \"Ventes\", \"values\": [1]}]}]}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool .tool-output",
+		"text": "Validation failed",
+		"timeout": 20000
+	},
+	{
+		"do": "absent",
+		"selector": ".tool .tool-output",
+		"text": "Received arguments"
+	},
+	{
+		"do": "absent",
+		"selector": ".tool .tool-more"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.assistant",
+		"text": "ok"
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"show_ui\", {\"title\": \"Rapport\", \"blocks\": [{\"type\": \"table\", \"columns\": [\"Mois\", \"Ventes\", \"Retours\", \"Net\"], \"rows\": [[\"M1\", 100, 3, 97], [\"M2\", 200, 6, 194], [\"M3\", 300, 9, 291], [\"M4\", 400, 12, 388], [\"M5\", 500, 15, 485], [\"M6\", 600, 18, 582], [\"M7\", 700, 21, 679], [\"M8\", 800, 24, 776], [\"M9\", 900, 27, 873], [\"M10\", 1000, 30, 970], [\"M11\", 1100, 33, 1067], [\"M12\", 1200, 36, 1164]]}, {\"type\": \"chart\", \"kind\": \"bar\", \"series\": [{\"name\": \"Ventes\", \"values\": [1]}]}]}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".tool .tool-output",
+		"text": "labels must be an array",
+		"timeout": 20000
+	},
+	{
+		"do": "absent",
+		"selector": ".tool .tool-output",
+		"text": "Each block"
+	},
+	{
+		"do": "sleep",
+		"ms": 500
+	},
+	{
+		"do": "shot",
+		"name": "refused"
+	},
+	{
+		"do": "quit"
+	}
+]

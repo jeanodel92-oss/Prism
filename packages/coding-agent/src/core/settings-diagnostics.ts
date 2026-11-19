@@ -4,7 +4,9 @@ import type { SettingsManager } from "./settings-manager.ts";
 export function collectSettingsDiagnostics(settingsManager: SettingsManager): AgentSessionRuntimeDiagnostic[] {
 	return settingsManager.drainErrors().map(({ scope, path, error }) => ({
 		type: "warning",
-		message: path ? `Invalid settings file ${path}: ${error.message}` : `Invalid ${scope} settings: ${error.message}`,
+		message: path
+			? `Could not use the settings in ${path}: ${error.message}`
+			: `Invalid ${scope} settings: ${error.message}`,
 	}));
 }
 

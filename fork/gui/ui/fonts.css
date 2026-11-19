@@ -1,0 +1,40 @@
+/* The site's two typefaces, shipped with the window so it reads the same on every machine. Both under the SIL Open
+   Font License 1.1, licences beside the files.
+   Inter 4.1: web/InterVariable.woff2 of github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
+     sha256 693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3
+   JetBrains Mono 2.304: fonts/webfonts/JetBrainsMono-{Regular,Medium,Bold}.woff2 of github.com/JetBrains/JetBrainsMono, tag v2.304
+     sha256 a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2 (Regular)
+            086c48dfbea9ddaff1320f7e09399b8e2924e88ce67453721255db3bdbb5a353 (Medium)
+            c503cc5ec5f8b2c7666b7ecda1adf44bd45f2e6579b2eba0fc292150416588a2 (Bold) */
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: block;
+	src: url("fonts/InterVariable.woff2") format("woff2");
+}
+
+@font-face {
+	font-family: "JetBrains Mono";
+	font-style: normal;
+	font-weight: 400;
+	font-display: block;
+	src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+
+@font-face {
+	font-family: "JetBrains Mono";
+	font-style: normal;
+	font-weight: 500;
+	font-display: block;
+	src: url("fonts/JetBrainsMono-Medium.woff2") format("woff2");
+}
+
+@font-face {
+	font-family: "JetBrains Mono";
+	font-style: normal;
+	font-weight: 600 700;
+	font-display: block;
+	src: url("fonts/JetBrainsMono-Bold.woff2") format("woff2");
+}

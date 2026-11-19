@@ -45,9 +45,9 @@ describe("collapsible message components", () => {
 		});
 
 		expect(renderText(component)).not.toContain("compaction details");
-		clickRow(component, "[compaction]");
+		clickRow(component, "[conversation summary]");
 		expect(renderText(component)).toContain("compaction details");
-		clickRow(component, "[compaction]");
+		clickRow(component, "[conversation summary]");
 		expect(renderText(component)).not.toContain("compaction details");
 	});
 

@@ -1,0 +1,46 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": "#statusbar .status-chip.perm[data-mode='ask']", "text": "Permissions: ask" },
+
+	{ "do": "type", "text": "/doctor" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.doctor .check" },
+	{ "do": "fits", "selector": ".panel.doctor .panel-body" },
+	{ "do": "shot", "name": "v2-doctor-dark" },
+	{ "do": "key", "selector": ".panel.doctor", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.doctor", "gone": true },
+
+	{ "do": "log", "text": "the shipped commands are native; a user extension's view is still drawn as lines (fixtures/terminal-views.ts)" },
+	{ "do": "type", "text": "/my-view" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".view.inline .view-lines", "text": "My view" },
+	{ "do": "wait", "selector": "#composer", "gone": true },
+	{ "do": "key", "selector": ".view", "key": "Escape" },
+	{ "do": "wait", "selector": ".view", "gone": true },
+	{ "do": "focused", "selector": "#input" },
+
+	{ "do": "type", "text": "/goal" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.native-command .panel-title", "text": "Goal" },
+	{ "do": "wait", "selector": ".native-menu-action", "text": "Start a goal" },
+	{ "do": "shot", "name": "v4-goal-menu" },
+	{ "do": "click", "selector": ".native-menu-action", "text": "Close" },
+	{ "do": "wait", "selector": "#surface > .panel.native-command", "gone": true },
+
+	{ "do": "pref", "id": "pref-theme", "value": "light" },
+	{ "do": "type", "text": "/my-overlay" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".view.overlay .view-lines", "text": "My overlay" },
+	{ "do": "focused", "selector": ".view" },
+	{ "do": "absent", "selector": "#input", "text": "/my-overlay" },
+	{ "do": "key", "selector": ".view", "key": "ArrowDown" },
+	{ "do": "wait", "selector": ".view .view-lines", "text": "Second page" },
+	{ "do": "contrast", "selector": ".view .view-lines", "text": "My overlay" },
+	{ "do": "shot", "name": "v3-inspector-light" },
+	{ "do": "key", "selector": ".view", "key": "Escape" },
+	{ "do": "wait", "selector": ".view", "gone": true },
+	{ "do": "pref", "id": "pref-theme", "value": "dark" },
+
+	{ "do": "log", "text": "views-ok" },
+	{ "do": "quit" }
+]

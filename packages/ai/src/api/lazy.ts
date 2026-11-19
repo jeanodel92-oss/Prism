@@ -53,7 +53,9 @@ export function lazyStream(
 		.then((inner) => forwardStream(outer, inner))
 		.catch((error) => {
 			const message = createSetupErrorMessage(model, error);
-			outer.push({ type: "error", reason: "error", error: message });
+			// fork: an interrupt during the setup is not a model failure.
+			if (error instanceof Error && error.name === "AbortError") message.stopReason = "aborted";
+			outer.push({ type: "error", reason: message.stopReason === "aborted" ? "aborted" : "error", error: message });
 			outer.end(message);
 		});
 

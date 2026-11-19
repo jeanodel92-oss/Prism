@@ -1,0 +1,112 @@
+.native-menu-host {
+	min-width: 0;
+}
+
+.native-menu {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
+	gap: 0.65rem;
+}
+
+.native-menu-action {
+	display: grid;
+	gap: 0.2rem;
+	text-align: left;
+	white-space: normal;
+}
+
+.native-menu small {
+	display: block;
+	color: var(--ink-3);
+	font-weight: normal;
+}
+
+.native-menu-field {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.native-menu-field select,
+.native-menu-field > button {
+	max-width: 55%;
+	min-width: 0;
+	/* A long description gives way, not a short value ("on", "prism-light/prism"); a long value is capped above. */
+	flex-shrink: 0;
+}
+
+.native-menu-field > span {
+	min-width: 0;
+}
+
+.native-menu-field select {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.native-menu-field > button {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.native-menu-document {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.native-menu-input {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.native-menu-input input {
+	min-width: 0;
+	flex: 1;
+}
+
+/* A plan to paste (/init): the text over its button. */
+.native-menu-input.multiline {
+	flex-direction: column;
+	align-items: flex-end;
+}
+
+.native-menu-input textarea {
+	align-self: stretch;
+	resize: vertical;
+}
+
+/* /mcp: a configuration or connection error under the screen's text. */
+.native-menu .panel-text.error {
+	color: var(--error);
+}
+
+/* /login: a warning about a Claude account, in bold. */
+.native-menu .panel-text.alert {
+	font-weight: 700;
+}
+
+.native-menu-link {
+	overflow-wrap: anywhere;
+}
+
+/* /llama: how far a load or download got. */
+.native-menu-progress {
+	width: 100%;
+	height: 0.6rem;
+	appearance: none;
+	border: 0;
+	border-radius: 999px;
+	overflow: hidden;
+	background: var(--line);
+}
+
+.native-menu-progress::-webkit-progress-bar {
+	background: var(--line);
+}
+
+.native-menu-progress::-webkit-progress-value {
+	background: var(--ink-2);
+	transition: width var(--ease);
+}

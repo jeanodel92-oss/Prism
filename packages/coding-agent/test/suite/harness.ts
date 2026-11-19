@@ -109,6 +109,7 @@ export function createTestUiContext(overrides: Partial<ExtensionUIContext> = {})
 }
 
 export interface HarnessOptions {
+	provider?: string;
 	models?: FauxModelDefinition[];
 	settings?: Partial<Settings>;
 	tools?: AgentTool[];
@@ -150,6 +151,7 @@ function createTempDir(): string {
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
 	const tempDir = createTempDir();
 	const fauxProvider: FauxProviderRegistration = registerFauxProvider({
+		provider: options.provider,
 		models: options.models,
 	});
 	fauxProvider.setResponses([]);
@@ -223,11 +225,17 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			return runner.emitContext(messages);
 		},
 	});
-	const extensionsResult = options.extensionFactories
-		? await createTestExtensionsResult(options.extensionFactories, tempDir)
-		: undefined;
-	const resourceLoader =
-		options.resourceLoader ?? createTestResourceLoader(extensionsResult ? { extensionsResult } : undefined);
+	const factories = options.extensionFactories;
+	let extensionsResult = factories ? await createTestExtensionsResult(factories, tempDir) : undefined;
+	const testLoader = createTestResourceLoader(extensionsResult ? { extensionsResult } : undefined);
+	// fork: as the real loader does, a reload runs the extensions' factories again (new instances).
+	const resourceLoader: ResourceLoader = options.resourceLoader ?? {
+		...testLoader,
+		getExtensions: () => extensionsResult ?? testLoader.getExtensions(),
+		reload: async () => {
+			if (factories) extensionsResult = await createTestExtensionsResult(factories, tempDir);
+		},
+	};
 
 	const session = new AgentSession({
 		agent,

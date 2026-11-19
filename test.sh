@@ -1,6 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# fork: run the suite in a memory-capped scope without swap, so a runaway test is killed instead of
+# swapping the whole machine to a halt. PI_TEST_MEMORY_MAX overrides the default;
+# without a systemd user session (CI), the suite runs as before.
+if [[ -z "${PI_TEST_SCOPED-}" ]] && command -v systemd-run >/dev/null && systemd-run --user --scope -q true 2>/dev/null; then
+	exec env PI_TEST_SCOPED=1 systemd-run --user --scope -q -p "MemoryMax=${PI_TEST_MEMORY_MAX:-6G}" \
+		-p MemorySwapMax=0 -- "$0" "$@"
+fi
+
+# fork: Node's file watchers need inotify instances, limited per user (fs.inotify.max_user_instances). When another
+# program has used them up, the watcher tests fail
+# after the whole run; stop at once instead and say who holds them. The suite used 10 at its peak;
+# PI_TEST_INOTIFY_MIN sets the minimum free.
+if [[ -r /proc/sys/fs/inotify/max_user_instances ]]; then
+	inotify_max="$(cat /proc/sys/fs/inotify/max_user_instances)"
+	inotify_holders="$(find /proc/[0-9]*/fd -lname anon_inode:inotify 2>/dev/null | cut -d/ -f3 || true)"
+	inotify_used="$(printf '%s' "$inotify_holders" | grep -c . || true)"
+	if (( inotify_max - inotify_used < ${PI_TEST_INOTIFY_MIN:-16} )); then
+		printf 'test.sh: only %d of %d inotify instances are free; the file-watcher tests would fail.\n' \
+			"$((inotify_max - inotify_used))" "$inotify_max" >&2
+		printf 'Held by:\n' >&2
+		printf '%s\n' "$inotify_holders" | sort | uniq -c | sort -rn | head -5 | while read -r count pid; do
+			printf '  %4d  %s (pid %s)\n' "$count" "$(cat "/proc/$pid/comm" 2>/dev/null || echo '?')" "$pid" >&2
+		done
+		printf 'Restart the top holder, or raise fs.inotify.max_user_instances.\n' >&2
+		exit 1
+	fi
+fi
+
 # Isolate user resources, credentials, temporary files, and tool configuration.
 temp_parent="${TMPDIR:-/tmp}"
 temp_parent="${temp_parent%/}"
@@ -31,6 +59,11 @@ cleanup() {
 			[[ $status -ne 0 ]] || status=1
 			;;
 	esac
+
+	# fork: report missing real-sandbox coverage even when another suite failed.
+	if ! command -v bwrap >/dev/null || ! bwrap --unshare-all --die-with-parent --ro-bind / / --proc /proc --dev /dev --tmpfs /tmp true >/dev/null 2>&1; then
+		printf 'WARNING: real-sandbox suites were skipped: bubblewrap is missing or cannot start a sandbox.\n' >&2
+	fi
 
 	exit "$status"
 }

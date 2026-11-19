@@ -48,6 +48,10 @@ describe("ToolExecutionComponent parity", () => {
 
 	// Issue #8577: ignore conversions that finish after the image was replaced.
 	test("keeps the final tool image when a partial image conversion finishes late", async () => {
+		// fork: image data must be base64 to reach the terminal, so the markers
+		// "final-png" and "converted-partial" are base64 encoded.
+		const finalPng = Buffer.from("final-png").toString("base64");
+		const convertedPartial = Buffer.from("converted-partial").toString("base64");
 		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
 		let finishConversion!: (result: { data: string; mimeType: string }) => void;
 		const conversion = new Promise<{ data: string; mimeType: string }>((resolve) => {
@@ -69,17 +73,17 @@ describe("ToolExecutionComponent parity", () => {
 			true,
 		);
 		component.updateResult({
-			content: [{ type: "image", data: "final-png", mimeType: "image/png" }],
+			content: [{ type: "image", data: finalPng, mimeType: "image/png" }],
 			isError: false,
 		});
-		expect(component.render(120).join("\n")).toContain("final-png");
+		expect(component.render(120).join("\n")).toContain(finalPng);
 
-		finishConversion({ data: "converted-partial", mimeType: "image/png" });
+		finishConversion({ data: convertedPartial, mimeType: "image/png" });
 		await conversion;
 
 		const rendered = component.render(120).join("\n");
-		expect(rendered).toContain("final-png");
-		expect(rendered).not.toContain("converted-partial");
+		expect(rendered).toContain(finalPng);
+		expect(rendered).not.toContain(convertedPartial);
 	});
 
 	test("stacks custom call and result renderers like the old implementation", () => {

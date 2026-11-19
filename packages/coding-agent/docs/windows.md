@@ -1,8 +1,10 @@
-# Run Pi on Windows
+# Run Prism on Windows
 
-Run Pi either as a native Windows process or inside Windows Subsystem for Linux (WSL). Native Windows uses Git Bash by default for Bash commands and can optionally expose PowerShell to the model. Pi inside WSL uses the Linux environment and its Bash installation.
+> Prism targets Linux x64: it publishes no Windows release and is not tested on Windows. This page describes how the code behaves there, from a source checkout.
 
-Follow the main [Quickstart](quickstart.md) to install and authenticate Pi. Use this page to choose and configure its command environment.
+Run Prism either as a native Windows process or inside Windows Subsystem for Linux (WSL). Native Windows uses Git Bash by default for Bash commands and can optionally expose PowerShell to the model. Prism inside WSL uses the Linux environment and its Bash installation.
+
+Follow the main [Quickstart](quickstart.md) to install and authenticate Prism. Use this page to choose and configure its command environment.
 
 ## Choose native Windows or WSL
 
@@ -16,25 +18,25 @@ Follow the main [Quickstart](quickstart.md) to install and authenticate Pi. Use 
 
 For most native Windows users, installing [Git for Windows](https://git-scm.com/download/win) is sufficient.
 
-Pi resolves Bash in this order:
+Prism resolves Bash in this order:
 
-1. `shellPath` from `~/.pi/agent/settings.json`
+1. `shellPath` from `~/.prism/agent/settings.json`
 2. Git Bash under `Program Files` or `Program Files (x86)`
 3. `bash.exe` on `PATH`, including Cygwin, MSYS2, or legacy WSL Bash
 
-Start Pi and enter this command to verify the shell:
+Start Prism and enter this command to verify the shell:
 
 ```text
 !printf 'Bash is working\n'
 ```
 
-If Pi cannot find Bash, it reports the locations it checked. Install Git for Windows, put another Bash executable on `PATH`, or configure `shellPath`.
+If Prism cannot find Bash, it reports the locations it checked. Install Git for Windows, put another Bash executable on `PATH`, or configure `shellPath`.
 
 ## Let the model use PowerShell
 
 The optional `powershell` tool runs commands through `pwsh.exe` when available, then falls back to Windows PowerShell. It starts PowerShell with `-NoProfile -NonInteractive -ExecutionPolicy Bypass`. Administrator-enforced execution policies can still take precedence.
 
-To replace the model-facing `bash` tool with `powershell`, add this to `~/.pi/agent/settings.json`:
+To replace the model-facing `bash` tool with `powershell`, add this to `~/.prism/agent/settings.json`:
 
 ```json
 {
@@ -44,13 +46,13 @@ To replace the model-facing `bash` tool with `powershell`, add this to `~/.pi/ag
 
 `["-bash", "+powershell"]` does the same while keeping any other default tools you configured.
 
-Restart Pi, then ask it to run a harmless PowerShell command. The `!` and `!!` editor commands continue to use Bash. The `powershell` tool is available only when Pi runs as a native Windows process.
+Restart Prism, then ask it to run a harmless PowerShell command. The `!` and `!!` editor commands continue to use Bash. The `powershell` tool is available only when Prism runs as a native Windows process.
 
 See [Settings](settings.md#tools) for other tool combinations.
 
 ## Use a custom Bash executable
 
-Set `shellPath` when Bash is installed somewhere Pi does not discover automatically:
+Set `shellPath` when Bash is installed somewhere Prism does not discover automatically:
 
 ```json
 {
@@ -64,4 +66,4 @@ See [Configure shell commands](shell-aliases.md) for command prefixes, aliases, 
 
 ## Configure Windows Terminal
 
-Windows Terminal reserves or rewrites some modified keys. See [Windows Terminal](terminal-setup.md#windows-terminal) to configure `Shift+Enter` and `Alt+Enter`, and [Keybindings](keybindings.md) for Pi's Windows and WSL shortcut defaults.
+Windows Terminal reserves or rewrites some modified keys. See [Windows Terminal](terminal-setup.md#windows-terminal) to configure `Shift+Enter` and `Alt+Enter`, and [Keybindings](keybindings.md) for Prism's Windows and WSL shortcut defaults.

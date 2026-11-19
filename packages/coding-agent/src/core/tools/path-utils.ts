@@ -46,7 +46,11 @@ export function expandPath(filePath: string): string {
  * Handles ~ expansion and absolute paths.
  */
 export function resolveToCwd(filePath: string, cwd: string): string {
-	return resolvePath(filePath, cwd, { normalizeUnicodeSpaces: true, stripAtPrefix: true });
+	const typed = resolvePath(filePath, cwd, { normalizeUnicodeSpaces: true, stripAtPrefix: true });
+	// fork: the exact name, when it exists, is the file named; the forms a person types
+	// (U+00A0 for a space, a leading @) are a fallback, never a reason to open a neighbour.
+	const exact = resolvePath(filePath, cwd);
+	return exact !== typed && fileExists(exact) ? exact : typed;
 }
 
 export function resolveReadPath(filePath: string, cwd: string): string {

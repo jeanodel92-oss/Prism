@@ -230,4 +230,29 @@ describe("NestedCallRecorder", () => {
 		expect(snapshot?.complete).toBe(false);
 		expect(records).toHaveLength(6);
 	});
+
+	// fork: arguments that are not JSON are a validation error, never a rejection.
+	it("answers cyclic or BigInt arguments with an error result and does not run the tool", async () => {
+		let runs = 0;
+		const echo: AgentTool = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo",
+			parameters: Type.Object({}),
+			async execute() {
+				runs++;
+				return { content: [{ type: "text", text: "ok" }], details: {} };
+			},
+		};
+		const { runner } = createRunner([echo]);
+		const cyclic: Record<string, unknown> = {};
+		cyclic.self = cyclic;
+		for (const args of [cyclic, { big: 1n }]) {
+			const outcome = await runner.execute("call", "echo", args);
+			expect(outcome.isError).toBe(true);
+			expect(JSON.stringify(outcome.result.content)).toContain("not valid JSON");
+		}
+		expect(runs).toBe(0);
+		expect((await runner.execute("call", "echo", {})).isError).toBe(false);
+	});
 });

@@ -65,6 +65,10 @@ import {
 	imageErrorResult,
 } from "@earendil-works/pi-ai/utils/model-operations";
 import { getAgentDir } from "../config.ts";
+import { keptModelIds } from "../fork/hide-retired-models.ts";
+import { automaticModelCatalogRefresh } from "../fork/policy.ts";
+import { knownSecrets } from "../fork/secrets/env.ts";
+import { maskModelContext } from "../fork/secrets/mask.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import { AuthStorage as DefaultAuthStorage } from "./auth-storage.ts";
 import { ModelConfig } from "./model-config.ts";
@@ -168,6 +172,15 @@ function mergeHeaders(
 }
 
 /** Configured pi-ai Models collection used by coding-agent and SDK consumers. */
+type ThinkingBudgets = SimpleStreamOptions["thinkingBudgets"];
+
+/** fork: a model's own thinking budgets (models.json, /model-settings) win over the global setting. */
+function withModelThinkingBudgets(model: AnyModel, options: object) {
+	const own = (model as { thinkingBudgets?: ThinkingBudgets }).thinkingBudgets;
+	const global = (options as { thinkingBudgets?: ThinkingBudgets }).thinkingBudgets;
+	return own ? { thinkingBudgets: { ...global, ...own } } : {};
+}
+
 export class ModelRuntime implements Models {
 	private readonly models: MutableModels;
 	private readonly credentials: RuntimeCredentials;
@@ -223,14 +236,21 @@ export class ModelRuntime implements Models {
 				? new FileModelsStore(options.modelsStorePath ?? join(dirname(modelsPath), "models-store.json"))
 				: new InMemoryCodingAgentModelsStore());
 		const builtinModelDataGeneratedAt = builtinProviderCatalog.getBuiltinModelDataGeneratedAt();
-		const providers = builtinProviderCatalog
-			.builtinProviders()
-			.map((provider) =>
-				provider.id === "radius"
-					? provider
-					: withRemoteCatalog(provider, options.catalogBaseUrl, builtinModelDataGeneratedAt),
-			);
-		const runtime = new ModelRuntime(
+		// read by the overlay, which runs first inside the constructor, then after each models.json reload.
+		let runtime: ModelRuntime | undefined;
+		const providers = builtinProviderCatalog.builtinProviders().map((provider) =>
+			provider.id === "radius"
+				? provider
+				: withRemoteCatalog(
+						provider,
+						options.catalogBaseUrl,
+						builtinModelDataGeneratedAt,
+						// fork: background pi.dev catalog refreshes unless /settings turns them off.
+						automaticModelCatalogRefresh,
+						() => keptModelIds(provider.id, (runtime?.config ?? config).getProvider(provider.id)),
+					),
+		);
+		runtime = new ModelRuntime(
 			credentials,
 			config,
 			modelsPath,
@@ -681,6 +701,7 @@ export class ModelRuntime implements Models {
 			model: requestModel,
 			options: {
 				...providerOptions,
+				...withModelThinkingBudgets(requestModel, providerOptions),
 				apiKey: providerOptions.apiKey ?? resolution.auth.apiKey,
 				headers,
 				env,
@@ -693,7 +714,9 @@ export class ModelRuntime implements Models {
 		context: Context,
 		options?: ModelsApiStreamOptions<TApi>,
 	): AssistantMessageEventStream {
-		const transcript = normalizeContext(context);
+		// fork: every request to a model passes here, the agent loop's and the others (compaction,
+		// branch summary, cache warmer); the known secrets are masked in its decoded context.
+		const transcript = maskModelContext(normalizeContext(context), knownSecrets());
 		return lazyStream(model, async () => {
 			assertChatModel(model);
 			const prepared = await this.prepareRequest(
@@ -713,7 +736,8 @@ export class ModelRuntime implements Models {
 	}
 
 	streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream {
-		const transcript = normalizeContext(context);
+		// fork: as in stream().
+		const transcript = maskModelContext(normalizeContext(context), knownSecrets());
 		if (isVirtualModel(model)) {
 			// Requests outside the agent loop are routed here. Callers sized them before routing, so
 			// cap the output budget to the routed model.

@@ -291,7 +291,12 @@ export interface MiddleTruncationResult {
  */
 export function truncateMiddle(content: string, maxBytes: number): MiddleTruncationResult {
 	const buf = Buffer.from(content, "utf-8");
-	const totalLines = splitLinesForCounting(content).length;
+	// fork: counted, never split or spread into arrays as large as the content.
+	let totalLines = 0;
+	if (content.length > 0) {
+		for (let at = content.indexOf("\n"); at !== -1; at = content.indexOf("\n", at + 1)) totalLines++;
+		if (!content.endsWith("\n")) totalLines++;
+	}
 	if (buf.length <= maxBytes) {
 		return { content, truncated: false, removedChars: 0, totalBytes: buf.length, totalLines };
 	}
@@ -303,7 +308,9 @@ export function truncateMiddle(content: string, maxBytes: number): MiddleTruncat
 	while (tailStart < buf.length && !isBoundary(tailStart)) tailStart++;
 	const head = buf.subarray(0, headEnd).toString("utf-8");
 	const tail = buf.subarray(tailStart).toString("utf-8");
-	const removedChars = Array.from(buf.subarray(headEnd, tailStart).toString("utf-8")).length;
+	// Characters are counted by their first byte; the buffer is valid UTF-8, encoded from a string.
+	let removedChars = 0;
+	for (let index = headEnd; index < tailStart; index++) if (isBoundary(index)) removedChars++;
 	return {
 		content: `${head}…${removedChars} chars truncated…${tail}`,
 		truncated: true,

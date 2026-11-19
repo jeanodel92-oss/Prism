@@ -1,0 +1,16 @@
+[
+	{ "do": "wait", "selector": "#welcome:not([hidden])", "timeout": 30000 },
+	{ "do": "wait", "selector": ".composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "Crée un fichier hello.txt contenant « Bonjour », avec l'outil write." },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool[data-status='awaiting'] .dialog", "timeout": 120000 },
+	{ "do": "toasts" },
+	{ "do": "log", "text": "closing" },
+	{ "do": "click", "selector": "#open-list li:nth-child(1) .close", "sidebar": true },
+	{ "do": "sleep", "ms": 5000 },
+	{ "do": "toasts" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "absent", "selector": ".toast.warning" },
+	{ "do": "shot", "name": "c1-after-close" },
+	{ "do": "quit" }
+]

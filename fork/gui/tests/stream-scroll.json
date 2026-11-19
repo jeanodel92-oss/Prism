@@ -1,0 +1,85 @@
+[
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "wall"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".msg.assistant",
+		"text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+		"timeout": 30000
+	},
+	{
+		"do": "sleep",
+		"ms": 1500,
+		"why": "the reply is taller than the view"
+	},
+	{
+		"do": "creep",
+		"px": -8,
+		"times": 30,
+		"minGap": 120,
+		"why": "cycle 1: small steps up while the reply is written leave the end, and stay away"
+	},
+	{
+		"do": "creep",
+		"px": 200,
+		"times": 40,
+		"settle": 600,
+		"maxGap": 2,
+		"why": "back to the end: the view follows the reply again"
+	},
+	{
+		"do": "creep",
+		"px": -8,
+		"times": 30,
+		"minGap": 120,
+		"why": "cycle 2: small steps up while the reply is written leave the end, and stay away"
+	},
+	{
+		"do": "creep",
+		"px": 200,
+		"times": 40,
+		"settle": 600,
+		"maxGap": 2,
+		"why": "back to the end: the view follows the reply again"
+	},
+	{
+		"do": "creep",
+		"px": -8,
+		"times": 30,
+		"minGap": 120,
+		"why": "cycle 3: small steps up while the reply is written leave the end, and stay away"
+	},
+	{
+		"do": "creep",
+		"px": 200,
+		"times": 40,
+		"settle": 600,
+		"maxGap": 2,
+		"why": "back to the end: the view follows the reply again"
+	},
+	{
+		"do": "sleep",
+		"ms": 9000,
+		"why": "the reply ends"
+	},
+	{
+		"do": "creep",
+		"px": -8,
+		"times": 30,
+		"minGap": 200,
+		"why": "after the reply, scrolling up still works"
+	},
+	{
+		"do": "quit"
+	}
+]

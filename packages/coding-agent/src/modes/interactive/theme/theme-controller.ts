@@ -1,7 +1,10 @@
 import type { RgbColor, TerminalColors, TUI } from "@earendil-works/pi-tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
+import { fill, t } from "../../../fork/i18n/index.ts"; // fork: display text only
+import { backdropTheme, TerminalBackdrop } from "../../../fork/terminal-backdrop.ts";
 import {
 	getTerminalTheme,
+	getThemeExportColors,
 	initTheme,
 	markTerminalColorsPending,
 	parseAutoThemeSetting,
@@ -13,6 +16,7 @@ import {
 	setThemeInstance,
 	type TerminalTheme,
 	type Theme,
+	theme,
 } from "./theme.ts";
 
 type ThemeResult = { success: boolean; error?: string };
@@ -68,6 +72,8 @@ export class InteractiveThemeController {
 	private terminalColorSchemeUnsubscribe: (() => void) | undefined;
 	// Settles when the latest color query completed or timed out, and its colors applied.
 	private terminalColorQuery: Promise<void> = Promise.resolve();
+	// fork: terminal background and foreground follow a theme made for the other appearance.
+	private readonly backdrop: TerminalBackdrop;
 
 	constructor(
 		ui: TUI,
@@ -83,6 +89,7 @@ export class InteractiveThemeController {
 		this.showError = options.showError;
 		this.onChanged = options.onChanged;
 		this.currentThemeSetting = options.initialThemeSetting;
+		this.backdrop = new TerminalBackdrop((data) => this.ui.terminal?.write?.(data));
 		this.activeThemeName = this.resolveThemeName();
 		// The system theme starts in grayscale; color follows once the terminal reports its colors.
 		markTerminalColorsPending();
@@ -147,6 +154,7 @@ export class InteractiveThemeController {
 		const themeName = resolveThemeSetting(themeSettingOrName, getTerminalTheme()) ?? this.activeThemeName;
 		if (!themeName) return;
 		if (setTheme(themeName, true).success) {
+			this.syncBackdrop();
 			this.ui.invalidate();
 			this.ui.requestRender();
 		}
@@ -157,6 +165,7 @@ export class InteractiveThemeController {
 	}
 
 	dispose(): void {
+		this.backdrop.restore();
 		this.setAutoSync(false);
 		this.terminalColorSchemeUnsubscribe?.();
 		this.terminalColorSchemeUnsubscribe = undefined;
@@ -176,11 +185,15 @@ export class InteractiveThemeController {
 	}
 
 	private applyThemeName(themeName: string, showError = false): ThemeResult {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		const result = setTheme(themeName, true);
 		this.activeThemeName = result.success ? themeName : SYSTEM_THEME_NAME;
 		this.notifyChanged();
 		if (!result.success && showError) {
-			this.showError(`Failed to load theme "${themeName}": ${result.error}\nFell back to the system theme.`);
+			// fork: keep the theme name and external error unchanged.
+			this.showError(
+				`${fill('Failed to load theme "{0}": {1}', themeName, String(result.error))}\n${t("Fell back to the system theme.")}`,
+			);
 		}
 		return result;
 	}
@@ -195,6 +208,7 @@ export class InteractiveThemeController {
 	 * generated from all of them, and light/dark detection uses them. Re-renders only when they changed.
 	 */
 	private applyTerminalColors(reported: TerminalColors): void {
+		reported = this.backdrop.unmask(reported);
 		const previous = this.terminalColors;
 		const next: TerminalColors = {
 			foreground: reported.foreground ?? previous?.foreground,
@@ -206,6 +220,7 @@ export class InteractiveThemeController {
 		this.terminalColors = next;
 		setTerminalColors(next);
 		this.reapplyForTerminal();
+		this.syncBackdrop();
 		this.ui.invalidate();
 		this.ui.requestRender();
 	}
@@ -247,7 +262,14 @@ export class InteractiveThemeController {
 	}
 
 	private notifyChanged(): void {
+		this.syncBackdrop();
 		this.ui.invalidate();
 		this.onChanged();
+	}
+
+	/** fork: src/fork/terminal-backdrop.ts. */
+	private syncBackdrop(): void {
+		const themeData = backdropTheme(theme.appearance, theme.colors.text, getThemeExportColors().pageBg);
+		this.backdrop.sync(themeData, this.terminalColors);
 	}
 }

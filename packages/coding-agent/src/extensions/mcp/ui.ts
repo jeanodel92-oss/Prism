@@ -19,6 +19,7 @@ import {
 } from "@earendil-works/pi-tui";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
+import { t } from "../../fork/i18n/index.ts"; // fork: display text only
 import { DynamicBorder } from "../../modes/interactive/components/dynamic-border.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { getSelectListTheme, type Theme } from "../../modes/interactive/theme/theme.ts";
@@ -83,7 +84,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 		this.tui = tui;
 		this.theme = theme;
 		this.keybindings = keybindings;
-		this.content = frame(theme, "MCP servers", [new Text(theme.fg("muted", "Loading…"), 1, 1)]);
+		this.content = frame(theme, t("MCP servers"), [new Text(theme.fg("muted", t("Loading…")), 1, 1)]);
 	}
 
 	get focused(): boolean {
@@ -124,7 +125,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 				body.push(new Spacer(1));
 				const footer = `${keyHint("tui.select.confirm", menu.confirmLabel)} • ${keyHint("tui.select.cancel", menu.cancelLabel)}`;
 				if (menu.items.length === 0) {
-					body.push(new Text(this.theme.fg("muted", menu.empty ?? "Nothing to show."), 1, 0));
+					body.push(new Text(this.theme.fg("muted", menu.empty ?? t("Nothing to show.")), 1, 0));
 					this.setContent(
 						frame(this.theme, menu.title, body, keyHint("tui.select.cancel", menu.cancelLabel)),
 						(data) => {
@@ -176,15 +177,15 @@ export class McpManagerView implements McpUi, Component, Focusable {
 			}
 			signal.addEventListener("abort", onAbort, { once: true });
 			const input = new Input();
-			const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
+			const clickHint = t(process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open");
 			const body: Component[] = [
 				new Spacer(1),
-				new Text(this.theme.fg("muted", "Approve access in your browser. If it did not open, visit:"), 1, 0),
+				new Text(this.theme.fg("muted", t("Approve access in your browser. If it did not open, visit:")), 1, 0),
 				new Text(this.theme.fg("accent", hyperlink(authorizationUrl, authorizationUrl)), 1, 0),
 				new Text(this.theme.fg("dim", hyperlink(clickHint, authorizationUrl)), 1, 0),
 				new Spacer(1),
 				new Text(
-					this.theme.fg("muted", "If the browser runs on another machine, paste the URL it was redirected to:"),
+					this.theme.fg("muted", t("If the browser runs on another machine, paste the URL it was redirected to:")),
 					1,
 					0,
 				),

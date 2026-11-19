@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { connect } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { McpClient, StreamableHttpTransport } from "../src/index.ts";
 import {
@@ -469,23 +470,30 @@ describe("MCP OAuth", () => {
 	it("exchanges a code only when its iss parameter names the authorization server", async () => {
 		const codes: string[] = [];
 		const origin = await listen(async (request, response) => {
+			if (request.method !== "POST") {
+				response.statusCode = 404;
+				response.end();
+				return;
+			}
 			codes.push(new URLSearchParams(await readBody(request)).get("code") ?? "");
 			response.setHeader("content-type", "application/json");
 			response.end(JSON.stringify({ access_token: "token", token_type: "Bearer" }));
 		});
-		const exchange = (code: string, iss: string | undefined, issParameterSupported: boolean) => {
+		const exchange = (code: string, iss: string | undefined, issParameterSupported: boolean, metadata = true) => {
 			const provider = new TestOAuthProvider("http://127.0.0.1/callback");
 			provider.client = { client_id: "client" };
 			provider.verifier = "verifier";
 			provider.discovery = {
 				authorizationServerUrl: origin,
-				authorizationServerMetadata: {
-					issuer: origin,
-					authorization_endpoint: `${origin}/authorize`,
-					token_endpoint: `${origin}/token`,
-					response_types_supported: ["code"],
-					authorization_response_iss_parameter_supported: issParameterSupported,
-				},
+				authorizationServerMetadata: metadata
+					? {
+							issuer: origin,
+							authorization_endpoint: `${origin}/authorize`,
+							token_endpoint: `${origin}/token`,
+							response_types_supported: ["code"],
+							authorization_response_iss_parameter_supported: issParameterSupported,
+						}
+					: undefined,
 			};
 			return authorizeMcp(provider, { serverUrl: `${origin}/mcp`, authorizationCode: code, iss });
 		};
@@ -496,7 +504,12 @@ describe("MCP OAuth", () => {
 		expect(await exchange("matching", origin, true)).toBe("AUTHORIZED");
 		// Servers that do not promise the parameter may omit it.
 		expect(await exchange("omitted", undefined, false)).toBe("AUTHORIZED");
-		expect(codes).toEqual(["matching", "omitted"]);
+		// Without metadata there is no issuer to compare with, so a server cannot skip the check by hiding it.
+		await expect(exchange("unverifiable", "https://attacker.example", false, false)).rejects.toBeInstanceOf(
+			OAuthIssuerMismatchError,
+		);
+		expect(await exchange("no-metadata", undefined, false, false)).toBe("AUTHORIZED");
+		expect(codes).toEqual(["matching", "omitted", "no-metadata"]);
 	});
 });
 
@@ -510,6 +523,38 @@ describe("OAuthCallbackServer pages", () => {
 			expect(await response.text()).toBe("Authorization complete. You may close this window.");
 			expect((await pending).code).toBe("abc");
 		} finally {
+			await callback.close();
+		}
+	});
+
+	// fork: a request target that is not a URL gets 400, and the server keeps
+	// waiting for the real callback.
+	it("answers 400 to a request target that does not parse, then takes the callback", async () => {
+		const callback = await OAuthCallbackServer.listen();
+		const crashes: unknown[] = [];
+		const onCrash = (error: unknown) => crashes.push(error);
+		process.on("uncaughtException", onCrash);
+		try {
+			const pending = callback.waitForCallback("s1");
+			const { port } = new URL(callback.redirectUrl);
+			const raw = await new Promise<string>((resolve, reject) => {
+				const socket = connect(Number(port), "127.0.0.1", () => {
+					socket.end("GET //[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+				});
+				let text = "";
+				socket.on("data", (chunk) => {
+					text += chunk.toString();
+				});
+				socket.on("close", () => resolve(text));
+				socket.on("error", reject);
+			});
+			expect(raw.split("\r\n")[0]).toBe("HTTP/1.1 400 Bad Request");
+			expect(crashes).toEqual([]);
+			const response = await fetch(`${callback.redirectUrl}?code=abc&state=s1`);
+			expect(response.status).toBe(200);
+			expect((await pending).code).toBe("abc");
+		} finally {
+			process.off("uncaughtException", onCrash);
 			await callback.close();
 		}
 	});

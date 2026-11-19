@@ -33,7 +33,9 @@ describe("createAgentSession stream options", () => {
 
 	afterEach(() => {
 		if (tempDir) {
-			rmSync(tempDir, { recursive: true, force: true });
+			// fork: auth.json was written in the test, so it is read again under its lock
+			// (RACY_MS); a read the disposed session gave up releases that lock just after the test, during this removal.
+			rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 		}
 	});
 

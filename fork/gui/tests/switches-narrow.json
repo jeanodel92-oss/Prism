@@ -1,0 +1,13 @@
+[
+	{ "do": "log", "text": "Run at 560 px or narrower: the keys go first, the switches stay on the composer's line." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": "#mode-switches [data-mode='files']" },
+	{ "do": "absent", "selector": "#mode-switches kbd" },
+	{ "do": "fits", "selector": ".composer-row" },
+	{ "do": "click", "selector": "#mode-switches [data-mode='plan']" },
+	{ "do": "wait", "selector": "#mode-switches [data-mode='plan'][aria-pressed='true']" },
+	{ "do": "fits", "selector": ".composer-row" },
+	{ "do": "shot", "name": "n1-plan-on" },
+	{ "do": "log", "text": "switches-narrow-ok" },
+	{ "do": "quit" }
+]

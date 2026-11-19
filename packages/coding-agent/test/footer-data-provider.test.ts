@@ -134,8 +134,9 @@ describe("FooterDataProvider reftable branch detection", () => {
 		const provider = new FooterDataProvider(repoDir);
 		try {
 			expect(provider.getGitBranch()).toBe("main");
+			// fork: Git by its real path on PATH (hostProgram).
 			expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
-				"git",
+				expect.stringMatching(/\/git$/),
 				["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
 				expect.objectContaining({
 					cwd: expect.stringMatching(/repo$/),

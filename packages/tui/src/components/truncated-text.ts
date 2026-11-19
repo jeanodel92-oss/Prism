@@ -1,3 +1,4 @@
+import { fitPadding } from "../fork/fit-padding.ts";
 import type { Component } from "../tui.ts";
 import { truncateToWidth, visibleWidth } from "../utils.ts";
 
@@ -31,7 +32,9 @@ export class TruncatedText implements Component {
 		}
 
 		// Calculate available width after horizontal padding
-		const availableWidth = Math.max(1, width - this.paddingX * 2);
+		// prism-fork: the padding never takes the text's last column, and nothing is added past the width.
+		const paddingX = fitPadding(width, this.paddingX);
+		const availableWidth = Math.max(0, width - paddingX * 2);
 
 		// Take only the first line (stop at newline)
 		let singleLineText = this.text;
@@ -44,8 +47,8 @@ export class TruncatedText implements Component {
 		const displayText = truncateToWidth(singleLineText, availableWidth);
 
 		// Add horizontal padding
-		const leftPadding = " ".repeat(this.paddingX);
-		const rightPadding = " ".repeat(this.paddingX);
+		const leftPadding = " ".repeat(paddingX);
+		const rightPadding = " ".repeat(paddingX);
 		const lineWithPadding = leftPadding + displayText + rightPadding;
 
 		// Pad line to exactly width characters

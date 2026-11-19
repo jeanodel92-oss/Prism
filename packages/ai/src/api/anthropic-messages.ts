@@ -17,6 +17,7 @@ import {
 	ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
 	ANTHROPIC_WORKSPACE_ID_ENV,
 } from "../env-api-keys.ts";
+import { SseLineSplitter } from "../fork/sse-lines.ts";
 import { calculateCost } from "../models.ts";
 import type {
 	Api,
@@ -40,7 +41,7 @@ import type {
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.ts";
+import { parseJsonWithRepair, parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -62,7 +63,7 @@ import {
 } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
 import { adjustMaxTokensForThinking, buildBaseOptions, clampMaxTokensToContext } from "./simple-options.ts";
-import { transformMessages } from "./transform-messages.ts";
+import { splitErrorToolResultImages, transformMessages } from "./transform-messages.ts";
 
 /**
  * Resolve cache retention preference.
@@ -133,6 +134,17 @@ const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
 	return name;
 };
 
+function convertImageBlock(image: ImageContent) {
+	return {
+		type: "image" as const,
+		source: {
+			type: "base64" as const,
+			media_type: image.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+			data: image.data,
+		},
+	};
+}
+
 /**
  * Convert content blocks to Anthropic API format
  */
@@ -163,14 +175,7 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 				text: sanitizeSurrogates(block.text),
 			};
 		}
-		return {
-			type: "image" as const,
-			source: {
-				type: "base64" as const,
-				media_type: block.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-				data: block.data,
-			},
-		};
+		return convertImageBlock(block);
 	});
 
 	// If only images (no text), add placeholder text block
@@ -249,7 +254,7 @@ export interface AnthropicOptions extends StreamOptions {
 	 * Effort level for adaptive thinking models.
 	 * Controls how much thinking Claude allocates:
 	 * - "max": Always thinks with no constraints (Opus 4.6 only)
-	 * - "xhigh": Highest reasoning level (Opus 4.7+, Fable 5)
+	 * - "xhigh": Highest reasoning level
 	 * - "high": Always thinks, deep reasoning
 	 * - "medium": Moderate thinking, may skip for simple queries
 	 * - "low": Minimal thinking, skips for simple tasks
@@ -441,35 +446,6 @@ function decodeSseLine(line: string, state: SseDecoderState): ServerSentEvent | 
 	return null;
 }
 
-function nextLineBreakIndex(text: string): number {
-	const carriageReturnIndex = text.indexOf("\r");
-	const newlineIndex = text.indexOf("\n");
-	if (carriageReturnIndex === -1) {
-		return newlineIndex;
-	}
-	if (newlineIndex === -1) {
-		return carriageReturnIndex;
-	}
-	return Math.min(carriageReturnIndex, newlineIndex);
-}
-
-function consumeLine(text: string): { line: string; rest: string } | null {
-	const lineBreakIndex = nextLineBreakIndex(text);
-	if (lineBreakIndex === -1) {
-		return null;
-	}
-
-	let nextIndex = lineBreakIndex + 1;
-	if (text[lineBreakIndex] === "\r" && text[nextIndex] === "\n") {
-		nextIndex += 1;
-	}
-
-	return {
-		line: text.slice(0, lineBreakIndex),
-		rest: text.slice(nextIndex),
-	};
-}
-
 async function* iterateSseMessages(
 	body: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
@@ -477,7 +453,7 @@ async function* iterateSseMessages(
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
 	const state: SseDecoderState = { event: null, data: [], raw: [] };
-	let buffer = "";
+	const lines = new SseLineSplitter();
 
 	try {
 		while (true) {
@@ -490,31 +466,24 @@ async function* iterateSseMessages(
 				break;
 			}
 
-			buffer += decoder.decode(value, { stream: true });
-			let consumed = consumeLine(buffer);
-			while (consumed) {
-				buffer = consumed.rest;
-				const event = decodeSseLine(consumed.line, state);
+			for (const line of lines.push(decoder.decode(value, { stream: true }))) {
+				const event = decodeSseLine(line, state);
 				if (event) {
 					yield event;
 				}
-				consumed = consumeLine(buffer);
 			}
 		}
 
-		buffer += decoder.decode();
-		let consumed = consumeLine(buffer);
-		while (consumed) {
-			buffer = consumed.rest;
-			const event = decodeSseLine(consumed.line, state);
+		for (const line of lines.push(decoder.decode())) {
+			const event = decodeSseLine(line, state);
 			if (event) {
 				yield event;
 			}
-			consumed = consumeLine(buffer);
 		}
 
-		if (buffer.length > 0) {
-			const event = decodeSseLine(buffer, state);
+		const last = lines.end();
+		if (last !== undefined) {
+			const event = decodeSseLine(last, state);
 			if (event) {
 				yield event;
 			}
@@ -802,7 +771,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 								partial: output,
 							});
 						} else if (block.type === "toolCall") {
-							block.arguments = parseStreamingJson(block.partialJson);
+							Object.assign(block, parseToolCallArguments(block.partialJson));
 							// Finalize in-place and strip the scratch buffer so replay only
 							// carries parsed arguments.
 							delete (block as { partialJson?: string }).partialJson;
@@ -1300,11 +1269,11 @@ function normalizeToolCallId(id: string): string {
 	return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 }
 
-function convertToolResult(msg: ToolResultMessage): ContentBlockParam {
+function convertToolResult(msg: ToolResultMessage, content = msg.content): ContentBlockParam {
 	return {
 		type: "tool_result",
 		tool_use_id: msg.toolCallId,
-		content: convertContentBlocks(msg.content),
+		content: convertContentBlocks(content),
 		is_error: msg.isError,
 	};
 }
@@ -1375,14 +1344,7 @@ function convertMessages(
 							text: sanitizeSurrogates(item.text),
 						};
 					} else {
-						return {
-							type: "image",
-							source: {
-								type: "base64",
-								media_type: item.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-								data: item.data,
-							},
-						};
+						return convertImageBlock(item);
 					}
 				});
 				const filteredBlocks = blocks.filter((b) => {
@@ -1469,9 +1431,17 @@ function convertMessages(
 		} else if (msg.role === "toolResult") {
 			// Collect all consecutive toolResult messages, needed for z.ai Anthropic endpoint.
 			const toolResults: ContentBlockParam[] = [];
+			// Anthropic rejects error tool results that contain anything but text, so their images follow
+			// all tool results of the turn, which must come first in the user message (#10794).
+			const errorImages: ContentBlockParam[] = [];
 			let j = i;
 			while (j < transformedMessages.length && transformedMessages[j].role === "toolResult") {
-				toolResults.push(convertToolResult(transformedMessages[j] as ToolResultMessage));
+				const toolMsg = transformedMessages[j] as ToolResultMessage;
+				const split = splitErrorToolResultImages(toolMsg);
+				toolResults.push(convertToolResult(toolMsg, split?.content));
+				if (split) {
+					errorImages.push({ type: "text", text: split.caption }, ...split.images.map(convertImageBlock));
+				}
 				j++;
 			}
 
@@ -1480,7 +1450,7 @@ function convertMessages(
 
 			params.push({
 				role: "user",
-				content: toolResults,
+				content: [...toolResults, ...errorImages],
 			});
 		}
 	}

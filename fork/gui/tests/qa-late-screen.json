@@ -1,0 +1,37 @@
+[
+	{ "do": "log", "text": "Owner, 2026-11-14: a screen that arrives in the middle of a turn (the phone on a session of the window) shows each event once and misses none. A second view of the same session stands for the other screen: the host attaches it to the engine already running." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "slow" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant" },
+	{ "do": "sleep", "ms": 2500, "why": "well into the reply's thinking, which takes about 25 s" },
+	{ "do": "second-screen", "joined": true },
+	{ "do": "wait", "selector": ".turn-summary", "timeout": 60000 },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "second-screen-same", "min": 3, "statuses": 1, "why": "the message, the reply joined after its start, the turn's line; and the statuses the engine set before the second screen attached" },
+
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".turn-summary + .msg.user" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "sleep", "ms": 500, "why": "the second turn's line is asked for after the turn settled" },
+	{ "do": "second-screen-same", "min": 6, "why": "a turn both screens followed from its start" },
+
+	{ "do": "type", "text": "! printf 'shared\\n'" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='done'] .tool-output", "text": "shared" },
+	{ "do": "second-screen-same", "min": 7, "why": "a ! command run on one screen shows on the other" },
+	{ "do": "second-screen-close" },
+
+	{ "do": "type", "text": "! echo started; sleep 6; echo ended" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='running'] .tool-output", "text": "started" },
+	{ "do": "second-screen", "running": "started", "why": "a screen that arrives while a ! command runs shows it running, with its output so far" },
+	{ "do": "second-screen-same", "min": 8 },
+	{ "do": "wait", "selector": ".transcript > :last-child.user-bash[data-status='done'] .tool-output", "text": "ended", "timeout": 20000 },
+	{ "do": "second-screen-same", "min": 8, "why": "its end reaches the screen that arrived while it ran" },
+	{ "do": "second-screen-close" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "log", "text": "qa-late-screen-ok" },
+	{ "do": "quit" }
+]

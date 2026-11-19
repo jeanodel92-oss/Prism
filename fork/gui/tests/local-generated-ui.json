@@ -1,0 +1,17 @@
+[
+	{ "do": "wait", "selector": "#welcome" },
+	{ "do": "type", "text": "Use the show_ui tool once: a table of three planets with their diameter in km, then a choices block titled \"Which one next?\" with the three planet names as options. Then end your turn." },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='true']" },
+	{ "do": "wait", "selector": ".tool[data-status='done'] .gen-ui [data-type='table'] td", "timeout": 300000 },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 300000 },
+	{ "do": "shot", "name": "lg1-document" },
+	{ "do": "wait", "selector": ".gen-choices button.option:not([disabled])" },
+	{ "do": "click", "selector": ".gen-choices button.option" },
+	{ "do": "wait", "selector": ".msg.user .bubble", "text": "Answer to “Which one next?”", "timeout": 30000 },
+	{ "do": "wait", "selector": ".gen-choices button.option[disabled]" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 300000 },
+	{ "do": "shot", "name": "lg2-answered" },
+	{ "do": "metrics", "label": "local-generated-ui" },
+	{ "do": "quit" }
+]

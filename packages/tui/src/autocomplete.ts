@@ -21,7 +21,8 @@ function escapeRegex(value: string): string {
 function buildFdPathQuery(query: string): string {
 	const normalized = toDisplayPath(query);
 	if (!normalized.includes("/")) {
-		return normalized;
+		// fork: fd reads a regex; a name such as "+page" or "(group)" is literal text.
+		return escapeRegex(normalized);
 	}
 
 	const hasTrailingSeparator = normalized.endsWith("/");
@@ -182,7 +183,8 @@ async function walkDirectoryWithFd(
 	}
 
 	if (query) {
-		args.push(buildFdPathQuery(query));
+		// fork: "--" so that a name starting with "-" is not read as an option.
+		args.push("--", buildFdPathQuery(query));
 	}
 
 	return await new Promise((resolve) => {
@@ -258,6 +260,8 @@ export interface SlashCommand {
 	name: string;
 	description?: string;
 	argumentHint?: string;
+	/** fork: other words that find this command (e.g. "exit" for "quit"). */
+	aliases?: string[];
 	// Function to get argument completions for this command
 	// Returns null if no argument completion is available
 	getArgumentCompletions?(argumentPrefix: string): Awaitable<AutocompleteItem[] | null>;
@@ -341,17 +345,21 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 			if (spaceIndex === -1) {
 				const prefix = commandText.slice(1);
-				const commandItems = this.commands.map((cmd) => {
-					const name = "name" in cmd ? cmd.name : cmd.value;
-					const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
-					const desc = cmd.description ?? "";
-					const fullDesc = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
-					return {
-						name,
-						label: name,
-						description: fullDesc || undefined,
-					};
-				});
+				// fork: a command of several words ("plugin setup") is listed once its first
+				// word is typed, so plugins with many subcommands do not flood "/".
+				const commandItems = this.commands
+					.filter((cmd) => !("name" in cmd ? cmd.name : cmd.value).includes(" "))
+					.map((cmd) => {
+						const name = "name" in cmd ? cmd.name : cmd.value;
+						const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
+						const desc = cmd.description ?? "";
+						const fullDesc = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
+						return {
+							name,
+							label: name,
+							description: fullDesc || undefined,
+						};
+					});
 
 				const bareNameMatches = fuzzyFilter(commandItems, prefix, (item) =>
 					item.name.startsWith("skill:") ? item.name.slice("skill:".length) : item.name,
@@ -362,7 +370,24 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					prefix,
 					(item) => item.name,
 				);
-				const filtered = [...bareNameMatches, ...fullNameOnlyMatches].map((item) => ({
+				// fork: commands found by an alias come first ("exit" finds "quit").
+				const query = prefix.toLowerCase();
+				const aliasMatches =
+					query.length < 2
+						? []
+						: commandItems.filter((item) => {
+								const command = this.commands.find((cmd) => "name" in cmd && cmd.name === item.name);
+								const aliases = command && "aliases" in command ? (command.aliases ?? []) : [];
+								return !bareNameMatchSet.has(item) && aliases.some((alias) => alias.startsWith(query));
+							});
+				// A command typed in full stays first: "/session" + Enter ran /resume, found by its alias "sessions".
+				const exact = bareNameMatches.filter((item) => item.name.toLowerCase() === query);
+				const filtered = [
+					...exact,
+					...aliasMatches,
+					...bareNameMatches.filter((item) => !exact.includes(item)),
+					...fullNameOnlyMatches,
+				].map((item) => ({
 					value: item.name,
 					label: item.label,
 					...(item.description && { description: item.description }),
@@ -378,6 +403,22 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 			const commandName = commandText.slice(1, spaceIndex);
 			const argumentText = commandText.slice(spaceIndex + 1);
+
+			// fork: after "/plugin ", list the commands of several words that start with it.
+			const typed = commandText.slice(1);
+			const subcommands = this.commands
+				.map((cmd) => ({ name: "name" in cmd ? cmd.name : cmd.value, description: cmd.description }))
+				.filter((cmd) => cmd.name.includes(" ") && cmd.name.startsWith(typed) && cmd.name !== typed.trimEnd());
+			if (subcommands.length > 0) {
+				return {
+					items: subcommands.map((cmd) => ({
+						value: cmd.name,
+						label: cmd.name,
+						...(cmd.description && { description: cmd.description }),
+					})),
+					prefix: commandText,
+				};
+			}
 
 			const command = this.commands.find((cmd) => {
 				const name = "name" in cmd ? cmd.name : cmd.value;

@@ -1,6 +1,6 @@
 import { getKeybindings } from "../keybindings.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
-import { truncateToWidth, visibleWidth } from "../utils.ts";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
@@ -35,6 +35,8 @@ export interface SelectListLayoutOptions {
 	minPrimaryColumnWidth?: number;
 	maxPrimaryColumnWidth?: number;
 	truncatePrimary?: (context: SelectListTruncatePrimaryContext) => string;
+	/** fork: wrap a long description onto the next lines, under itself, instead of cutting it. */
+	wrapDescription?: boolean;
 }
 
 export class SelectList implements Component {
@@ -45,6 +47,8 @@ export class SelectList implements Component {
 	private maxVisible: number = 5;
 	private theme: SelectListTheme;
 	private layout: SelectListLayoutOptions;
+	/** fork: the item of each rendered row when descriptions wrap, for the mouse. */
+	private rowItems: number[] | undefined;
 
 	public onSelect?: (item: SelectItem) => void;
 	public onCancel?: () => void;
@@ -87,14 +91,18 @@ export class SelectList implements Component {
 		const { startIndex, endIndex } = this.getVisibleRange();
 
 		// Render visible items
+		const rowItems: number[] = [];
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredItems[i];
 			if (!item) continue;
 
 			const isSelected = i === this.selectedIndex;
 			const descriptionSingleLine = item.description ? normalizeToSingleLine(item.description) : undefined;
-			lines.push(this.renderItem(item, isSelected, width, descriptionSingleLine, primaryColumnWidth));
+			const itemLines = this.renderItem(item, isSelected, width, descriptionSingleLine, primaryColumnWidth);
+			lines.push(...itemLines);
+			for (const _ of itemLines) rowItems.push(i);
 		}
+		this.rowItems = this.layout.wrapDescription ? rowItems : undefined;
 
 		// Add scroll indicators if needed
 		if (startIndex > 0 || endIndex < this.filteredItems.length) {
@@ -118,7 +126,7 @@ export class SelectList implements Component {
 		// Hover must not change selection: the visible range is centered on it.
 		if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
 		const { startIndex, endIndex } = this.getVisibleRange();
-		const itemIndex = startIndex + event.y;
+		const itemIndex = this.rowItems ? (this.rowItems[event.y] ?? -1) : startIndex + event.y;
 		if (itemIndex < startIndex || itemIndex >= endIndex) return undefined;
 
 		if (event.type === "press") {
@@ -186,7 +194,7 @@ export class SelectList implements Component {
 		width: number,
 		descriptionSingleLine: string | undefined,
 		primaryColumnWidth: number,
-	): string {
+	): string[] {
 		const prefix = isSelected ? "→ " : "  ";
 		const prefixWidth = visibleWidth(prefix);
 
@@ -200,23 +208,29 @@ export class SelectList implements Component {
 			const remainingWidth = width - descriptionStart - 2; // -2 for safety
 
 			if (remainingWidth > MIN_DESCRIPTION_WIDTH) {
-				const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, "");
+				const [truncatedDesc = "", ...more] = this.layout.wrapDescription
+					? wrapTextWithAnsi(descriptionSingleLine, remainingWidth)
+					: [truncateToWidth(descriptionSingleLine, remainingWidth, "")];
+				const indent = " ".repeat(descriptionStart);
 				if (isSelected) {
-					return this.theme.selectedText(`${prefix}${truncatedValue}${spacing}${truncatedDesc}`);
+					return [
+						this.theme.selectedText(`${prefix}${truncatedValue}${spacing}${truncatedDesc}`),
+						...more.map((line) => this.theme.selectedText(indent + line)),
+					];
 				}
 
 				const descText = this.theme.description(spacing + truncatedDesc);
-				return prefix + truncatedValue + descText;
+				return [prefix + truncatedValue + descText, ...more.map((line) => indent + this.theme.description(line))];
 			}
 		}
 
 		const maxWidth = width - prefixWidth - 2;
 		const truncatedValue = this.truncatePrimary(item, isSelected, maxWidth, maxWidth);
 		if (isSelected) {
-			return this.theme.selectedText(`${prefix}${truncatedValue}`);
+			return [this.theme.selectedText(`${prefix}${truncatedValue}`)];
 		}
 
-		return prefix + truncatedValue;
+		return [prefix + truncatedValue];
 	}
 
 	private getPrimaryColumnWidth(): number {
@@ -264,6 +278,15 @@ export class SelectList implements Component {
 		if (selectedItem && this.onSelectionChange) {
 			this.onSelectionChange(selectedItem);
 		}
+	}
+
+	/** fork: the selection and how many items are listed, for a view that measures each of them. */
+	getSelectedIndex(): number {
+		return this.selectedIndex;
+	}
+
+	getItemCount(): number {
+		return this.filteredItems.length;
 	}
 
 	getSelectedItem(): SelectItem | null {

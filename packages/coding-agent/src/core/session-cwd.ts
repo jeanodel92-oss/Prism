@@ -1,4 +1,12 @@
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
+
+function isDirectory(path: string): boolean {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
 
 export interface SessionCwdIssue {
 	sessionFile?: string;
@@ -21,7 +29,8 @@ export function getMissingSessionCwdIssue(
 	}
 
 	const sessionCwd = sessionManager.getCwd();
-	if (!sessionCwd || existsSync(sessionCwd)) {
+	// fork: a folder, or a link to one; a file at that path is no working directory.
+	if (!sessionCwd || isDirectory(sessionCwd)) {
 		return undefined;
 	}
 

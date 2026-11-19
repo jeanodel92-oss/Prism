@@ -1,0 +1,4123 @@
+/* Prism window. Every colour is a role of the terminal theme (theme.js sets --ink, --line, --surface…,
+   from prism.json / prism-light.json); this file defines layout, type and states only (da-site.md § 6). */
+
+:root {
+	--sans: "Inter", "Adwaita Sans", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+	--mono: "JetBrains Mono", "Adwaita Mono", "DejaVu Sans Mono", ui-monospace, monospace;
+	--column: 54rem; /* 46rem left the conversation and the composer narrow */
+	/* the side menu is a rail of icons and the panel of the view chosen. */
+	--rail: 3.25rem;
+	--panel: 16.5rem;
+	--sidebar: calc(var(--rail) + var(--panel));
+	--radius: 2px;
+	--ease: 200ms cubic-bezier(0.2, 0, 0, 1);
+	--bg: var(--x-page-bg);
+	--topbar-height: calc(3rem + 1px);
+	--statusbar-height: 2.25rem;
+	color-scheme: dark;
+}
+
+:root[data-appearance="light"] {
+	color-scheme: light;
+}
+
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+	transition: none !important;
+	animation: none !important;
+}
+
+*,
+* :before,
+* :after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	height: 100%;
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 15px;
+	line-height: 1.6;
+	font-feature-settings: "ss01", "cv11";
+	-webkit-font-smoothing: antialiased;
+	overflow: hidden;
+}
+
+[hidden] {
+	display: none !important;
+}
+
+:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 3px;
+	border-radius: var(--radius);
+}
+
+.offscreen {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ controls */
+
+button,
+select,
+input,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button,
+select {
+	min-height: 2rem;
+	padding: 0.25rem 0.75rem;
+	background: transparent;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	cursor: pointer;
+	transition:
+		background-color var(--ease),
+		border-color var(--ease),
+		color var(--ease);
+}
+
+button:hover:not(:disabled),
+select:hover:not(:disabled) {
+	border-color: var(--ink-2);
+}
+
+button.primary {
+	background: var(--ink);
+	border-color: var(--ink);
+	color: var(--bg);
+}
+
+button.primary:hover:not(:disabled) {
+	background: var(--ink-2);
+	border-color: var(--ink-2);
+}
+
+button.ghost {
+	border-color: transparent;
+	color: var(--ink-2);
+}
+
+button.ghost:hover:not(:disabled) {
+	border-color: var(--line);
+	color: var(--ink);
+}
+
+button.small {
+	min-height: 1.5rem;
+	padding: 0 0.5rem;
+	font-size: 0.8rem;
+}
+
+button.icon {
+	min-width: 2rem;
+	padding: 0;
+}
+
+button:disabled,
+select:disabled,
+textarea:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+select {
+	appearance: none;
+	padding-right: 1.6rem;
+	background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+		linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+	background-position:
+		calc(100% - 0.85rem) 55%,
+		calc(100% - 0.55rem) 55%;
+	background-size: 0.3rem 0.3rem;
+	background-repeat: no-repeat;
+	max-width: 16rem;
+	text-overflow: ellipsis;
+}
+
+select option {
+	background: var(--surface);
+	color: var(--ink);
+}
+
+/* State marks: empty = waiting, half = running, full = done (da-site.md). */
+.state {
+	display: inline-block;
+	flex: none;
+	width: 0.55rem;
+	height: 0.55rem;
+	border: 1px solid var(--ink-2);
+	border-radius: 50%;
+}
+
+.state.half {
+	background: linear-gradient(90deg, var(--ink-2) 50%, transparent 50%);
+}
+
+.state.full {
+	background: var(--ink-3);
+	border-color: var(--ink-3);
+}
+
+.state.asleep {
+	border-style: dashed;
+	opacity: 0.6;
+}
+
+/* Open on a phone, not running in this window: a ring around a dot. */
+.state.phone {
+	background: radial-gradient(circle, var(--ink-2) 32%, transparent 38%);
+}
+
+.state.error {
+	background: var(--error);
+	border-color: var(--error);
+}
+
+/* -------------------------------------------------------------------- layout */
+
+.app {
+	display: grid;
+	grid-template-columns: var(--sidebar) 1fr;
+	height: 100%;
+}
+
+/* Folded, the panel goes and the rail stays. */
+body.sidebar-collapsed .app {
+	grid-template-columns: var(--rail) 1fr;
+}
+
+body.sidebar-collapsed .side-panel {
+	visibility: hidden;
+}
+
+.sidebar {
+	display: flex;
+	min-width: 0;
+	border-right: 1px solid var(--line);
+	overflow: hidden;
+}
+
+.rail {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.3rem;
+	width: var(--rail);
+	padding: 0.85rem 0 0.75rem;
+	border-right: 1px solid var(--line);
+}
+
+.rail-mark {
+	display: grid;
+	place-items: center;
+	height: 2.25rem;
+	margin-bottom: 0.65rem;
+}
+
+.rail-fill {
+	flex: 1;
+}
+
+.rail-button {
+	display: grid;
+	place-items: center;
+	width: 2.3rem;
+	min-height: 2.3rem;
+	padding: 0;
+	border-color: transparent;
+	color: var(--ink-3);
+}
+
+.rail-button svg {
+	width: 1.2rem;
+	height: 1.2rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.rail-button:hover:not(:disabled),
+.rail-button.current {
+	border-color: transparent;
+	color: var(--ink);
+}
+
+.side-panel {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-width: 0;
+	padding: 0.85rem 0.75rem 1rem;
+	overflow: hidden;
+}
+
+.side-view {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 1rem;
+	min-height: 0;
+}
+
+.side-view[hidden] {
+	display: none;
+}
+
+.sidebar h2.side-title {
+	display: flex;
+	align-items: center;
+	min-height: 2.25rem;
+	margin: 0;
+	color: var(--ink);
+	font-size: 0.95rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	text-transform: none;
+}
+
+.side-filter {
+	flex: none;
+}
+
+/* A search result: its name and date, then what was found in its text. */
+.side-results {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.side-results .session-link.result {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: baseline;
+	gap: 0.1rem 0.55rem;
+	padding-top: 0.35rem;
+	padding-bottom: 0.35rem;
+}
+
+.side-results .excerpt {
+	grid-column: 1 / -1;
+	display: -webkit-box;
+	overflow: hidden;
+	color: var(--ink-3);
+	font-size: 0.78rem;
+	line-height: 1.35;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+/* A view's title with its action beside it (the scheduled tasks' +, the logs' inspector). */
+.side-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.side-note {
+	margin: 0;
+	padding: 0 0.5rem;
+	color: var(--ink-3);
+	font-size: 0.8rem;
+	line-height: 1.4;
+}
+
+.side-note:empty {
+	display: none;
+}
+
+.side-note.warning {
+	color: var(--warning);
+}
+
+.side-results .session-link.result.log[data-state="denied"] .excerpt,
+.side-results .session-link.result.log[data-state="blocked"] .excerpt,
+.side-results .session-link.result.log[data-state="error"] .excerpt {
+	color: var(--warning);
+}
+
+.side-results .session-link.result.agent-run[data-state="failed"] .meta {
+	color: var(--warning);
+}
+
+/* A sub-agent's transcript: its task, then what it wrote and did, in order. */
+.agent-transcript {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+.agent-entry.user {
+	padding-left: 0.75rem;
+	border-left: 2px solid var(--line-strong);
+}
+
+.agent-entry.tool[data-state="error"] .agent-output {
+	color: var(--warning);
+}
+
+/* The memory, read as the model reads it: each file, then what can be done with it. */
+.side-memory {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 1.1rem;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.side-memory-part {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+}
+
+.sidebar h3.side-subtitle {
+	margin: 0;
+	padding: 0 0.5rem;
+	color: var(--ink-3);
+	font-size: 0.75rem;
+	font-weight: 500;
+}
+
+.side-text {
+	max-height: 18rem;
+	padding: 0.5rem;
+	overflow-y: auto;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	color: var(--ink-2);
+	font-size: 0.8rem;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* The engine's technical output in the logs, newest line last. */
+.side-output {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 0.72rem;
+}
+
+.side-memory .muted {
+	margin: 0;
+	padding: 0 0.5rem;
+	font-size: 0.8rem;
+}
+
+.side-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.sidebar .action {
+	justify-content: flex-start;
+	text-align: left;
+}
+
+.sidebar h2 {
+	margin: 0 0 0.3rem;
+	padding: 0 0.5rem;
+	color: var(--ink-3);
+	font-size: 0.72rem;
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.sidebar nav.history {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.session-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.session-list li {
+	display: flex;
+	align-items: center;
+	border-radius: var(--radius);
+}
+
+.session-list li.muted {
+	padding: 0.25rem 0.5rem;
+	color: var(--ink-3);
+	font-size: 0.85rem;
+}
+
+.session-list .session-link {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 0.55rem;
+	min-width: 0;
+	min-height: 1.9rem;
+	border-color: transparent;
+	color: var(--ink-2);
+	text-align: left;
+}
+
+.session-list .session-link:hover {
+	color: var(--ink);
+	border-color: var(--line);
+}
+
+.session-list li.current .session-link {
+	color: var(--ink);
+	background: var(--surface-2);
+	border-color: var(--line);
+}
+
+.session-list .label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.session-list .meta {
+	color: var(--ink-3);
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.session-list .close {
+	opacity: 0;
+}
+
+.session-list li:hover .close,
+.session-list li.current .close,
+.session-list .close:focus-visible {
+	opacity: 1;
+}
+
+.main {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+}
+
+.topbar {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	height: var(--topbar-height);
+	padding: 0.4rem 1rem;
+	border-bottom: 1px solid var(--line);
+	z-index: 1;
+	background: var(--bg);
+}
+
+.topbar h1 {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	font-size: 0.92rem;
+	font-weight: 500;
+}
+
+/* The magnifier of the conversation's search. */
+.search-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.search-button svg {
+	width: 1.1rem;
+	height: 1.1rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+}
+
+/* The title renames the conversation: a button that reads as the title, boxed on hover; its field in place. */
+.title-button {
+	min-width: 0;
+	max-width: 100%;
+	padding: 0.2rem 0.5rem;
+	border-color: transparent;
+	background: none;
+	color: var(--ink);
+	font: inherit;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.title-button:hover:not(:disabled) {
+	border-color: var(--line-strong);
+	cursor: text;
+}
+
+.title-button:disabled {
+	color: var(--ink);
+}
+
+.title-field {
+	max-width: 32rem;
+	padding: 0.2rem 0.5rem;
+	font: inherit;
+}
+
+.bars,
+.bars::before,
+.bars::after {
+	display: block;
+	width: 0.9rem;
+	height: 1px;
+	margin: auto;
+	background: currentColor;
+}
+
+.bars {
+	position: relative;
+}
+
+.bars::before,
+.bars::after {
+	content: "";
+	position: absolute;
+}
+
+.bars::before {
+	top: -4px;
+}
+
+.bars::after {
+	top: 4px;
+}
+
+/* Model and reasoning level: buttons in the composer's bottom row (the terminal's editor line), each opening
+   its picker on the interaction surface. The value reads first, its qualifier quieter. */
+.picker {
+	display: inline-flex;
+	flex: 0 1 auto;
+	align-items: baseline;
+	gap: 0.4rem;
+	min-width: 0;
+	min-height: 1.9rem;
+	padding: 0.15rem 0.55rem;
+	border-color: transparent;
+	background: transparent;
+	color: var(--ink);
+	font-size: 0.85rem;
+	white-space: nowrap;
+}
+
+.picker:hover:not(:disabled),
+.picker[aria-expanded="true"] {
+	border-color: var(--line-strong);
+	background: var(--surface);
+}
+
+.picker:disabled {
+	color: var(--ink-2);
+}
+
+.picker-label {
+	min-width: 0;
+	max-width: 16rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.picker-meta {
+	color: var(--ink-3);
+	font-size: 0.78rem;
+}
+
+.picker-meta:empty {
+	display: none;
+}
+
+.picker::after {
+	content: "";
+	align-self: center;
+	width: 0.35rem;
+	height: 0.35rem;
+	margin-left: 0.1rem;
+	border-right: 1.5px solid var(--ink-3);
+	border-bottom: 1.5px solid var(--ink-3);
+	transform: translateY(-25%) rotate(45deg);
+}
+
+.banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 1rem;
+	padding: 0.6rem 1rem;
+	border-bottom: 1px solid var(--line);
+	background: var(--band);
+	font-size: 0.9rem;
+}
+
+.banner.error strong {
+	color: var(--error);
+}
+
+.banner span {
+	color: var(--ink-2);
+}
+
+.banner details {
+	flex-basis: 100%;
+}
+
+.banner pre {
+	max-height: 10rem;
+	overflow: auto;
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	white-space: pre-wrap;
+}
+
+/* The scene sits beside the scroller, not in it: inside, it scrolled with the transcript. */
+.stage {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* The terminal's transcript search: top right, 40 % wide, 32 columns at least. */
+.search {
+	position: absolute;
+	top: 0.5rem;
+	right: 1rem;
+	z-index: 3;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	width: max(40%, 32ch);
+	max-width: calc(100% - 2rem);
+	padding: 0.3rem 0.4rem 0.3rem 0.6rem;
+	border: 1px solid var(--c-accent);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	font-family: var(--mono);
+	font-size: 0.85rem;
+}
+
+.search[hidden] {
+	display: none;
+}
+
+.search input {
+	flex: 1;
+	min-width: 0;
+	border: 0;
+	background: transparent;
+	color: var(--ink);
+	font: inherit;
+	outline: none;
+}
+
+.search-result {
+	color: var(--ink-3);
+	white-space: nowrap;
+}
+
+/* As in the terminal: the other matches underlined, the current one inverted. */
+::highlight(prism-search) {
+	text-decoration: underline;
+	text-decoration-color: var(--c-accent);
+}
+
+::highlight(prism-search-current) {
+	background-color: var(--c-accent);
+	color: var(--bg);
+}
+
+/* A container: the welcome is sized by what the composer leaves it (.welcome). */
+.scroller {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-color: var(--line-strong) transparent;
+}
+
+/* The welcome's and the empty model's heights (cqh) are the transcript's room. Only while one shows: a size container
+   around a conversation made WebKitGTK put its scroll back to the top as a reply being written grew, then at each
+   step of the reader's (QA-007). */
+.scroller:has(.welcome:not([hidden]), .empty-model:not([hidden])) {
+	container-type: size;
+}
+
+.column {
+	width: 100%;
+	max-width: calc(var(--column) + 2rem);
+	margin: 0 auto;
+	padding: 0 1rem;
+}
+
+.scroller > .column {
+	position: relative;
+	padding-top: 1.5rem;
+	padding-bottom: 2rem;
+}
+
+/* ------------------------------------------------------------ welcome scene */
+
+/* The scene fades through one registered value: a transition of its opacity itself showed, when it ended, one
+   frame at the opacity it left in WebKitGTK 2.54, dark on the welcome, light over a conversation. */
+@property --shown {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 0;
+}
+
+/* Between the top bar and the status bar, both of fixed height: the composer, the completion list and the
+   interaction surface lie over the scene and never change its size (QG-06). */
+.scene {
+	position: absolute;
+	top: var(--topbar-height);
+	right: 0;
+	bottom: var(--statusbar-height);
+	left: 0;
+	z-index: 0;
+	pointer-events: none;
+	opacity: var(--shown);
+	transition: --shown 600ms ease;
+}
+
+.main > :not(.scene) {
+	position: relative;
+	z-index: 1;
+}
+
+.scene canvas {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.scene.still {
+	background: url("site/still-4.webp") center / cover no-repeat;
+}
+
+[data-scene="1"] .scene.still {
+	background-image: url("site/still-1.webp");
+}
+
+.scene.still canvas {
+	display: none;
+}
+
+.main:has(.welcome:not([hidden])) > .scene {
+	--shown: 1;
+}
+
+/* A saved conversation opening: a quiet line where its transcript is about to show. */
+.loading {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 2.5rem 0;
+	color: var(--ink-3);
+	font-size: 0.9rem;
+}
+
+.loading .state {
+	animation: pulse 1.4s ease-in-out infinite;
+}
+
+.welcome,
+.empty-model {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: flex-end;
+	/* never taller than the room above the composer (less the column's padding), which a long
+	   draft reduces: its title sits at its bottom and would be cut by the composer's edge. */
+	min-height: min(52vh, calc(100cqh - 3.5rem));
+	padding-bottom: 2rem;
+}
+
+.welcome h2 {
+	margin: 0;
+	font-size: clamp(2rem, 6vw, 3.2rem);
+	font-weight: 600;
+	letter-spacing: -0.035em;
+	line-height: 1.05;
+}
+
+.welcome p,
+.empty-model p {
+	max-width: 34rem;
+	margin: 0.6rem 0 0;
+	color: var(--ink-2);
+}
+
+.empty-model h2 {
+	margin: 0.8rem 0 0;
+	font-size: 1.25rem;
+	font-weight: 500;
+}
+
+/* --------------------------------------------------------------- transcript */
+
+.transcript {
+	display: flex;
+	flex-direction: column;
+	gap: 1.1rem;
+}
+
+/* The room of the entries not drawn, above and below the view (transcript-list.js); its height is set by the list. */
+.transcript-spacer {
+	flex: none;
+	pointer-events: none;
+}
+
+/* an empty transcript under the welcome took no room but WebKit painted it as a selected blank line
+   when the welcome was dragged over. Nothing of it shows until the first message; the welcome and the other
+   empty states are a heading, not text to copy. */
+.transcript:empty {
+	display: none;
+}
+
+.welcome,
+.empty-model,
+.loading {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.msg.user {
+	align-self: flex-end;
+	max-width: 85%;
+}
+
+.msg.user .bubble {
+	padding: 0.55rem 0.85rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.msg.assistant {
+	display: flex;
+	flex-direction: column;
+	gap: 0.7rem;
+}
+
+.msg-error {
+	padding-left: 0.75rem;
+	border-left: 1px solid var(--error);
+	color: var(--error);
+	font-size: 0.88rem;
+}
+
+.msg-error.aborted {
+	border-color: var(--line-strong);
+	color: var(--ink-3);
+}
+
+.notice {
+	color: var(--ink-3);
+	font-size: 0.85rem;
+	text-align: center;
+	white-space: pre-line; /* the terminal's status lines (the /share links) */
+}
+
+.notice.warning {
+	color: var(--warning);
+}
+
+/* The terminal's end of a turn: a short hairline, the turn's figures in ink 3, the hairline to the end.
+   One line, as there; on a narrow window the figures are cut, the footer has the tokens too. */
+.turn-summary {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.turn-summary::before,
+.turn-summary::after {
+	content: "";
+	flex: none;
+	width: 1.2rem;
+	border-top: 1px solid var(--line);
+}
+
+.turn-summary::after {
+	flex: 1;
+}
+
+/* copies the model's final answer, beside the turn's figures. */
+.turn-summary .turn-copy {
+	flex: none;
+	padding: 0.05rem 0.4rem;
+	border-color: transparent;
+	color: var(--ink-3);
+	font: inherit;
+}
+.turn-summary .turn-copy:hover,
+.turn-summary .turn-copy:focus-visible {
+	border-color: var(--line);
+	color: var(--ink-2);
+}
+
+/* Holds the place of a turn's line until the engine has recorded its figures; no gap meanwhile. */
+.turn-slot {
+	display: none;
+}
+
+.turn-summary span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Several lines of a built-in command's report (/session), aligned as the terminal prints them. */
+.notice.block {
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	text-align: left;
+	white-space: pre-line;
+}
+
+.notice.error {
+	color: var(--error);
+}
+
+/* Markdown */
+.md {
+	overflow-wrap: anywhere;
+}
+
+.md > :first-child {
+	margin-top: 0;
+}
+
+.md > :last-child {
+	margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md .table,
+.md figure {
+	margin: 0 0 0.8rem;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+	margin: 1.2rem 0 0.5rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	line-height: 1.3;
+}
+
+.md h1 {
+	font-size: 1.35rem;
+}
+
+.md h2 {
+	font-size: 1.18rem;
+}
+
+.md h3,
+.md h4 {
+	font-size: 1rem;
+}
+
+.md ul,
+.md ol {
+	padding-left: 1.4rem;
+}
+
+.md li + li {
+	margin-top: 0.2rem;
+}
+
+.md li.task {
+	list-style: none;
+	margin-left: -1.2rem;
+}
+
+.md li.task .check {
+	margin-right: 0.5rem;
+	color: var(--ink-2);
+}
+
+.md blockquote {
+	padding-left: 0.9rem;
+	border-left: 1px solid var(--line-strong);
+	color: var(--ink-2);
+}
+
+.md hr {
+	border: 0;
+	border-top: 1px solid var(--line);
+	margin: 1.2rem 0;
+}
+
+.md code {
+	padding: 0.05rem 0.3rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	font-family: var(--mono);
+	font-size: 0.86em;
+}
+
+.md .link {
+	text-decoration: underline 1px var(--line-strong);
+	text-underline-offset: 0.22em;
+	cursor: pointer;
+}
+
+.md .link:hover {
+	text-decoration-color: var(--ink);
+}
+
+.md .image-ref,
+.md .raw {
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.85em;
+}
+
+.md .raw {
+	white-space: pre-wrap;
+}
+
+.md .table {
+	overflow-x: auto;
+}
+
+.md table {
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+
+.md th,
+.md td {
+	padding: 0.35rem 0.7rem;
+	border: 1px solid var(--line);
+	text-align: left;
+}
+
+.md th {
+	font-weight: 600;
+	background: var(--surface);
+}
+
+.md .align-center {
+	text-align: center;
+}
+
+.md .align-right {
+	text-align: right;
+}
+
+/* Math (math.js): KaTeX's stylesheet loads with the library; a formula takes the text's colour. A display formula wider
+   than the reply scrolls on its own; the vertical padding keeps its tallest glyphs inside the scrolling box, and its
+   lowest ones above the scroll bar, which WebKit draws over the content. */
+.md .math-display {
+	margin: 0 0 0.8rem;
+	padding: 0.2rem 0 0.7rem;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+
+.md .math-display > .katex-display {
+	margin: 0;
+}
+
+.md pre.math-source {
+	margin: 0 0 0.8rem;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.85em;
+	white-space: pre-wrap;
+}
+
+/* A block still streaming: its lines as written. */
+.md .math-pending {
+	white-space: pre-wrap;
+}
+
+figure.code {
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	overflow: hidden;
+}
+
+figure.code figcaption {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 1.9rem;
+	padding: 0 0.35rem 0 0.75rem;
+	border-bottom: 1px solid var(--line);
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.75rem;
+}
+
+figure.code pre {
+	margin: 0;
+	padding: 0.7rem 0.85rem;
+	overflow-x: auto;
+	font-family: var(--mono);
+	font-size: 0.82rem;
+	line-height: 1.55;
+}
+
+figure.code pre code {
+	padding: 0;
+	border: 0;
+	background: none;
+	font-size: inherit;
+}
+
+/* Reasoning */
+.thinking {
+	color: var(--ink-3);
+	font-size: 0.88rem;
+}
+
+.thinking summary {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	cursor: pointer;
+	list-style: none;
+}
+
+.thinking summary::-webkit-details-marker {
+	display: none;
+}
+
+.thinking-body {
+	margin-top: 0.4rem;
+	padding-left: 0.9rem;
+	border-left: 1px solid var(--line);
+	white-space: pre-wrap;
+	/* a long unbroken line (a URL, markup) made the window scroll sideways. */
+	overflow-wrap: anywhere;
+}
+
+/* Tool calls */
+.tool {
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	font-size: 0.85rem;
+}
+
+.tool > header {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	min-height: 2rem;
+	padding: 0.3rem 0.75rem;
+}
+
+.tool-name {
+	font-family: var(--mono);
+	font-weight: 600;
+}
+
+/* A call with more detail than the card shows: the header opens it (and Ctrl+O, every call). */
+.tool > header[role="button"] {
+	cursor: pointer;
+}
+
+.tool > header[role="button"]:hover {
+	background: var(--band);
+}
+
+.tool > header[role="button"]::after {
+	content: "";
+	flex: none;
+	width: 0.4rem;
+	height: 0.4rem;
+	margin-left: 0.15rem;
+	border-right: 1.5px solid var(--ink-3);
+	border-bottom: 1.5px solid var(--ink-3);
+	transform: translateY(-20%) rotate(45deg);
+	transition: transform var(--ease);
+}
+
+.tool > header[aria-expanded="true"]::after {
+	transform: translateY(20%) rotate(-135deg);
+}
+
+.tool-summary {
+	flex: none;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+}
+
+.tool-summary:empty {
+	display: none;
+}
+
+/* A !! command, left out of the model's context: dimmed, as the terminal's border. */
+.tool.user-bash.excluded {
+	border-style: dashed;
+}
+
+.tool.user-bash.excluded > header {
+	color: var(--ink-3);
+}
+
+.tool-target {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--ink-2);
+	font-family: var(--mono);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tool-state,
+.tool-time {
+	flex: none;
+	color: var(--ink-3);
+	font-size: 0.78rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.tool[data-status="error"] .tool-state {
+	color: var(--error);
+}
+
+.tool[data-status="error"] .state {
+	background: var(--error);
+	border-color: var(--error);
+}
+
+.tool[data-status="awaiting"] {
+	border-color: var(--ink-2);
+}
+
+.tool[data-status="awaiting"] .tool-state {
+	color: var(--ink);
+}
+
+.tool[data-status="running"] .state {
+	animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+.tool-output:empty,
+.tool-dialog:empty {
+	display: none;
+}
+
+.tool-output {
+	border-top: 1px solid var(--line);
+	padding: 0.35rem 0.75rem 0.6rem;
+}
+
+.tool-output > button {
+	margin-bottom: 0.3rem;
+}
+
+.tool-output pre {
+	margin: 0;
+	max-height: 28rem;
+	overflow: auto;
+	color: var(--ink-2);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* A generated UI (show_ui): blocks drawn from the engine's validated document. */
+.gen-ui {
+	display: grid;
+	gap: 0.9rem;
+	padding: 0.3rem 0 0.2rem;
+	color: var(--ink);
+	font-size: 0.88rem;
+}
+
+.tool.preview .gen-ui {
+	opacity: 0.7;
+}
+
+.gen-title {
+	font-weight: 600;
+	font-size: 0.95rem;
+}
+
+.gen-block {
+	display: grid;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.gen-block-title {
+	color: var(--ink-2);
+	font-weight: 600;
+}
+
+.gen-scroll {
+	max-height: 28rem;
+	overflow: auto;
+}
+
+.gen-ui table {
+	border-collapse: collapse;
+	font-variant-numeric: tabular-nums;
+}
+
+.gen-ui th,
+.gen-ui td {
+	padding: 0.25rem 0.75rem 0.25rem 0;
+	border-bottom: 1px solid var(--line);
+	text-align: left;
+	vertical-align: top;
+	overflow-wrap: anywhere;
+}
+
+.gen-ui th {
+	position: sticky;
+	top: 0;
+	background: var(--surface);
+	color: var(--ink-2);
+	font-weight: 600;
+}
+
+.gen-ui .num {
+	text-align: right;
+}
+
+.gen-ui ul,
+.gen-ui ol {
+	margin: 0;
+	padding-left: 1.3rem;
+}
+
+.gen-ui dl {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 0.25rem 1rem;
+	margin: 0;
+}
+
+.gen-ui dt {
+	color: var(--ink-2);
+}
+
+.gen-ui dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.gen-ui figure {
+	margin: 0;
+}
+
+.gen-ui svg {
+	display: block;
+	width: 100%;
+	max-width: 40rem;
+	height: auto;
+}
+
+.gen-ui svg .tick {
+	fill: var(--ink-3);
+	font-size: 11px;
+	font-family: var(--sans);
+}
+
+.gen-ui svg .axis {
+	stroke: var(--line-strong);
+}
+
+.gen-ui svg .grid {
+	stroke: var(--line);
+	stroke-dasharray: 3 3;
+}
+
+.gen-ui svg polyline.series {
+	stroke-width: 2;
+}
+
+/* Series take the theme's own colours, in the order the terminal's syntax highlighting uses them. */
+.gen-ui .s0 { --series: var(--c-accent); }
+.gen-ui .s1 { --series: var(--c-syntax-string); }
+.gen-ui .s2 { --series: var(--c-syntax-keyword); }
+.gen-ui .s3 { --series: var(--c-warning); }
+.gen-ui .s4 { --series: var(--c-syntax-function); }
+.gen-ui .s5 { --series: var(--c-syntax-type); }
+
+.gen-ui rect.series,
+.gen-ui circle.series,
+.gen-ui .swatch {
+	fill: var(--series);
+	background: var(--series);
+}
+
+.gen-ui polyline.series {
+	stroke: var(--series);
+}
+
+.gen-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem 1rem;
+	color: var(--ink-2);
+	font-size: 0.8rem;
+}
+
+.gen-legend .swatch {
+	display: inline-block;
+	width: 0.7rem;
+	height: 0.7rem;
+	margin-right: 0.35rem;
+	border-radius: 2px;
+	vertical-align: -0.05rem;
+}
+
+.gen-choices {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.gen-form {
+	display: grid;
+	gap: 0.5rem;
+	max-width: 30rem;
+}
+
+.gen-form label {
+	display: grid;
+	gap: 0.2rem;
+}
+
+.gen-form label.toggle {
+	grid-template-columns: 1fr auto;
+	align-items: center;
+}
+
+.gen-form input:not([type="checkbox"]) {
+	min-height: 2rem;
+	padding: 0.25rem 0.6rem;
+	background: transparent;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+}
+
+.gen-form input:focus-visible {
+	border-color: var(--ink-2);
+	outline: none;
+}
+
+.gen-form input:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.gen-form select {
+	max-width: none;
+}
+
+.gen-form label > span {
+	color: var(--ink-2);
+}
+
+.gen-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.tool-output .line.add {
+	color: var(--success);
+}
+
+.tool-output .line.del {
+	color: var(--error);
+}
+
+.tool-image {
+	display: block;
+	max-width: 100%;
+	margin-top: 0.5rem;
+	border: 1px solid var(--line);
+}
+
+/* Questions from the engine (permissions and other dialogs) */
+.tool-dialog {
+	border-top: 1px solid var(--line);
+}
+
+.dialog {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.75rem;
+	border: 1px solid var(--ink-2);
+	border-radius: var(--radius);
+	background: var(--band);
+}
+
+.tool-dialog .dialog {
+	border: 0;
+	border-radius: 0;
+}
+
+.dialog:focus {
+	outline: none;
+}
+
+.dialog-title {
+	font-weight: 600;
+}
+
+.dialog-warning {
+	color: var(--error);
+	font-weight: 600;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.dialog-body {
+	color: var(--ink-2);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.dialog .option {
+	font-size: 0.85rem;
+}
+
+.dialog .option.first {
+	border-color: var(--ink-2);
+}
+
+.dialog .field {
+	width: 100%;
+	padding: 0.4rem 0.6rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--bg);
+	font-family: var(--mono);
+	font-size: 0.85rem;
+}
+
+.dialog-countdown {
+	color: var(--ink-3);
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.dialog-countdown:empty {
+	display: none;
+}
+
+.msg.bash figure,
+.msg.custom {
+	margin: 0;
+}
+
+/* ---------------------------------------------------------- composer & bars */
+
+.widgets {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	padding-bottom: 0.5rem;
+}
+
+.widget {
+	margin: 0;
+	padding: 0.4rem 0.7rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	color: var(--ink-2);
+	font-family: var(--mono);
+	font-size: 0.75rem;
+	white-space: pre-wrap;
+}
+
+/* The state of a resumed session whose last turn was cut short (session-state.ts): a report, not terminal lines. */
+/* the messages waiting for the reply, above the composer. */
+.widget.queue-tray {
+	display: grid;
+	gap: 0.35rem;
+	padding: 0.5rem 0.7rem;
+	border-color: var(--line-strong);
+	font-family: inherit;
+	white-space: normal;
+}
+.queue-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	color: var(--ink-3);
+	font-size: 0.75rem;
+}
+.queue-list {
+	display: grid;
+	gap: 0.25rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.queue-item {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6rem;
+	min-width: 0;
+}
+.queue-kind {
+	flex: none;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.7rem;
+}
+.queue-text {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--ink);
+	font-size: 0.85rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.widget.session-state {
+	display: grid;
+	gap: 0.4rem;
+	padding: 0.6rem 0.8rem;
+	font-family: inherit;
+	white-space: normal;
+}
+
+/* Views of the engine (view.js): terminal lines, in the terminal's monospace grid. The 16 basic colours
+   map to theme roles; components mostly use the theme's own 24-bit colours. */
+
+:root {
+	--ansi-0: var(--surface-2);
+	--ansi-1: var(--error);
+	--ansi-2: var(--success);
+	--ansi-3: var(--warning);
+	--ansi-4: var(--ink-2);
+	--ansi-5: var(--ink-2);
+	--ansi-6: var(--ink-2);
+	--ansi-7: var(--ink-2);
+	--ansi-8: var(--ink-3);
+	--ansi-9: var(--error);
+	--ansi-10: var(--success);
+	--ansi-11: var(--warning);
+	--ansi-12: var(--ink);
+	--ansi-13: var(--ink);
+	--ansi-14: var(--ink);
+	--ansi-15: var(--ink);
+	--view-font: 0.8rem;
+	--view-line: 1.35;
+}
+
+/* The interaction surface (surface.js): its height has a ceiling set from the window (--surface-max),
+   never from what is left of the transcript; panels inside shrink and scroll their bodies. */
+.surface {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	max-height: var(--surface-max, 60vh);
+	min-height: 0;
+}
+
+.surface.open {
+	padding-bottom: 0.6rem;
+}
+
+.view-probe,
+.view-lines {
+	font-family: var(--mono);
+	font-size: var(--view-font);
+	line-height: var(--view-line);
+	white-space: pre;
+}
+
+.view-probe {
+	position: absolute;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.panel {
+	display: flex;
+	flex: 0 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	max-height: var(--surface-max, 60vh);
+	background: var(--surface);
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	transition: opacity 120ms ease;
+}
+
+.panel:focus-within {
+	border-color: var(--ink-3);
+}
+
+.panel:focus {
+	outline: none;
+}
+
+/* An answered screen of a menu, waiting a moment for the next one in its place (surface.js). */
+.panel.closing {
+	pointer-events: none;
+}
+
+.panel-head {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 0.6rem;
+	min-height: 2.4rem;
+	padding: 0.3rem 0.4rem 0.3rem 0.85rem;
+	border-bottom: 1px solid var(--line);
+}
+
+.panel-title {
+	min-width: 0;
+	margin: 0;
+	overflow: hidden;
+	font-size: 0.9rem;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.terminal-view .panel-title {
+	color: var(--ink-2);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	font-weight: 500;
+}
+
+.panel-subtitle {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--ink-3);
+	font-size: 0.8rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.panel-close {
+	flex: none;
+	margin-left: auto;
+	font-size: 1.1rem;
+}
+
+.panel-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 0.6rem;
+	min-height: 0;
+	padding: 0.7rem 0.85rem;
+	overflow: auto;
+}
+
+.panel-text {
+	margin: 0;
+	color: var(--ink-2);
+	font-size: 0.88rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.panel-actions {
+	display: flex;
+	flex: none;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	padding: 0 0.85rem 0.7rem;
+}
+
+.panel-actions[hidden] {
+	display: none;
+}
+
+/* An empty panel laid out like the real ones: its body's inner width is the width a view has for its lines. */
+.panel.view-measure {
+	visibility: hidden;
+	height: 0;
+	max-height: 0;
+	overflow: hidden;
+	border-top-width: 0;
+	border-bottom-width: 0;
+	pointer-events: none;
+}
+
+.panel.view-measure .panel-body {
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+/* A view of the engine inside its panel: terminal lines on the panel's own background. */
+.view {
+	--view-bg: var(--surface);
+	--view-fg: var(--ink);
+	position: relative;
+	margin: 0 -0.85rem -0.7rem;
+	padding: 0 0.85rem 0.7rem;
+	background: var(--view-bg);
+}
+
+.view:focus {
+	outline: none;
+}
+
+.view-lines {
+	margin: 0;
+	color: var(--view-fg);
+	overflow: hidden;
+}
+
+.view-line {
+	min-height: calc(var(--view-font) * var(--view-line));
+}
+
+.view .caret {
+	display: inline-block;
+	width: 0;
+	height: 1.1em;
+	vertical-align: text-bottom;
+	border-left: 1px solid var(--ink);
+}
+
+/* ---------------------------------------------------------------- lists */
+
+.listbox-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	min-height: 0;
+}
+
+.listbox {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+	scrollbar-color: var(--line-strong) transparent;
+}
+
+.listbox:focus {
+	outline: none;
+}
+
+.listbox li {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: baseline;
+	column-gap: 1rem;
+	padding: 0.4rem 0.6rem;
+	border-left: 2px solid transparent;
+	border-radius: var(--radius);
+	cursor: pointer;
+}
+
+.listbox li.selected {
+	border-left-color: var(--ink);
+	background: var(--band);
+}
+
+/* What is in use now (the current model, the current level): a check before its name. */
+.listbox li.current .listbox-label::before {
+	content: "✓ ";
+	color: var(--c-accent, var(--ink));
+}
+
+.listbox li.disabled {
+	cursor: default;
+}
+
+.listbox-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* long previews above a question's options squeezed the list to zero height,
+   leaving nothing to click. The text gives way and scrolls; the options keep their height. */
+.panel.question .panel-text {
+	flex: 0 1 auto;
+	min-height: 3.5rem;
+	overflow-y: auto;
+}
+.panel.question .listbox-wrap {
+	flex-shrink: 0;
+}
+/* a question of the model is read whole, its title and options wrap. */
+.panel.question .panel-title,
+.panel.question .listbox-label {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	text-overflow: clip;
+	white-space: normal;
+}
+
+.listbox-meta {
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	white-space: nowrap;
+}
+
+.listbox-description {
+	grid-column: 1 / -1;
+	color: var(--ink-3);
+	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+.listbox-empty {
+	color: var(--ink-3);
+	cursor: default;
+}
+
+.field {
+	width: 100%;
+	padding: 0.45rem 0.65rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--bg);
+	font-size: 0.88rem;
+}
+
+.field:focus {
+	outline: none;
+	border-color: var(--ink-2);
+}
+
+/* Read-only reports (/session…): label, value. */
+.facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: 0.35rem 1.25rem;
+	margin: 0;
+	font-size: 0.88rem;
+}
+
+.facts dt {
+	color: var(--ink-3);
+}
+
+.facts dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+	font-variant-numeric: tabular-nums;
+}
+
+.keys-table {
+	border-collapse: collapse;
+	font-size: 0.88rem;
+}
+
+.keys-table td {
+	padding: 0.3rem 1.25rem 0.3rem 0;
+	vertical-align: top;
+}
+
+.keys-table kbd {
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+
+.composer {
+	padding-bottom: 0.6rem;
+}
+
+.composer textarea {
+	display: block;
+	width: 100%;
+	min-height: 3.2rem;
+	max-height: 40vh;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	resize: none;
+	line-height: 1.5;
+	transition: border-color var(--ease);
+}
+
+.composer textarea:focus {
+	outline: none;
+	border-color: var(--ink-2);
+}
+
+.composer textarea::placeholder {
+	color: var(--ink-3);
+}
+
+.composer[data-busy="true"] textarea {
+	border-style: dashed;
+}
+
+/* What goes with the next message (attachments.js), above its text; under a sent message, its images whole. */
+.attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	padding-bottom: 0.4rem;
+}
+
+.attachment {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	max-width: 16rem;
+	min-width: 0;
+	padding: 0.2rem 0.25rem 0.2rem 0.3rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	color: var(--ink-2);
+	font-size: 0.78rem;
+}
+
+.attachment-thumb {
+	flex: none;
+	width: 2.2rem;
+	height: 2.2rem;
+	object-fit: cover;
+	border-radius: 2px;
+}
+
+.attachment-icon {
+	flex: none;
+	color: var(--ink-3);
+}
+
+.attachment-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.attachment-remove {
+	flex: none;
+	min-height: 0;
+	padding: 0 0.35rem;
+	line-height: 1.2;
+}
+
+.msg.user .attachments.sent {
+	align-items: flex-start;
+	padding: 0.45rem 0 0;
+}
+
+.msg.user .attachments.sent:first-child {
+	padding-top: 0;
+}
+
+.attachments.sent .attachment {
+	flex-direction: column;
+	align-items: flex-start;
+	max-width: 100%;
+}
+
+.attachments.sent .attachment-thumb {
+	width: auto;
+	height: auto;
+	min-width: 2.2rem;
+	min-height: 2.2rem;
+	max-width: min(22rem, 100%);
+	max-height: 16rem;
+	object-fit: contain;
+}
+
+.attach-button {
+	align-items: center;
+	font-size: 1.05rem;
+}
+
+.attach-button::after {
+	content: none;
+}
+
+/* The terminal's completion list, floating above the composer: every item, scrolling, the chosen one
+   marked. It never changes the composer's height (QG-05, QG-06). */
+.completion {
+	position: absolute;
+	right: 1rem;
+	bottom: calc(100% + 0.3rem);
+	left: 1rem;
+	z-index: 4;
+	max-height: min(18rem, 45vh);
+	margin: 0;
+	padding: 0.25rem 0;
+	overflow-y: auto;
+	list-style: none;
+	box-shadow: 0 -0.5rem 1.5rem rgb(0 0 0 / 0.35);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.completion li {
+	display: flex;
+	gap: 1.5rem;
+	padding: 0.1rem 0.6rem;
+	cursor: pointer;
+	white-space: pre;
+}
+
+.completion li.selected {
+	color: var(--c-accent);
+	background: var(--band);
+}
+
+.completion-label {
+	flex: 0 1 auto;
+	min-width: 12ch;
+	max-width: 32ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.completion-description {
+	color: var(--ink-3);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.composer-row {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding-top: 0.45rem;
+	container-type: inline-size;
+}
+
+.hint {
+	flex: 1;
+	min-width: 0;
+	margin-left: 0.75rem;
+	text-align: right;
+	overflow: hidden;
+	color: var(--ink-3);
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#send {
+	flex: none;
+	min-width: 5.5rem;
+	margin-left: 0.5rem;
+}
+
+/* The terminal's mode switches: ● in ink and the label in ink when on, the ● in the strong line and the label
+   in ink 3 when off; the key in ink 3 after it, dropped first when the row is short, as there. */
+.mode-switches {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 0.1rem;
+	margin-left: 0.5rem;
+}
+
+.mode-switch {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	min-height: 1.75rem;
+	padding: 0 0.45rem;
+	border-color: transparent;
+	color: var(--ink-3);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+
+.mode-switch .dot {
+	color: var(--line-strong);
+	font-size: 0.65rem;
+}
+
+.mode-switch[aria-pressed="true"],
+.mode-switch[aria-pressed="true"] .dot {
+	color: var(--ink);
+}
+
+.mode-switch kbd {
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.7rem;
+}
+
+/* A short row drops the switches' keys before the model and the reasoning level are cut (QA 2026-11-04: both
+   were cut to a few letters while the keys stayed); the keys stay in the tooltips and /help. */
+@container (max-width: 50rem) {
+	.mode-switch kbd {
+		display: none;
+	}
+}
+
+/* One line at every width: a footer that wrapped as statuses arrived changed the height of the stage
+   above it, and resized the welcome scene while it showed. Text at the composer's controls' size: the
+   footer is read and clicked, not a terminal line. Numbers in the mono face, aligned. */
+.statusbar {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.35rem;
+	height: var(--statusbar-height);
+	overflow: hidden;
+	white-space: nowrap;
+	padding: 0 0.6rem;
+	border-top: 1px solid var(--line);
+	color: var(--ink-2);
+	font-size: 0.8rem;
+	font-variant-numeric: tabular-nums;
+}
+
+/* As in the terminal footer: where and what on the left, usage and context on the right. Left items
+   give way first at narrow widths. */
+.statusbar > span {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	padding: 0 0.3rem;
+}
+
+.statusbar .cwd {
+	max-width: 22rem;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.75rem;
+}
+
+.statusbar .usage {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin-left: auto;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.75rem;
+}
+
+/* The footer's buttons (status chips, pinned commands, more…, the context gauge): a real target, a box on
+   hover, kept whole while the plain statuses give way. */
+.statusbar button {
+	flex: none;
+	min-height: 1.6rem;
+	padding: 0 0.5rem;
+	border: 1px solid transparent;
+	border-radius: var(--radius);
+	background: none;
+	color: var(--ink-2);
+	font: inherit;
+	cursor: pointer;
+}
+
+.statusbar .usage button {
+	font-family: var(--mono);
+}
+
+.statusbar button:hover:not(:disabled),
+.statusbar button:focus-visible {
+	border-color: var(--line-strong);
+	background: var(--surface);
+	color: var(--ink);
+}
+
+.statusbar button:disabled {
+	cursor: default;
+}
+
+/* The permission mode: a dot in the colour of its risk, as the terminal's pill (safe success, ask accent,
+   broad warning, unrestricted error). */
+.status-chip.perm::before {
+	content: "●";
+	margin-right: 0.35rem;
+	color: var(--c-accent, var(--ink));
+	font-size: 0.7em;
+	vertical-align: 0.1em;
+}
+
+.status-chip.perm[data-mode="safe"]::before {
+	color: var(--c-success, var(--ink));
+}
+
+.status-chip.perm[data-mode="broad"]::before {
+	color: var(--c-warning, var(--ink));
+}
+
+.status-chip.perm[data-mode="unrestricted"]::before {
+	color: var(--c-error, var(--ink));
+}
+
+.status-chip.sandbox.broken {
+	color: var(--c-warning, var(--ink));
+}
+
+.status-chip.init {
+	color: var(--ink);
+}
+
+/* ------------------------------------------------------------- dialogs etc. */
+
+dialog {
+	width: min(30rem, calc(100vw - 2rem));
+	padding: 1.25rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--surface);
+	color: var(--ink);
+}
+
+dialog::backdrop {
+	background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+dialog h2 {
+	margin: 0 0 1rem;
+	font-size: 1.05rem;
+	font-weight: 600;
+}
+
+dialog form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+dialog .dialog-actions {
+	justify-content: flex-end;
+	margin-top: 0.5rem;
+}
+
+.field-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.info {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 0.3rem 1rem;
+	margin: 0.5rem 0 0;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--line);
+	color: var(--ink-3);
+	font-size: 0.82rem;
+}
+
+.info dd {
+	margin: 0;
+	color: var(--ink-2);
+	font-family: var(--mono);
+	overflow-wrap: anywhere;
+}
+
+.url {
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 0.85rem;
+	overflow-wrap: anywhere;
+}
+
+/* Bottom right, above the open panel or the composer (app.js fitToasts sets `bottom`). */
+.toasts {
+	position: fixed;
+	bottom: 1rem;
+	right: 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	max-width: min(26rem, calc(100vw - 2rem));
+	z-index: 10;
+}
+
+.toast {
+	padding: 0.5rem 0.8rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--band);
+	font-size: 0.85rem;
+	white-space: pre-wrap;
+}
+
+/* A toast that stays (a path, a link): its text can be selected and copied, a × closes it. */
+.toast.sticky {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+.toast.sticky .toast-text {
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.toast-close {
+	flex: none;
+	min-height: 0;
+	padding: 0 0.3rem;
+}
+
+/* Waiting for room above the open panel (app.js fitToasts). */
+.toast[hidden] {
+	display: none;
+}
+
+.toast.error {
+	border-color: var(--error);
+}
+
+.toast.warning {
+	border-color: var(--warning);
+}
+
+.fatal {
+	position: fixed;
+	inset: 1rem;
+	padding: 1rem;
+	overflow: auto;
+	background: var(--bg);
+	color: var(--error);
+	font-family: var(--mono);
+	white-space: pre-wrap;
+}
+
+/* ------------------------------------------------------------ narrow widths */
+
+@media (max-width: 760px) {
+	.app,
+	body.sidebar-collapsed .app {
+		grid-template-columns: 1fr;
+	}
+
+	.sidebar {
+		position: fixed;
+		inset: 0 auto 0 0;
+		width: min(var(--sidebar), 85vw);
+		z-index: 5;
+		background: var(--bg);
+		visibility: hidden;
+	}
+
+	body.sidebar-open .sidebar {
+		visibility: visible;
+	}
+
+	.hint {
+		display: none;
+	}
+
+	.mode-switch kbd {
+		display: none;
+	}
+
+	.picker-label {
+		max-width: 8rem;
+	}
+
+	.picker-meta {
+		display: none;
+	}
+
+	#send {
+		margin-left: auto;
+	}
+}
+
+.tool-output pre + .tool-more {
+	margin: 0.3rem 0 0;
+}
+
+/* ---------------------------------------------------------------- choices, /doctor, /tree (screens.js) */
+
+/* A row of exclusive choices: a filter or a mode. */
+.segmented {
+	display: flex;
+	flex: none;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+}
+
+.segmented button {
+	padding: 0.25rem 0.6rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: transparent;
+	color: var(--ink-2);
+	font-size: 0.8rem;
+}
+
+.segmented button[aria-checked="true"] {
+	border-color: var(--ink-3);
+	background: var(--band);
+	color: var(--ink);
+}
+
+.checks {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.check summary {
+	display: grid;
+	grid-template-columns: auto max-content minmax(0, 1fr);
+	align-items: baseline;
+	gap: 0.6rem;
+	padding: 0.35rem 0.5rem;
+	border-radius: var(--radius);
+	cursor: pointer;
+	list-style: none;
+	font-size: 0.86rem;
+}
+
+.check summary::-webkit-details-marker {
+	display: none;
+}
+
+.check summary:hover,
+.check[open] summary {
+	background: var(--band);
+}
+
+.check-state {
+	width: 0.55rem;
+	height: 0.55rem;
+	border-radius: 50%;
+	background: var(--c-success, var(--ink-2));
+}
+
+.check[data-status="problem"] .check-state {
+	background: var(--c-error, var(--ink));
+}
+
+.check[data-status="not tested"] .check-state {
+	border: 1px solid var(--ink-3);
+	background: transparent;
+}
+
+.check-name {
+	font-weight: 600;
+}
+
+.check-observed {
+	overflow: hidden;
+	color: var(--ink-2);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.check[open] .check-observed {
+	white-space: normal;
+}
+
+.check .facts {
+	padding: 0.4rem 0.5rem 0.6rem 1.75rem;
+	font-size: 0.84rem;
+}
+
+/* The tree: one row per entry, indented where the conversation branched; the current branch stands out. */
+.panel.tree .listbox {
+	flex: 1 1 12rem;
+	min-height: 6rem;
+}
+
+.listbox li.tree-row {
+	padding-left: calc(0.6rem + var(--indent, 0) * 1rem);
+	color: var(--ink-3);
+	font-size: 0.86rem;
+}
+
+.listbox li.tree-row.on-path {
+	color: var(--ink);
+}
+
+.listbox li.tree-row.kind-user .listbox-label {
+	font-weight: 600;
+}
+
+.tree-detail {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	gap: 0.3rem;
+	max-height: 6.5rem;
+	padding-top: 0.5rem;
+	overflow: auto;
+	border-top: 1px solid var(--line);
+}
+
+.tree-detail-head {
+	display: flex;
+	gap: 0.5rem;
+	color: var(--ink-3);
+	font-size: 0.78rem;
+}
+
+.tree-detail-text {
+	font-size: 0.86rem;
+}
+
+.tree-detail-text.md :is(h1, h2, h3, h4) {
+	margin: 0.2rem 0;
+	font-size: 0.92rem;
+}
+
+.panel-actions .field {
+	flex: 1 1 14rem;
+	width: auto;
+}
+
+/* /model-settings: property, server, Prism (edited in place), reset. */
+.settings-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.86rem;
+}
+
+.settings-table :is(th, td) {
+	padding: 0.3rem 0.5rem;
+	border-bottom: 1px solid var(--line);
+	text-align: left;
+	vertical-align: middle;
+}
+
+.settings-table thead th {
+	color: var(--ink-3);
+	font-size: 0.78rem;
+	font-weight: 500;
+}
+
+.settings-table tbody th {
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.settings-table td.server {
+	color: var(--ink-2);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+.settings-table td.prism {
+	width: 45%;
+}
+
+.settings-table td.prism .field {
+	padding: 0.25rem 0.5rem;
+	font-family: var(--mono);
+	font-size: 0.82rem;
+}
+
+.settings-table .field[aria-invalid="true"] {
+	border-color: var(--c-error, var(--ink));
+}
+
+.settings-table tr.corrected th::after {
+	content: " •";
+	color: var(--c-accent, var(--ink));
+}
+
+.settings-table td.reset {
+	width: 1%;
+	white-space: nowrap;
+}
+
+/* /context: the parts of the context in a fixed order, each its own colour (validated for both appearances with
+   the dataviz checks: lightness band, colour-blind separation of neighbours, contrast; the light ones under 3:1
+   on the light surface are why the table with the numbers is always shown). Free room is the bar's track. */
+:root {
+	--series-1: #3987e5;
+	--series-2: #d95926;
+	--series-3: #199e70;
+	--series-4: #c98500;
+	--series-5: #d55181;
+	--series-6: #008300;
+}
+
+:root[data-appearance="light"] {
+	--series-1: #2a78d6;
+	--series-2: #eb6834;
+	--series-3: #1baf7a;
+	--series-4: #eda100;
+	--series-5: #e87ba4;
+	--series-6: #008300;
+}
+
+.ctx-bar {
+	display: flex;
+	flex: none;
+	gap: 2px;
+	height: 0.6rem;
+	overflow: hidden;
+	border-radius: 999px;
+}
+
+.ctx-part {
+	min-width: 2px;
+	flex-basis: 0;
+}
+
+:is(.ctx-part, .ctx-swatch).series-1 { background: var(--series-1); }
+:is(.ctx-part, .ctx-swatch).series-2 { background: var(--series-2); }
+:is(.ctx-part, .ctx-swatch).series-3 { background: var(--series-3); }
+:is(.ctx-part, .ctx-swatch).series-4 { background: var(--series-4); }
+:is(.ctx-part, .ctx-swatch).series-5 { background: var(--series-5); }
+:is(.ctx-part, .ctx-swatch).series-6 { background: var(--series-6); }
+:is(.ctx-part, .ctx-swatch).free { background: var(--line); }
+:is(.ctx-part, .ctx-swatch).reserve {
+	background: repeating-linear-gradient(135deg, var(--line-strong) 0 2px, transparent 2px 5px);
+}
+
+.ctx-swatch {
+	display: inline-block;
+	width: 0.65rem;
+	height: 0.65rem;
+	border-radius: 2px;
+}
+
+.ctx-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.86rem;
+}
+
+.ctx-table :is(th, td) {
+	padding: 0.25rem 0.5rem;
+	border-bottom: 1px solid var(--line);
+	text-align: left;
+}
+
+.ctx-table thead th {
+	color: var(--ink-3);
+	font-size: 0.78rem;
+	font-weight: 500;
+}
+
+.ctx-table tbody th {
+	font-weight: 500;
+}
+
+.ctx-table .num {
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.ctx-table td:first-child {
+	width: 1.2rem;
+}
+
+.ctx-content {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	min-height: 0;
+}
+
+.ctx-text {
+	margin: 0;
+	padding: 0.5rem 0.6rem;
+	overflow-x: auto;
+	border-radius: var(--radius);
+	background: var(--bg);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.ctx-list .check summary {
+	grid-template-columns: max-content minmax(0, 1fr) auto;
+}
+
+.ctx-tokens {
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.76rem;
+	white-space: nowrap;
+}
+
+.ctx-detail,
+.ctx-list .check > .ctx-text {
+	margin: 0.2rem 0.5rem 0.6rem 1.5rem;
+}
+
+/* /perm: modes as cards, the policy as a table, grants and rules as lists with their action. */
+.perm-content {
+	display: grid;
+	gap: 0.75rem;
+	min-height: 0;
+	overflow: auto;
+}
+
+.panel.perm[data-busy] .perm-content {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+.perm-modes {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	gap: 0.5rem;
+}
+
+.perm-mode {
+	display: grid;
+	gap: 0.4rem;
+	padding: 0.6rem 0.7rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	transition: border-color var(--ease), background var(--ease);
+}
+
+.perm-mode.current {
+	border-color: var(--line-strong);
+	background: var(--band);
+}
+
+.perm-mode-pick {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem 0.5rem;
+	align-items: baseline;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.perm-mode-name {
+	font-weight: 600;
+}
+
+.perm-mode-summary {
+	flex-basis: 100%;
+	color: var(--ink-2);
+	font-size: 0.82rem;
+	line-height: 1.4;
+}
+
+.badge {
+	padding: 0 0.35rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	color: var(--ink-2);
+	font-size: 0.72rem;
+}
+
+.badge.accent {
+	border-color: var(--c-accent, var(--line-strong));
+	color: var(--c-accent, var(--ink));
+}
+
+.perm-sandbox {
+	display: inline-flex;
+	gap: 0.4rem;
+	align-items: center;
+	font-size: 0.8rem;
+}
+
+.perm-sandbox.muted,
+.perm-scope.muted {
+	color: var(--ink-3);
+}
+
+.perm-keep {
+	justify-self: start;
+}
+
+/* the recent folders of "Choose a project folder" keep their height; the folder's listing scrolls. */
+.project-recent {
+	flex-shrink: 0;
+}
+
+.perm-heading {
+	margin: 0.4rem 0 0;
+	color: var(--ink-2);
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.perm-policy {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.84rem;
+}
+
+.perm-policy :is(th, td) {
+	padding: 0.25rem 0.45rem;
+	border-bottom: 1px solid var(--line);
+}
+
+.perm-policy thead th {
+	color: var(--ink-3);
+	font-size: 0.76rem;
+	font-weight: 500;
+	text-align: center;
+}
+
+.perm-policy tbody th {
+	font-weight: 500;
+	text-align: left;
+}
+
+.perm-policy :is(th, td).current {
+	background: var(--band);
+}
+
+.perm-policy td.verdict {
+	font-family: var(--mono);
+	text-align: center;
+}
+
+.perm-policy td.verdict.allow {
+	color: var(--success);
+}
+
+.perm-policy td.verdict.danger {
+	color: var(--warning);
+}
+
+.perm-policy td.verdict.block {
+	color: var(--error);
+}
+
+.perm-grants,
+.perm-rules {
+	display: grid;
+	gap: 0.25rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.perm-grants li,
+.perm-rules li {
+	display: flex;
+	gap: 0.6rem;
+	align-items: center;
+	padding: 0.3rem 0.4rem;
+	border-bottom: 1px solid var(--line);
+	font-size: 0.86rem;
+}
+
+.perm-what,
+.perm-rules code {
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.perm-effect {
+	font-size: 0.76rem;
+	font-weight: 600;
+}
+
+.perm-effect.deny {
+	color: var(--error);
+}
+
+.perm-task-scope {
+	display: grid;
+	gap: 0.4rem;
+	justify-items: start;
+}
+
+.perm-rule-group h4 {
+	margin: 0.3rem 0;
+	font-size: 0.84rem;
+	font-weight: 600;
+}
+
+.perm-rule-add {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.perm-rule-add input {
+	flex: 1;
+	min-width: 12rem;
+	font-family: var(--mono);
+}
+
+.panel-text.warning {
+	color: var(--warning);
+}
+
+/* The risk a question's answer accepts: red, whole, never scrolled. */
+.panel.question .panel-text.dialog-warning {
+	flex: 0 0 auto;
+	min-height: 0;
+	color: var(--error);
+}
+
+/* /sandbox: each setting with what it does, and its control beside it. */
+.sandbox-content {
+	display: grid;
+	gap: 0.75rem;
+	min-height: 0;
+	padding-right: 0.5rem;
+	overflow: auto;
+}
+
+.panel.sandbox[data-busy] .sandbox-content {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+.sandbox-status {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: start;
+	padding: 0.5rem 0.65rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	font-size: 0.86rem;
+}
+
+.sandbox-status[data-broken="true"] {
+	border-color: var(--warning);
+}
+
+.sandbox-status details {
+	flex: 1;
+	min-width: 12rem;
+}
+
+.sandbox-status summary {
+	cursor: pointer;
+	font-weight: 500;
+}
+
+.sandbox-field {
+	display: grid;
+	gap: 0.4rem;
+}
+
+.sandbox-switch {
+	grid-template-columns: auto 1fr;
+	align-items: start;
+	cursor: pointer;
+}
+
+.sandbox-choice .segmented {
+	justify-self: start;
+}
+
+.sandbox-text {
+	display: grid;
+	gap: 0.1rem;
+	min-width: 0;
+}
+
+.sandbox-label {
+	display: block;
+	font-size: 0.88rem;
+	font-weight: 500;
+}
+
+.sandbox-help {
+	color: var(--ink-3);
+	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+/* /changelog: the versions beside the chosen one's notes. */
+.changelog-layout {
+	display: grid;
+	grid-template-columns: minmax(10rem, 15rem) 1fr;
+	gap: 0.75rem;
+	min-height: 18rem;
+	height: 60vh;
+}
+
+@media (max-width: 40rem) {
+	.changelog-layout {
+		grid-template-columns: 1fr;
+		grid-template-rows: minmax(6rem, 30%) 1fr;
+	}
+}
+
+.changelog-side {
+	display: grid;
+	grid-template-rows: auto 1fr;
+	gap: 0.4rem;
+	min-height: 0;
+}
+
+.changelog-notes {
+	min-height: 0;
+	overflow: auto;
+	padding-right: 0.4rem;
+}
+
+/* /tutorial: the modules beside the chosen one's pages, one height for all of them. */
+.tutorial-here .listbox-label {
+	font-weight: 600;
+}
+
+.tutorial-layout {
+	display: grid;
+	grid-template-columns: minmax(11rem, 16rem) 1fr;
+	gap: 1rem;
+	min-height: 18rem;
+	height: 55vh;
+}
+
+@media (max-width: 40rem) {
+	.tutorial-layout {
+		grid-template-columns: 1fr;
+		grid-template-rows: minmax(6rem, 30%) 1fr;
+	}
+}
+
+.tutorial-layout .listbox-wrap {
+	min-height: 0;
+}
+
+.tutorial-content {
+	display: grid;
+	align-content: start;
+	gap: 0.6rem;
+	min-height: 0;
+	overflow: auto;
+}
+
+.tutorial-title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.tutorial-exercise {
+	display: grid;
+	gap: 0.5rem;
+	padding: 0.65rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+}
+
+.tutorial-task {
+	margin: 0;
+	font-weight: 500;
+}
+
+.tutorial-practice {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+}
+
+.tutorial-practice input {
+	flex: 1;
+	min-width: 0;
+	font-family: var(--mono);
+}
+
+.tutorial-prompt {
+	color: var(--ink-3);
+	font-family: var(--mono);
+}
+
+.tutorial-mock {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	font-size: 0.86rem;
+}
+
+.tutorial-output {
+	flex-basis: 100%;
+	margin: 0;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+}
+
+.tutorial-answer {
+	margin: 0;
+	white-space: pre-wrap;
+}
+
+.tutorial-answer-line {
+	color: var(--ink-3);
+}
+
+.tutorial-note.success {
+	color: var(--success);
+}
+
+.tutorial-exercise > button {
+	justify-self: start;
+}
+
+/* /budget: each limit with what was used, its gauge and its field. */
+.budget-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.88rem;
+}
+
+.budget-table :is(th, td) {
+	padding: 0.4rem 0.5rem;
+	border-bottom: 1px solid var(--line);
+	text-align: left;
+}
+
+.budget-table thead th {
+	color: var(--ink-3);
+	font-size: 0.76rem;
+	font-weight: 500;
+}
+
+.budget-table tbody th {
+	font-weight: 500;
+}
+
+.budget-table tr[data-blocked="true"] {
+	background: var(--band);
+}
+
+.budget-used {
+	font-family: var(--mono);
+	white-space: nowrap;
+}
+
+.budget-gauge {
+	height: 0.3rem;
+	margin-top: 0.25rem;
+	overflow: hidden;
+	background: var(--line);
+	border-radius: 999px;
+}
+
+.budget-gauge > div {
+	height: 100%;
+	background: var(--ink-2);
+}
+
+.budget-gauge[data-high="true"] > div {
+	background: var(--warning);
+}
+
+.budget-table tbody th::first-letter,
+.sandbox-label::first-letter,
+.sandbox-status summary::first-letter {
+	text-transform: uppercase;
+}
+
+.budget-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	align-items: center;
+}
+
+.budget-form input {
+	flex: 1;
+	width: 6rem;
+	min-width: 5rem;
+	font-family: var(--mono);
+}
+
+/* /schedule: the tasks beside the chosen one, or the form that creates one. */
+.schedule-layout {
+	display: grid;
+	grid-template-columns: minmax(11rem, 16rem) 1fr;
+	gap: 1rem;
+	min-height: 18rem;
+	height: 60vh;
+}
+
+@media (max-width: 40rem) {
+	.schedule-layout {
+		grid-template-columns: 1fr;
+		grid-template-rows: minmax(6rem, 25%) 1fr;
+	}
+}
+
+.schedule-side {
+	display: grid;
+	grid-template-rows: auto 1fr;
+	gap: 0.4rem;
+	min-height: 0;
+}
+
+.schedule-detail {
+	display: grid;
+	align-content: start;
+	gap: 0.6rem;
+	min-height: 0;
+	overflow: auto;
+}
+
+.schedule-form {
+	display: grid;
+	gap: 0.6rem;
+}
+
+.schedule-form label:not(.sandbox-switch) {
+	display: grid;
+	gap: 0.2rem;
+	font-size: 0.86rem;
+}
+
+.schedule-form textarea {
+	min-height: 4rem;
+	resize: vertical;
+}
+
+.schedule-when {
+	display: grid;
+	gap: 0.3rem;
+	font-size: 0.86rem;
+}
+
+.schedule-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem;
+}
+
+.schedule-limits {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+	gap: 0.6rem;
+}
+
+.schedule-summary {
+	margin: 0;
+	font-size: 0.82rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.schedule-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+/* /resume: the saved sessions, each with its own actions. */
+.sessions-list {
+	display: grid;
+	align-content: start;
+	gap: 0;
+	height: 55vh;
+	min-height: 14rem;
+	margin: 0;
+	padding: 0;
+	overflow: auto;
+	list-style: none;
+}
+
+.sessions-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	align-items: center;
+	padding: 0.3rem 0.4rem;
+	border-bottom: 1px solid var(--line);
+}
+
+.sessions-open {
+	display: grid;
+	flex: 1;
+	gap: 0.1rem;
+	min-width: 12rem;
+	padding: 0.15rem 0.3rem;
+	border: 0;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	font: inherit;
+	text-align: left;
+}
+
+.sessions-open:hover,
+.sessions-open:focus-visible {
+	background: var(--band);
+}
+
+.sessions-name {
+	overflow: hidden;
+	font-size: 0.88rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sessions-meta {
+	overflow-wrap: anywhere;
+	color: var(--ink-3);
+	font-size: 0.76rem;
+}
+
+.sessions-excerpt {
+	overflow: hidden;
+	color: var(--ink-2);
+	font-size: 0.76rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sessions-row button.danger {
+	border-color: var(--error);
+	color: var(--error);
+}
+
+.sessions-form {
+	display: flex;
+	flex: 1;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.sessions-form input {
+	flex: 1;
+	min-width: 10rem;
+}
+
+/* /desktop: the agent's desktop, live, scaled to the panel; its pointer drawn over it. */
+.desktop-stage {
+	position: relative;
+	width: fit-content;
+	max-width: 100%;
+	margin: 0 auto;
+	line-height: 0;
+}
+
+.desktop-stage[hidden] {
+	display: none;
+}
+
+.desktop-frame {
+	display: block;
+	max-width: 100%;
+	/* The whole screen in view: the surface's ceiling (set from the window) less the panel's head and button. */
+	max-height: calc(var(--surface-max, 60vh) - 7.5rem);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+}
+
+.desktop-pointer {
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	/* Over the agent's screen, not the theme: white ringed with black shows on any picture. */
+	border: 2px solid #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #000;
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+	transition: left 0.2s ease, top 0.2s ease;
+}
+
+.desktop-pointer[hidden] {
+	display: none;
+}
+
+/* /bg: the tasks beside the chosen one's output. */
+.bg-layout {
+	display: grid;
+	grid-template-columns: minmax(12rem, 18rem) 1fr;
+	gap: 0.75rem;
+	min-height: 18rem;
+	max-height: 60vh;
+}
+
+@media (max-width: 40rem) {
+	.bg-layout {
+		grid-template-columns: 1fr;
+		max-height: none;
+	}
+}
+
+.bg-list {
+	margin: 0;
+	padding: 0;
+	overflow: auto;
+	list-style: none;
+}
+
+.bg-list li {
+	display: grid;
+	grid-template-columns: 0.6rem 1fr;
+	gap: 0.15rem 0.5rem;
+	align-items: center;
+	padding: 0.4rem 0.5rem;
+	border-bottom: 1px solid var(--line);
+	cursor: pointer;
+	transition: background var(--ease);
+}
+
+.bg-list li:hover,
+.bg-list li[aria-selected="true"] {
+	background: var(--band);
+}
+
+.bg-list li.bg-empty {
+	display: block;
+	cursor: default;
+	font-size: 0.86rem;
+}
+
+.bg-state {
+	width: 0.55rem;
+	height: 0.55rem;
+	border-radius: 50%;
+	background: var(--ink-3);
+}
+
+.bg-list li[data-status="running"] .bg-state,
+.bg-list li[data-status="stopping"] .bg-state {
+	background: var(--c-accent, var(--ink));
+	animation: bg-pulse 1.6s ease-in-out infinite;
+}
+
+.bg-list li[data-status="done"] .bg-state {
+	background: var(--success);
+}
+
+.bg-list li:is([data-status="failed"], [data-status="timed_out"]) .bg-state {
+	background: var(--error);
+}
+
+@keyframes bg-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bg-list li .bg-state {
+		animation: none;
+	}
+}
+
+.bg-command {
+	overflow: hidden;
+	font-family: var(--mono);
+	font-size: 0.82rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bg-meta {
+	grid-column: 2;
+	color: var(--ink-3);
+	font-size: 0.74rem;
+}
+
+.bg-detail {
+	display: grid;
+	grid-template-rows: auto auto 1fr;
+	gap: 0.4rem;
+	min-width: 0;
+	min-height: 0;
+}
+
+.bg-head {
+	display: flex;
+	gap: 0.6rem;
+	align-items: flex-start;
+}
+
+.bg-full-command {
+	flex: 1;
+	min-width: 0;
+	font-size: 0.82rem;
+	overflow-wrap: anywhere;
+}
+
+.bg-output {
+	min-height: 8rem;
+	margin: 0;
+	padding: 0.5rem;
+	overflow: auto;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* /files: a file explorer, the list beside the chosen file's preview. */
+.files-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+.files-bar .field {
+	flex: 1;
+	min-width: 10rem;
+}
+
+.files-crumbs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.1rem;
+	align-items: center;
+	font-size: 0.84rem;
+}
+
+.files-crumbs .crumb {
+	padding: 0.1rem 0.3rem;
+}
+
+.files-crumbs .sep {
+	color: var(--ink-3);
+}
+
+.files-layout {
+	display: grid;
+	grid-template-columns: minmax(16rem, 1fr) minmax(14rem, 1fr);
+	gap: 0.75rem;
+	min-height: 20rem;
+	max-height: 62vh;
+}
+
+@media (max-width: 44rem) {
+	.files-layout {
+		grid-template-columns: 1fr;
+		max-height: none;
+	}
+}
+
+.files-list {
+	margin: 0;
+	padding: 0;
+	overflow: auto;
+	list-style: none;
+}
+
+.files-list li {
+	display: grid;
+	grid-template-columns: 1.1rem 1.1rem minmax(0, 1fr) auto;
+	gap: 0 0.4rem;
+	align-items: center;
+	padding: 0.28rem 0.45rem;
+	border-bottom: 1px solid var(--line);
+	cursor: pointer;
+	font-size: 0.86rem;
+	transition: background var(--ease);
+}
+
+.files-list li:hover,
+.files-list li:focus-visible,
+.files-list li[aria-selected="true"] {
+	background: var(--band);
+	outline: none;
+}
+
+.files-list li.files-empty {
+	display: block;
+	cursor: default;
+}
+
+.files-icon::before {
+	content: "";
+	display: inline-block;
+	width: 0.75rem;
+	height: 0.9rem;
+	border: 1px solid var(--ink-3);
+	border-radius: 1px;
+}
+
+.files-icon.dir::before {
+	width: 0.95rem;
+	height: 0.7rem;
+	border-color: var(--ink-2);
+	border-top-width: 3px;
+}
+
+.files-up .files-icon::before {
+	content: none;
+}
+
+.files-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.files-list li[data-dir="true"] .files-name {
+	font-weight: 600;
+}
+
+.files-meta {
+	grid-column: 3;
+	color: var(--ink-3);
+	font-size: 0.74rem;
+}
+
+.files-date {
+	grid-column: 4;
+	grid-row: 1;
+	color: var(--ink-3);
+	font-size: 0.74rem;
+	white-space: nowrap;
+}
+
+.files-list li[data-state="absent"] .files-name {
+	color: var(--ink-3);
+	text-decoration: line-through;
+}
+
+.files-preview {
+	display: grid;
+	align-content: start;
+	gap: 0.5rem;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+}
+
+.files-preview-head {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: baseline;
+}
+
+.files-text {
+	margin: 0;
+	padding: 0.5rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.files-image {
+	max-width: 100%;
+	border: 1px solid var(--line);
+}
+
+.files-export {
+	display: flex;
+	gap: 0.4rem;
+}
+
+.files-export .field {
+	flex: 1;
+}
+
+/* ------------------------------------------------------------ what waits for you
+   fork: the phone's line, in the PC window too, at the same place under the topbar. */
+
+.inbox {
+	position: relative;
+	z-index: 2;
+	display: block;
+	width: min(calc(100% - 1.2rem), calc(var(--column) + 2rem));
+	margin: 0.4rem auto 0;
+	border-radius: 0.75rem;
+	background: var(--glass-strong);
+	-webkit-backdrop-filter: blur(22px);
+	backdrop-filter: blur(22px);
+	box-shadow: inset 0 1px 0 var(--edge-light);
+}
+
+.inbox[hidden] {
+	display: none;
+}
+
+.inbox-line {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+	min-height: 2.5rem;
+	padding: 0 0.85rem;
+	border: 0;
+	background: transparent;
+	color: var(--ink-2);
+	font-size: 0.85rem;
+	text-align: left;
+}
+
+.inbox-line::before {
+	content: "";
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	background: var(--ink-3);
+}
+
+.inbox-line.asks::before {
+	background: var(--warning);
+	box-shadow: 0 0 0.5rem var(--warning);
+}
+
+.inbox-list {
+	display: grid;
+	margin: 0;
+	padding: 0 0.4rem 0.4rem;
+	list-style: none;
+}
+
+.inbox-list[hidden] {
+	display: none;
+}
+
+.inbox-entry {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 0.1rem 0.6rem;
+	width: 100%;
+	min-height: 44px;
+	padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+	border: 0;
+	border-left: 3px solid var(--tint);
+	border-radius: 0;
+	background: transparent;
+	text-align: left;
+}
+
+.inbox-kind {
+	grid-row: span 2;
+	color: var(--ink-3);
+	font-size: 0.75rem;
+}
+
+.inbox-entry.ask .inbox-kind {
+	color: var(--warning);
+}
+
+.inbox-title {
+	overflow: hidden;
+	color: var(--ink);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.inbox-text {
+	color: var(--ink-2);
+	font-size: 0.8rem;
+}
+
+/* An entry's question in two lines at most: the whole of it is in its conversation. */
+.inbox-text {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow-wrap: anywhere;
+}
+
+/* The side panel's dot after a waiting conversation's name. */
+.inbox-dot {
+	flex: none;
+	width: 0.45rem;
+	height: 0.45rem;
+	margin-left: auto;
+	border-radius: 50%;
+	background: var(--ink-3);
+}
+
+.inbox-dot.ask {
+	background: var(--warning);
+	box-shadow: 0 0 0.4rem var(--warning);
+}
+
+/* ------------------------------------------------------------ Link a phone */
+
+.link-phone {
+	display: grid;
+	gap: 0.6rem;
+}
+
+.link-phone-heading {
+	margin: 0.6rem 0 0;
+	color: var(--ink-2);
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.link-phone-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+/* The QR image beside the code to copy; under it in a narrow window. */
+.link-phone-pair {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 1rem;
+}
+
+.link-phone-qr {
+	flex: none;
+	width: min(11rem, 100%);
+	border-radius: 0.5rem;
+	background: #fff;
+}
+
+.link-phone-qr.small {
+	width: min(7rem, 100%);
+}
+
+/* The app's download in the welcome's phone step: its QR beside one line. */
+.welcome-phone-app {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.link-phone-text {
+	display: grid;
+	flex: 1 1 16rem;
+	gap: 0.6rem;
+	min-width: 0;
+}
+
+.link-phone-code {
+	font-family: var(--mono, monospace);
+	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+.link-phone-hosts,
+.link-phone-phones {
+	display: grid;
+	gap: 0.3rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.link-phone-hosts li,
+.link-phone-phones li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.link-phone-host {
+	font-family: var(--mono, monospace);
+	overflow-wrap: anywhere;
+}
+
+.welcome-phone {
+	display: grid;
+	gap: 0.5rem;
+	margin-top: 1.5rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--glass-strong);
+}
+
+.welcome-phone[hidden] {
+	display: none;
+}
+
+.welcome-phone p {
+	margin: 0;
+}

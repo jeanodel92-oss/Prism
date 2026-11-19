@@ -1,0 +1,18 @@
+[
+	{ "do": "wait", "selector": "#welcome" },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md", "timeout": 30000 },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "log", "text": "kill-now" },
+	{ "do": "wait", "selector": "#banner button.primary", "timeout": 30000 },
+	{ "do": "shot", "name": "k1-engine-stopped" },
+	{ "do": "click", "selector": "#banner button.primary" },
+	{ "do": "wait", "selector": "#banner button.primary", "gone": true, "timeout": 30000 },
+	{ "do": "wait", "selector": ".msg.assistant .md", "timeout": 30000 },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "shot", "name": "k2-reopened" },
+	{ "do": "quit" }
+]

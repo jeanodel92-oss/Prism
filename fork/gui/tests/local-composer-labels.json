@@ -1,0 +1,14 @@
+[
+	{ "do": "pref", "id": "pref-language", "value": "fr" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "wait", "selector": "#thinking-button:not([hidden])" },
+	{ "do": "click", "selector": "#thinking-button" },
+	{ "do": "click", "selector": ".panel.picker-panel .listbox li", "text": "très élevée" },
+	{ "do": "wait", "selector": "#thinking-label", "text": "très élevée" },
+	{ "do": "sleep", "ms": 400 },
+	{ "do": "boxes", "selector": ".composer-row" },
+	{ "do": "fits", "selector": "#model-label", "why": "QA 2026-11-04: the model's name was cut to a few letters" },
+	{ "do": "fits", "selector": "#thinking-label", "why": "QA 2026-11-04: and the reasoning level too" },
+	{ "do": "shot", "name": "composer-labels" },
+	{ "do": "quit" }
+]

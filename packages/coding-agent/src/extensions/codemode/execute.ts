@@ -317,6 +317,12 @@ function toScriptValue(tool: AgentTool<any>, outcome: AgentToolCallOutcome): unk
  * Run one script. Without a session context (a plain Agent or a direct call) scripts cannot call
  * tools, `store()` starts empty, and writes are dropped.
  */
+/**
+ * fork: a script without `timeout_ms` stops after 10 minutes, so a
+ * script that never ends does not hold the session while nobody watches. A script may still ask for longer.
+ */
+export const CODEMODE_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+
 export async function executeCodemode(
 	toolCallId: string,
 	input: CodemodeToolInput,
@@ -382,7 +388,7 @@ export async function executeCodemode(
 				? createModelGlobals(ctx.modelRegistry, toolCallId, calls, publish, addModelUsage, addGeneratedImages)
 				: []),
 		],
-		timeoutMs: sourceOptions.timeoutMs ?? Number.POSITIVE_INFINITY,
+		timeoutMs: sourceOptions.timeoutMs ?? CODEMODE_DEFAULT_TIMEOUT_MS,
 		memoryLimitBytes: CODEMODE_MEMORY_LIMIT_BYTES,
 		wasm: loadQuickJSWasm(getQuickJSWasmPath()),
 		workerUrl: getCodemodeWorkerSpecifier(),

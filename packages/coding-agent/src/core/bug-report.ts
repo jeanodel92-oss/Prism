@@ -3,6 +3,8 @@ import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-a
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@earendil-works/pi-ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
 import { VERSION } from "../config.ts";
+// fork: one list of the names that hold a secret, shared with the inspector.
+import { secretName } from "../fork/secrets/mask.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 import { writeZipArchive } from "../utils/zip.ts";
 import { completeSummarization, estimateTokens, getSummarizationFailure } from "./compaction/compaction.ts";
@@ -17,11 +19,6 @@ import type { Settings } from "./settings-manager.ts";
 export const BUG_REPORT_CUSTOM_ENTRY_TYPE = "pi.bug-report";
 const BUG_REPORT_SCHEMA_VERSION = 1;
 const REDACTED = "<redacted>";
-const SENSITIVE_KEY = /(?:^|[-_])(api[-_]?key|secret|token|password|passwd|credential|authorization|cookie)(?:$|[-_])/i;
-
-function isSensitiveKey(key: string): boolean {
-	return SENSITIVE_KEY.test(key.replace(/([a-z0-9])([A-Z])/g, "$1_$2"));
-}
 
 /** Strip credentials and secret-looking query parameters from a URL. */
 export function redactUrl(value: string): string {
@@ -36,7 +33,7 @@ export function redactUrl(value: string): string {
 			changed = true;
 		}
 		for (const key of url.searchParams.keys()) {
-			if (isSensitiveKey(key)) {
+			if (secretName(key)) {
 				url.searchParams.set(key, REDACTED);
 				changed = true;
 			}
@@ -52,7 +49,7 @@ export function redactJsonValue(value: unknown): unknown {
 	if (value === undefined) return undefined;
 	return JSON.parse(
 		JSON.stringify(value, (key, child: unknown) => {
-			if (child !== null && child !== undefined && isSensitiveKey(key)) return REDACTED;
+			if (child !== null && child !== undefined && secretName(key)) return REDACTED;
 			return typeof child === "string" ? redactUrl(child) : child;
 		}),
 	);

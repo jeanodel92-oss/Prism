@@ -21,7 +21,7 @@ describe("issue #7829 invalid settings warning", () => {
 			const startupDiagnostics: AgentSessionRuntimeDiagnostic[] = [
 				{
 					type: "warning",
-					message: "Invalid settings file /tmp/settings.json: malformed JSON",
+					message: "Could not use the settings in /tmp/settings.json: malformed JSON",
 				},
 			];
 			const context = {
@@ -44,7 +44,7 @@ describe("issue #7829 invalid settings warning", () => {
 
 			await vi.waitFor(() => {
 				expect(render(chatContainer)).toContain(
-					"Warning: Invalid settings file /tmp/settings.json: malformed JSON",
+					"Warning: Could not use the settings in /tmp/settings.json: malformed JSON",
 				);
 			});
 		} finally {

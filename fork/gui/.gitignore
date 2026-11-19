@@ -1,0 +1,9 @@
+src-tauri/target/
+src-tauri/target-drive/
+src-tauri/target-package/
+src-tauri/gen/
+src-tauri/icons/
+ui/vendor/
+ui/site/
+experiments/*/target/
+scripts/__pycache__/

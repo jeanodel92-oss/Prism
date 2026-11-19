@@ -1,7 +1,8 @@
-import { realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as nodeResolvePath, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRacy } from "../fork/file-cache.ts";
 import { spawnProcessSync } from "./child-process.ts";
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
@@ -36,6 +37,8 @@ export function canonicalizePath(path: string): string {
 export function getFileRevision(path: string): string | undefined {
 	try {
 		const stats = statSync(path, { bigint: true });
+		// fork: no revision while the change is too recent to be told apart (RACY_MS).
+		if (isRacy(Number(stats.ctimeMs))) return undefined;
 		return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
 	} catch {
 		return undefined;
@@ -101,6 +104,12 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
 }
 
 export function resolvePath(input: string, baseDir: string = process.cwd(), options: PathInputOptions = {}): string {
+	// fork: trimming cleans typed input; a name that exists with its spaces (a path
+	// discovery already found) is that file, never the neighbour without them.
+	if (options.trim && input !== input.trim()) {
+		const exact = resolvePath(input, baseDir, { ...options, trim: false });
+		if (existsSync(exact)) return exact;
+	}
 	const normalized = normalizePath(input, options);
 	const normalizedBaseDir = normalizePath(baseDir);
 	return isAbsolute(normalized) ? nodeResolvePath(normalized) : nodeResolvePath(normalizedBaseDir, normalized);

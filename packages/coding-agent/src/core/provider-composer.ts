@@ -185,6 +185,10 @@ function applyModelOverride(model: Model<Api>, override: ModelsJsonModelOverride
 		samplingParams: override.samplingParams
 			? { ...model.samplingParams, ...override.samplingParams }
 			: model.samplingParams,
+		// fork
+		thinkingBudgets: override.thinkingBudgets
+			? { ...model.thinkingBudgets, ...override.thinkingBudgets }
+			: model.thinkingBudgets,
 		compat: mergeCompat(model.compat, override.compat),
 	};
 }
@@ -224,6 +228,7 @@ function modelFromJson(
 		contextWindow: definition.contextWindow ?? 128000,
 		maxTokens: definition.maxTokens ?? 16384,
 		samplingParams: definition.samplingParams,
+		thinkingBudgets: definition.thinkingBudgets, // fork
 		headers: undefined,
 		compat: mergeCompat(providerConfig.compat, definition.compat),
 	};

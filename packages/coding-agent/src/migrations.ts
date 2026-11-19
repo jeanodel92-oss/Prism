@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { dirname, join } from "path";
 import { CONFIG_DIR_NAME, getAgentDir, getBinDir } from "./config.ts";
 import { migrateKeybindingsConfig } from "./core/keybindings.ts";
+import { writeFileAtomicSync } from "./fork/secrets/atomic-write.ts";
 import { stripBom } from "./utils/text.ts";
 
 const MIGRATION_GUIDE_URL =
@@ -29,6 +30,10 @@ export function migrateAuthToAuthJson(): string[] {
 
 	const migrated: Record<string, unknown> = {};
 	const providers: string[] = [];
+	// fork: the keys are read first, written to auth.json, and only then removed from
+	// their old files: an interruption at any point leaves them somewhere, and the next start completes the move.
+	let oauthRead = false;
+	let settings: Record<string, unknown> | undefined;
 
 	// Migrate oauth.json
 	if (existsSync(oauthPath)) {
@@ -38,7 +43,7 @@ export function migrateAuthToAuthJson(): string[] {
 				migrated[provider] = { type: "oauth", ...(cred as object) };
 				providers.push(provider);
 			}
-			renameSync(oauthPath, `${oauthPath}.migrated`);
+			oauthRead = true;
 		} catch {
 			// Skip on error
 		}
@@ -48,16 +53,15 @@ export function migrateAuthToAuthJson(): string[] {
 	if (existsSync(settingsPath)) {
 		try {
 			const content = readFileSync(settingsPath, "utf-8");
-			const settings = JSON.parse(stripBom(content));
-			if (settings.apiKeys && typeof settings.apiKeys === "object") {
-				for (const [provider, key] of Object.entries(settings.apiKeys)) {
+			const parsed = JSON.parse(stripBom(content));
+			if (parsed.apiKeys && typeof parsed.apiKeys === "object") {
+				for (const [provider, key] of Object.entries(parsed.apiKeys)) {
 					if (!migrated[provider] && typeof key === "string") {
 						migrated[provider] = { type: "api_key", key };
 						providers.push(provider);
 					}
 				}
-				delete settings.apiKeys;
-				writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+				settings = parsed;
 			}
 		} catch {
 			// Skip on error
@@ -66,7 +70,12 @@ export function migrateAuthToAuthJson(): string[] {
 
 	if (Object.keys(migrated).length > 0) {
 		mkdirSync(dirname(authPath), { recursive: true });
-		writeFileSync(authPath, JSON.stringify(migrated, null, 2), { mode: 0o600 });
+		writeFileAtomicSync(authPath, JSON.stringify(migrated, null, 2), { mode: 0o600 });
+	}
+	if (oauthRead) renameSync(oauthPath, `${oauthPath}.migrated`);
+	if (settings) {
+		delete settings.apiKeys;
+		writeFileAtomicSync(settingsPath, JSON.stringify(settings, null, 2), { mode: 0o644 });
 	}
 
 	return providers;
@@ -254,18 +263,22 @@ function checkDeprecatedExtensionDirs(baseDir: string, label: string): string[] 
 /**
  * Run extension system migrations (commands→prompts) and collect warnings about deprecated directories.
  */
-function migrateExtensionSystem(cwd: string): string[] {
-	const agentDir = getAgentDir();
+export function migrateProjectExtensionSystem(cwd: string): string[] {
 	const projectDir = join(cwd, CONFIG_DIR_NAME);
+	migrateCommandsToPrompts(projectDir, "Project");
+	return checkDeprecatedExtensionDirs(projectDir, "Project");
+}
+
+function migrateExtensionSystem(cwd: string, includeProject: boolean): string[] {
+	const agentDir = getAgentDir();
 
 	// Migrate commands/ to prompts/
 	migrateCommandsToPrompts(agentDir, "Global");
-	migrateCommandsToPrompts(projectDir, "Project");
 
 	// Check for deprecated directories
 	const warnings = [
 		...checkDeprecatedExtensionDirs(agentDir, "Global"),
-		...checkDeprecatedExtensionDirs(projectDir, "Project"),
+		...(includeProject ? migrateProjectExtensionSystem(cwd) : []),
 	];
 
 	return warnings;
@@ -302,7 +315,10 @@ export async function showDeprecationWarnings(warnings: string[]): Promise<void>
  *
  * @returns Object with migration results and deprecation warnings
  */
-export function runMigrations(cwd: string): {
+export function runMigrations(
+	cwd: string,
+	options: { includeProject?: boolean } = {},
+): {
 	migratedAuthProviders: string[];
 	deprecationWarnings: string[];
 } {
@@ -310,6 +326,6 @@ export function runMigrations(cwd: string): {
 	migrateSessionsFromAgentRoot();
 	migrateToolsToBin();
 	migrateKeybindingsConfigFile();
-	const deprecationWarnings = migrateExtensionSystem(cwd);
+	const deprecationWarnings = migrateExtensionSystem(cwd, options.includeProject ?? true);
 	return { migratedAuthProviders, deprecationWarnings };
 }

@@ -25,6 +25,7 @@ import {
 import chalk from "chalk";
 import { getCustomThemesDir, getThemesDir } from "../../../config.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
+import { t } from "../../../fork/i18n/index.ts";
 import { closeWatcher, watchWithErrorHandler } from "../../../utils/fs-watch.ts";
 import { highlight, supportsLanguage } from "../../../utils/syntax-highlight.ts";
 import { stripBom } from "../../../utils/text.ts";
@@ -75,6 +76,7 @@ export type ThemeColor =
 	| "toolTitle"
 	| "toolOutput"
 	| "mdHeading"
+	| "mdBold" // fork: optional, see fgIfSet
 	| "mdLink"
 	| "mdLinkUrl"
 	| "mdCode"
@@ -125,7 +127,7 @@ export interface ThemeStyle extends TextAttributes {
 	bg?: ThemeBg | Color;
 }
 
-type OptionalThemeColor = "scrollbarTrack" | "scrollbarThumb" | "thinkingMax" | "searchMatchText";
+type OptionalThemeColor = "scrollbarTrack" | "scrollbarThumb" | "thinkingMax" | "searchMatchText" | "mdBold";
 type OptionalThemeBg = "searchMatchBg";
 
 // ============================================================================
@@ -364,6 +366,11 @@ export class Theme {
 		return `${ansi}${text}\x1b[39m`;
 	}
 
+	/** fork: text in an optional token's color, or as is when the theme leaves it out. */
+	fgIfSet(color: OptionalThemeColor, text: string): string {
+		return this.fgAnsi.has(color) ? this.fg(color, text) : text;
+	}
+
 	bg(color: ThemeBg, text: string): string {
 		const ansi = this.tokenAnsi(this.bgAnsi, color);
 		return `${ansi}${text}\x1b[49m`;
@@ -450,6 +457,12 @@ function getBuiltinThemes(): Record<string, ThemeJson> {
 		BUILTIN_THEMES = {
 			dark: JSON.parse(stripBom(fs.readFileSync(darkPath, "utf-8"))) as ThemeJson,
 			light: JSON.parse(stripBom(fs.readFileSync(lightPath, "utf-8"))) as ThemeJson,
+			// fork: Prism theme, available but not the default.
+			prism: JSON.parse(stripBom(fs.readFileSync(path.join(themesDir, "prism.json"), "utf-8"))) as ThemeJson,
+			// fork: its light variant; the default setting picks one by terminal appearance.
+			"prism-light": JSON.parse(
+				stripBom(fs.readFileSync(path.join(themesDir, "prism-light.json"), "utf-8")),
+			) as ThemeJson,
 		};
 	}
 	return BUILTIN_THEMES;
@@ -1104,7 +1117,7 @@ export function getMarkdownTheme(): MarkdownTheme {
 		quoteBorder: (text: string) => theme.fg("mdQuoteBorder", text),
 		hr: (text: string) => theme.fg("mdHr", text),
 		listBullet: (text: string) => theme.fg("mdListBullet", text),
-		bold: (text: string) => theme.bold(text),
+		bold: (text: string) => theme.fgIfSet("mdBold", theme.bold(text)), // fork: the bold tint
 		italic: (text: string) => theme.italic(text),
 		underline: (text: string) => theme.underline(text),
 		strikethrough: (text: string) => theme.strikethrough(text),
@@ -1137,7 +1150,7 @@ export function getSelectListTheme(): SelectListTheme {
 		selectedText: (text: string) => theme.fg("accent", text),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
-		noMatch: (text: string) => theme.fg("muted", text),
+		noMatch: (text: string) => theme.fg("muted", t(text)),
 	};
 }
 
@@ -1151,9 +1164,9 @@ export function getEditorTheme(): EditorTheme {
 export function getSettingsListTheme(): SettingsListTheme {
 	return {
 		label: (text: string, selected: boolean) => (selected ? theme.fg("accent", text) : text),
-		value: (text: string, selected: boolean) => (selected ? theme.fg("accent", text) : theme.fg("muted", text)),
+		value: (text: string, selected: boolean) => (selected ? theme.fg("accent", t(text)) : theme.fg("muted", t(text))),
 		description: (text: string) => theme.fg("dim", text),
 		cursor: theme.fg("accent", "→ "),
-		hint: (text: string) => theme.fg("dim", text),
+		hint: (text: string) => theme.fg("dim", t(text)),
 	};
 }

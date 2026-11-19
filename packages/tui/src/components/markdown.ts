@@ -1,8 +1,10 @@
 import { Marked, type Token, Tokenizer, type TokenizerExtension, type Tokens } from "marked";
+import { decodeCharacterReferences } from "../fork/character-references.ts";
+import { getMarkdownTokenHook } from "../fork/markdown-token-hook.ts";
 import { renderLatex } from "../latex.ts";
 import { getCapabilities, hyperlink, isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
-import { applyBackgroundToLine, flattenLines, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
+import { applyBackgroundToLine, flattenLines, sanitizeTerminalText, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
 
 const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
 
@@ -286,7 +288,7 @@ export class Markdown implements Component {
 
 		// Calculate available width for content (subtract horizontal padding)
 		const contentWidth = Math.max(1, width - this.paddingX * 2);
-		const text = this.options.transform?.(this.text, contentWidth) ?? this.text;
+		const text = sanitizeTerminalText(this.options.transform?.(this.text, contentWidth) ?? this.text);
 
 		// Don't render anything if there's no actual text
 		if (!text || text.trim() === "") {
@@ -461,7 +463,21 @@ export class Markdown implements Component {
 		};
 	}
 
+	// fork: render hook for the Prism pack; renderTokenDefault is upstream's renderToken.
 	private renderToken(
+		token: Token,
+		width: number,
+		nextTokenType?: string,
+		styleContext?: InlineStyleContext,
+	): string[] {
+		const hook = getMarkdownTokenHook();
+		const renderDefault = () => this.renderTokenDefault(token, width, nextTokenType, styleContext);
+		if (!hook) return renderDefault();
+		const context = { theme: this.theme, defaultTextStyle: this.defaultTextStyle, renderDefault };
+		return hook(token, width, nextTokenType, context) ?? renderDefault();
+	}
+
+	private renderTokenDefault(
 		token: Token,
 		width: number,
 		nextTokenType?: string,
@@ -671,7 +687,8 @@ export class Markdown implements Component {
 					if (token.tokens && token.tokens.length > 0) {
 						result += this.renderInlineTokens(token.tokens, resolvedStyleContext);
 					} else {
-						result += applyTextWithNewlines(token.text);
+						// fork: "&amp;" shows as "&", as marked's own renderer would.
+						result += applyTextWithNewlines(decodeCharacterReferences(token.text));
 					}
 					break;
 
@@ -681,7 +698,11 @@ export class Markdown implements Component {
 					break;
 
 				case "strong": {
-					const boldContent = this.renderInlineTokens(token.tokens || [], resolvedStyleContext);
+					// fork: bold also goes inside the surrounding text color, so a theme's
+					// bold color is not covered by it (user messages color each text run).
+					const strongText = (text: string) => applyText(this.theme.bold(text));
+					const strongContext = { applyText: strongText, stylePrefix: this.getStylePrefix(strongText) };
+					const boldContent = this.renderInlineTokens(token.tokens || [], strongContext);
 					result += this.theme.bold(boldContent) + stylePrefix;
 					break;
 				}
@@ -699,24 +720,20 @@ export class Markdown implements Component {
 				case "link": {
 					const linkText = this.renderInlineTokens(token.tokens || [], resolvedStyleContext);
 					const styledLink = this.theme.link(this.theme.underline(linkText));
-					if (getCapabilities().hyperlinks) {
-						// OSC 8: render as a clickable hyperlink. The URL is not printed inline,
-						// so we always show only the link text regardless of whether it matches href.
-						result += hyperlink(styledLink, token.href) + stylePrefix;
+					const visibleLinkText = linkText.replace(/\x1b\[[0-9;:]*m/g, "");
+					const hrefForComparison = token.href.startsWith("mailto:") ? token.href.slice(7) : token.href;
+					if (visibleLinkText === token.href || visibleLinkText === hrefForComparison) {
+						result +=
+							(getCapabilities().hyperlinks ? hyperlink(styledLink, token.href) : styledLink) + stylePrefix;
 					} else {
-						// Fallback: print URL in parentheses when text differs from href.
-						// Compare raw token.text (not styled) against href for the equality check.
-						// For mailto: links strip the prefix (autolinked emails use text="foo@bar.com"
-						// but href="mailto:foo@bar.com").
-						const hrefForComparison = token.href.startsWith("mailto:") ? token.href.slice(7) : token.href;
-						if (token.text === token.href || token.text === hrefForComparison) {
-							result += styledLink + stylePrefix;
-						} else {
-							result += styledLink + this.theme.linkUrl(` (${token.href})`) + stylePrefix;
-						}
+						result += styledLink + this.theme.linkUrl(` (${token.href})`) + stylePrefix;
 					}
 					break;
 				}
+
+				case "image":
+					result += `[Image: ${token.text || ""}] (${token.href})`;
+					break;
 
 				case "br":
 					result += "\n";

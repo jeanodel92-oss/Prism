@@ -2,18 +2,18 @@
 
 # Command Line
 
-This page documents Pi's built-in command-line commands and options. Run `pi --help` or append `--help` to a command for the exact interface in your installed version. The top-level help also includes options registered by loaded extensions.
+This page documents Prism's built-in command-line commands and options. Run `prism --help` or append `--help` to a command for the exact interface in your installed version. The top-level help also includes options registered by loaded extensions.
 
 ```sh
-pi [options] [--] [@files...] [messages...]
-pi install <source> [options]
-pi remove <source> [options]
-pi uninstall <source> [options]
-pi update [target] [options]
-pi list
-pi config [options]
-pi auth <check|print-api-key|print-bearer-token> [options]
-pi mcp <list|login|logout> [options]
+prism [options] [--] [@files...] [messages...]
+prism install <source> [options]
+prism remove <source> [options]
+prism uninstall <source> [options]
+prism update [target] [options]
+prism list
+prism config [options]
+prism auth <check|print-api-key|print-bearer-token> [options]
+prism mcp <list|login|logout> [options]
 ```
 
 <a id="modes"></a>
@@ -21,13 +21,13 @@ pi mcp <list|login|logout> [options]
 ## Invocation and output
 
 ```sh
-pi
-pi --print "Summarize this repository"
-git diff | pi --print "Review this change"
-pi --mode json "Inspect this repository" > events.jsonl
+prism
+prism --print "Summarize this repository"
+git diff | prism --print "Review this change"
+prism --mode json "Inspect this repository" > events.jsonl
 ```
 
-With terminal stdin and stdout, Pi opens the terminal UI unless `--print`, `--mode json`, or `--mode rpc` selects another interface. When either stream is redirected and neither JSON nor RPC mode is selected, Pi uses print mode. See [CLI Integration](cli-integration.md) for choosing between interactive, print, JSON, RPC, and SDK integration.
+With terminal stdin and stdout, Prism opens the terminal UI unless `--print`, `--mode json`, or `--mode rpc` selects another interface. When either stream is redirected and neither JSON nor RPC mode is selected, Prism uses print mode. See [CLI Integration](cli-integration.md) for choosing between interactive, print, JSON, RPC, and SDK integration.
 
 | Input | Behavior |
 |---|---|
@@ -36,9 +36,9 @@ With terminal stdin and stdout, Pi opens the terminal UI unless `--print`, `--mo
 | Piped stdin | Prepend its contents to the first prompt |
 | `--` | Stop option parsing so a prompt can begin with `-` |
 
-Pi resolves `@path` from the current working directory. The working directory also controls project configuration, resource discovery, and session grouping.
+Prism resolves `@path` from the current working directory. The working directory also controls project configuration, resource discovery, and session grouping.
 
-`--print` controls whether Pi runs once and exits. `--mode` selects the output interface. `--mode text` does not force one-shot execution when stdin and stdout are terminals; use `--print` for that behavior.
+`--print` controls whether Prism runs once and exits. `--mode` selects the output interface. `--mode text` does not force one-shot execution when stdin and stdout are terminals; use `--print` for that behavior.
 
 | Option | Behavior |
 |---|---|
@@ -50,12 +50,25 @@ Pi resolves `@path` from the current working directory. The working directory al
 
 RPC mode rejects `@file` arguments. JSON and RPC modes reserve stdout for protocol records. See [JSON Event Stream](json.md) and [RPC Protocol](rpc.md).
 
+### Execution budgets
+
+The built-in budget extension accepts optional per-session limits in every mode:
+
+| Option | Behavior |
+|---|---|
+| `--budget-time <minutes>` | Wall-clock time from the first agent start |
+| `--budget-tools <n>` | Tool calls started |
+| `--budget-tokens <n>` | Reported input, output, cache-read, and cache-write tokens |
+| `--budget-cost <amount>` | Reported cost in USD; accepted only when the selected model has non-zero price metadata |
+
+`/budget` shows usage and uncertainty. `/budget time 30`, `/budget tools 50`, `/budget tokens 200000`, and `/budget cost 2` set limits; `/budget off [kind]` clears one or all. Only a user-entered command can change a limit. At a cap, Prism blocks further tool calls and model requests, aborts the active agent operation, and reports detached background tasks as still running.
+
 <a id="model-options"></a>
 
 ## Models
 
 ```sh
-pi --model sonnet:high
+prism --model sonnet:high
 ```
 
 See [Choose a Model](models.md) for model selection and [Providers](providers.md) for credentials.
@@ -78,7 +91,7 @@ See [Choose a Model](models.md) for model selection and [Providers](providers.md
 ## Sessions
 
 ```sh
-pi --continue
+prism --continue
 ```
 
 See [Sessions and Context](sessions.md) for resuming, forking, naming, and storing sessions.
@@ -88,13 +101,13 @@ See [Sessions and Context](sessions.md) for resuming, forking, naming, and stori
 - `-r`, `--resume`<br>
   Opens the session selector.
 - `--session <path|id>`<br>
-  Opens by file path, exact ID, or partial ID. Pi searches the current project first and offers to fork a cross-project match.
+  Opens by file path, exact ID, or partial ID. Prism searches the current project first and offers to fork a cross-project match.
 - `--session-id <id>`<br>
   Opens the exact project session ID or creates it if absent. IDs accept letters, numbers, `.`, `_`, and `-`.
 - `--fork <path|id>`<br>
   Forks an existing session into a new session for the current project.
 - `--session-dir <dir>`<br>
-  Overrides storage and lookup. It takes precedence over `PI_CODING_AGENT_SESSION_DIR` and the `sessionDir` setting.
+  Overrides storage and lookup. It takes precedence over `PRISM_CODING_AGENT_SESSION_DIR` and the `sessionDir` setting.
 - `--no-session`<br>
   Uses an in-memory session that is not persisted.
 - `-n`, `--name <name>`<br>
@@ -111,7 +124,7 @@ Constraints:
 ## Tools
 
 ```sh
-pi --tools read,grep,find,ls --print "Review this project"
+prism --tools read,grep,find,ls --print "Review this project"
 ```
 
 See [Settings](settings.md#tools) for configuring the default tool selection.
@@ -138,7 +151,7 @@ Default enabled tools are `read`, `bash`, `edit`, and `write`, unless `defaultTo
 | `find` | Find paths using glob patterns |
 | `ls` | List directory contents |
 
-Built-in extensions add two more tools. They are off by default; the MCP extension turns them on when an MCP server needs them (see [MCP](mcp.md#exposure)). To enable them yourself, name them in `--tools` or `defaultTools`.
+Built-in extensions add two more tools. They are off by default; the MCP extension turns them on when an MCP server needs them (see [MCP](mcp.md#control-tool-exposure)). To enable them yourself, name them in `--tools` or `defaultTools`.
 
 | Built-in extension | Purpose |
 |---|---|
@@ -147,7 +160,7 @@ Built-in extensions add two more tools. They are off by default; the MCP extensi
 
 ### Enable codemode
 
-To turn on `codemode` for every session, add it to the default tools in `~/.pi/agent/settings.json` or a project's `.pi/settings.json`:
+To turn on `codemode` for every session, add it to the default tools in `~/.prism/agent/settings.json` or a project's `.prism/settings.json`:
 
 ```json
 {
@@ -158,7 +171,7 @@ To turn on `codemode` for every session, add it to the default tools in `~/.pi/a
 This keeps `read`, `bash`, `edit`, and `write` and adds `codemode`. For one invocation, list every tool, since `--tools` replaces the selection:
 
 ```sh
-pi --tools read,bash,edit,write,codemode
+prism --tools read,bash,edit,write,codemode
 ```
 
 Codemode is useful without MCP: scripts can run several tool calls in parallel, filter large output before it reaches the model, call classifier models such as TypeSafe's Jev through `models.classify()` (see [Classifier models](models.md#use-classifier-models)), and generate images through `models.generateImages()` (see [Image models](models.md#use-image-models)).
@@ -176,15 +189,15 @@ Scripts run in a QuickJS sandbox and reach the other tools through `tools.<name>
 ## Resources
 
 ```sh
-pi --extension ./review.ts
+prism --extension ./review.ts
 ```
 
-See [Configuration](configuration.md) for conventional directories and project trust, [Settings](settings.md#resources) for configured paths, and [Pi Packages](packages.md) for package sources.
+See [Configuration](configuration.md) for conventional directories and project trust, [Settings](settings.md#resources) for configured paths, and [Prism Packages](packages.md) for package sources.
 
 - `-e`, `--extension <path>`<br>
   Loads an extension file or directory, or a built-in extension such as `builtin:mcp`, and is repeatable.
 - `-ne`, `--no-extensions`<br>
-  Disables discovered, configured, and built-in extensions. Explicit `-e` paths still load, so `pi -ne -e builtin:mcp` keeps only the built-in MCP support.
+  Disables discovered, configured, and built-in extensions. Explicit `-e` paths still load, so `prism -ne -e builtin:mcp` keeps only the built-in MCP support.
 - `--skill <path>`<br>
   Loads a skill file or directory and is repeatable.
 - `-ns`, `--no-skills`<br>
@@ -209,7 +222,7 @@ Resource paths apply only to the current process. Relative paths resolve from th
 ## Prompts and process
 
 ```sh
-pi --append-system-prompt ./instructions.md
+prism --append-system-prompt ./instructions.md
 ```
 
 See [Configuration](configuration.md) for saved configuration, [Security](security.md#understand-project-trust) for project trust, and [Environment Variables](environment-variables.md) for process controls.
@@ -220,6 +233,8 @@ See [Configuration](configuration.md) for saved configuration, [Security](securi
   Appends text or an existing file to the system prompt and is repeatable.
 - `--tui-mode <mode>`<br>
   Uses `fullscreen` (default) or `regular` terminal mode.
+- `--gui`, `--tui`<br>
+  Opens Prism's window, or the terminal interface, for this launch. A plain `prism` follows **/settings › Interface › Open Prism in**; the first launch where the window can open asks once. Without a graphical display, or when the window cannot start (WebKitGTK missing), Prism says why and opens in the terminal.
 - `--verbose`<br>
   Shows verbose interactive startup information, overriding `quietStartup`.
 - `-a`, `--approve`<br>
@@ -231,64 +246,70 @@ See [Configuration](configuration.md) for saved configuration, [Security](securi
 - `-h`, `--help`<br>
   Shows help, including flags registered by loaded extensions, then exits.
 - `-v`, `--version`<br>
-  Shows the Pi version, then exits.
+  Shows the Prism version, then exits.
 
 Extensions may register additional long-form options. Unknown short options are rejected.
 
 ## Package commands
 
 ```sh
-pi install npm:@scope/package
+prism install npm:@scope/package
 ```
 
-See [Pi Packages](packages.md) for source formats, filtering, installation, and project scope.
+See [Prism Packages](packages.md) for source formats, filtering, installation, and project scope.
 
 ### Common tasks
 
 | Task | Command |
 |---|---|
-| Install a package | `pi install <source>` |
-| List configured packages | `pi list` |
-| Remove a package and its settings entry | `pi remove <source>` |
-| Configure which package resources load | `pi config` |
+| Install a package | `prism install <source>` |
+| List configured packages | `prism list` |
+| Remove a package and its settings entry | `prism remove <source>` |
+| Configure which package resources load | `prism config` |
 
 Add `--local` or `-l` to `install`, `remove`, `uninstall`, or `config` to use project settings instead of global settings.
 
-### Update Pi or packages
+### Update Prism or packages
 
-Running `pi update` without a target updates Pi itself.
+`prism update` installs the latest release from `https://prism.odelserver.space` when it is newer. It checks the release signature and checksum first, switches to the new release in one step, keeps the previous one, and prints the release notes. It works for an installation made by the site installer; reinstall from there otherwise:
+
+```sh
+curl -fsSL https://prism.odelserver.space/install.sh | sh
+```
+
+Inside Prism, `/update` does the same from the terminal or the window: it checks, then installs on request, switches channel or goes back to the previous version; the new version opens at the next start. Prism checks on its own only when the `updateMode` setting asks for it (see [Settings](settings.md#updates-telemetry-and-warnings)).
 
 | Task | Command |
 |---|---|
-| Update Pi | `pi update` |
-| Update all installed packages | `pi update --extensions` |
-| Update one installed package | `pi update <source>` |
-| Refresh model catalogs | `pi update --models` |
-| Update Pi and all installed packages | `pi update --all` |
-
-Add `--force` to reinstall Pi when the selected update includes Pi.
+| Update Prism | `prism update` |
+| Say whether a newer Prism exists | `prism update --check` |
+| Go back to the previous Prism (run again to undo) | `prism update --rollback` |
+| Update all installed packages | `prism update --extensions` |
+| Update one installed package | `prism update <source>` |
+| Refresh model catalogs | `prism update --models` |
+| Update Prism and all installed packages | `prism update --all` |
 
 ### Aliases and command options
 
-- `pi uninstall <source>` is an alias for `pi remove <source>`.
-- `pi update --self`, `pi update self`, and `pi update pi` are aliases for `pi update`.
-- `pi update --extension <source>` is an alias for `pi update <source>`.
+- `prism uninstall <source>` is an alias for `prism remove <source>`.
+- `prism update --self` and `prism update self` are aliases for `prism update`.
+- `prism update --extension <source>` is an alias for `prism update <source>`.
 - `-a`, `--approve` trusts project-local files for one command. `-na`, `--no-approve` ignores trust-gated project-local files.
 - Append `-h` or `--help` to a command for its exact usage and option constraints.
 
 ## Credential commands
 
 ```sh
-pi auth check --provider openai --json
+prism auth check --provider openai --json
 ```
 
 Authentication commands require `--provider <provider>` or `--model <model>`. See [Providers](providers.md) for supported methods.
 
 | Command | Description |
 |---|---|
-| `pi auth check` | Print `ready`, `not_ready`, or `invalid`; exit with status `0`, `1`, or `2`, respectively |
-| `pi auth print-api-key` | Print the resolved API key |
-| `pi auth print-bearer-token` | Print a resolved OAuth bearer token |
+| `prism auth check` | Print `ready`, `not_ready`, or `invalid`; exit with status `0`, `1`, or `2`, respectively |
+| `prism auth print-api-key` | Print the resolved API key |
+| `prism auth print-bearer-token` | Print a resolved OAuth bearer token |
 
 | Option | Applies to | Description |
 |---|---|---|
@@ -307,13 +328,13 @@ These commands work outside a session, so agents can run them through `bash`. Se
 
 | Command | Description |
 |---|---|
-| `pi mcp add <server> [options] -- <command> [args...]` | Add or replace a stdio server in `mcp.json`; `--env KEY=VALUE` (repeatable) and `--cwd <dir>` set its environment and working directory. Arguments after the command are passed to it |
-| `pi mcp add <server> [options] --url <url>` | Add or replace a streamable HTTP server; `--header KEY=VALUE` (repeatable), `--bearer-token-env-var <NAME>` (sends `Authorization: Bearer ${NAME}`), `--oauth-client-id`, `--oauth-client-secret`, `--oauth-callback-port`, and `--oauth-client-name` configure authentication |
-| `pi mcp remove <server>` | Remove a server from `mcp.json`; stored OAuth credentials are kept |
-| `pi mcp list [--json]` | Connect to every enabled server and print its state, tools, and errors; exit with `1` when a config entry is invalid or an enabled server is not connected |
-| `pi mcp login <server> [--timeout <seconds>]` | Sign in to an OAuth server: open the authorization page and wait for the browser (default 300 seconds); a terminal also accepts the pasted redirect URL |
-| `pi mcp logout <server>` | Delete the stored OAuth credentials of a server |
+| `prism mcp add <server> [options] -- <command> [args...]` | Add or replace a stdio server in `mcp.json`; `--env KEY=VALUE` (repeatable) and `--cwd <dir>` set its environment and working directory. Arguments after the command are passed to it |
+| `prism mcp add <server> [options] --url <url>` | Add or replace a streamable HTTP server; `--header KEY=VALUE` (repeatable), `--bearer-token-env-var <NAME>` (sends `Authorization: Bearer ${NAME}`), `--oauth-client-id`, `--oauth-client-secret`, `--oauth-callback-port`, and `--oauth-client-name` configure authentication |
+| `prism mcp remove <server>` | Remove a server from `mcp.json`; stored OAuth credentials are kept |
+| `prism mcp list [--json]` | Connect to every enabled server and print its state, tools, and errors; exit with `1` when a config entry is invalid or an enabled server is not connected |
+| `prism mcp login <server> [--timeout <seconds>]` | Sign in to an OAuth server: open the authorization page and wait for the browser (default 300 seconds); a terminal also accepts the pasted redirect URL |
+| `prism mcp logout <server>` | Delete the stored OAuth credentials of a server |
 
-`add` and `remove` change `~/.pi/agent/mcp.json`, or `.pi/mcp.json` in the current directory with `--local` (`-l`). `add` also takes `--exposure <mode>` (see [Exposure](mcp.md#exposure)) and `--description <text>` and does not connect; run `pi mcp list` to check the server.
+`add` and `remove` change `~/.prism/agent/mcp.json`, or `.prism/mcp.json` in the current directory with `--local` (`-l`). `add` also takes `--exposure <mode>` (see [Exposure](mcp.md#control-tool-exposure)) and `--description <text>` and does not connect; run `prism mcp list` to check the server.
 
-Project `.pi/mcp.json` files are only read for projects that are already trusted.
+Project `.prism/mcp.json` files are only read for projects that are already trusted.

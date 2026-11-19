@@ -24,7 +24,7 @@
  * with `codemode` exposure connects. A project value overrides the global one.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import {
@@ -33,6 +33,7 @@ import {
 	mcpNamespace,
 	validateMcpServerConfig,
 } from "../../core/mcp-servers.ts";
+import { writeFileAtomicSync } from "../../fork/secrets/atomic-write.ts";
 
 export type {
 	McpExposure,
@@ -157,8 +158,9 @@ export function addMcpServerConfig(path: string, name: string, config: McpServer
 	let replaced = false;
 	editMcpServers(path, (servers, parsed) => {
 		const target = servers ?? {};
-		replaced = target[name] !== undefined;
-		target[name] = config;
+		// fork: a server named `__proto__` or `constructor` is stored as data.
+		replaced = Object.hasOwn(target, name);
+		Object.defineProperty(target, name, { value: config, enumerable: true, writable: true, configurable: true });
 		parsed.mcpServers = target;
 		return true;
 	});
@@ -195,5 +197,6 @@ function editMcpServers(
 	if (!edit(servers, parsed)) return;
 	const indent = (text && /^([ \t]+)\S/m.exec(text)?.[1]) || "  ";
 	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, `${JSON.stringify(parsed, null, indent)}\n`);
+	// fork: replaced whole; a full disk or a crash leaves the previous configuration.
+	writeFileAtomicSync(path, `${JSON.stringify(parsed, null, indent)}\n`, { mode: 0o644 });
 }

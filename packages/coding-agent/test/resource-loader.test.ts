@@ -40,7 +40,7 @@ describe("DefaultResourceLoader", () => {
 			expect(loader.getThemes().themes).toEqual([]);
 		});
 
-		it("should not treat a project manifest as the owner of a project extension", async () => {
+		it("should not treat a project manifest as the maintainer of a project extension", async () => {
 			const extensionsDir = join(cwd, ".pi", "extensions");
 			mkdirSync(extensionsDir, { recursive: true });
 			writeFileSync(
@@ -535,7 +535,8 @@ Project skill content`,
 			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(agentDir, "AGENTS.md"))).toBe(
 				true,
 			);
-			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(true);
+			// fork: project instructions wait for trust like the other project resources.
+			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(false);
 			expect(loader.getExtensions().extensions).toHaveLength(0);
 			expect(loader.getExtensions().errors).toEqual([]);
 			expect(loader.getSkills().skills.some((skill) => skill.name === "project-skill")).toBe(false);

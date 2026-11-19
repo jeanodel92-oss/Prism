@@ -1,0 +1,189 @@
+[
+	{
+		"do": "log",
+		"text": "fork.10.5: an MCP server added from /mcp by answering questions, without editing mcp.json"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "/mcp"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "Add a server",
+		"timeout": 15000
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.native-command:not(.closing)",
+		"text": "No MCP servers yet."
+	},
+	{
+		"do": "shot",
+		"name": "empty"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "Add a server"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "A program on this computer (a command)",
+		"timeout": 10000
+	},
+	{
+		"do": "click",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "A program on this computer (a command)"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) input"
+	},
+	{
+		"do": "type",
+		"selector": ".panel.question:not(.closing) input",
+		"text": "files"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.question:not(.closing) button.primary"
+	},
+	{
+		"do": "sleep",
+		"ms": 400
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) input"
+	},
+	{
+		"do": "type",
+		"selector": ".panel.question:not(.closing) input",
+		"text": "node -e 0"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.question:not(.closing) button.primary"
+	},
+	{
+		"do": "sleep",
+		"ms": 400
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .panel-title",
+		"text": "Environment variables"
+	},
+	{
+		"do": "shot",
+		"name": "env"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) input"
+	},
+	{
+		"do": "type",
+		"selector": ".panel.question:not(.closing) input",
+		"text": ""
+	},
+	{
+		"do": "click",
+		"selector": ".panel.question:not(.closing) button.primary"
+	},
+	{
+		"do": "sleep",
+		"ms": 400
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Every project"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Every project"
+	},
+	{
+		"do": "wait",
+		"selector": "#toasts .toast",
+		"text": "MCP server \"files\" added to",
+		"timeout": 10000
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000,
+		"why": "the session reloaded"
+	},
+	{
+		"do": "sleep",
+		"ms": 1500
+	},
+	{
+		"do": "type",
+		"text": "/mcp"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "files",
+		"timeout": 15000
+	},
+	{
+		"do": "click",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "files"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "Remove"
+	},
+	{
+		"do": "shot",
+		"name": "server"
+	},
+	{
+		"do": "sleep",
+		"ms": 600
+	},
+	{
+		"do": "click",
+		"selector": ".panel.native-command:not(.closing) .listbox li",
+		"text": "Remove"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .panel-body",
+		"text": "is taken out of"
+	},
+	{
+		"do": "click",
+		"selector": ".panel.question:not(.closing) button.primary"
+	},
+	{
+		"do": "wait",
+		"selector": "#toasts .toast",
+		"text": "MCP server \"files\" removed.",
+		"timeout": 10000
+	},
+	{
+		"do": "quit"
+	}
+]

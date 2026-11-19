@@ -1,0 +1,104 @@
+.docs-layout {
+	display: grid;
+	grid-template-columns: minmax(10rem, 30%) minmax(0, 1fr);
+	gap: 1rem;
+	flex: 1;
+	min-height: 0;
+}
+
+.docs-topics,
+.docs-reader {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	min-height: 0;
+	min-width: 0;
+}
+
+.docs-topics > .listbox-wrap {
+	flex: 1;
+	min-height: 0;
+}
+
+.docs-page {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding-inline: 0.2rem 0.6rem;
+}
+
+.docs-page table {
+	min-width: 40rem;
+	overflow-wrap: normal;
+}
+
+.docs-search {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.docs-search .field {
+	flex: 1;
+	min-width: 0;
+}
+
+.docs-excerpt {
+	font-size: 0.8rem;
+}
+
+::highlight(prism-docs-search) {
+	text-decoration: underline;
+}
+
+::highlight(prism-docs-current) {
+	background-color: var(--ink);
+	color: var(--bg);
+}
+
+svg.files-icon {
+	color: var(--ink-2);
+}
+
+.project-path {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.keys-scroll {
+	min-height: 0;
+	overflow: auto;
+}
+
+.project-path .field {
+	flex: 1;
+	min-width: 0;
+}
+
+.project .listbox-wrap {
+	flex: 1;
+	min-height: 0;
+}
+
+.statusbar button.cwd {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font: inherit;
+	color: inherit;
+	text-transform: none;
+	letter-spacing: inherit;
+}
+
+.files-code {
+	font-family: var(--mono);
+	tab-size: 4;
+}
+
+@media (max-width: 760px) {
+	.docs-layout {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(5rem, 8rem) minmax(0, 1fr);
+	}
+}

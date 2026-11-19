@@ -3,16 +3,20 @@
  */
 
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
+import { t } from "../../../fork/i18n/index.ts";
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
+import { SECRET_MASK } from "./login-dialog.ts";
 
 export interface ExtensionInputOptions {
 	tui?: TUI;
 	timeout?: number;
 	initialValue?: string;
 	description?: string;
+	/** fork: mask the typed text. */
+	secret?: boolean;
 }
 
 export class ExtensionInputComponent extends Container implements Focusable {
@@ -35,12 +39,13 @@ export class ExtensionInputComponent extends Container implements Focusable {
 
 	constructor(
 		title: string,
-		_placeholder: string | undefined,
+		placeholder: string | undefined,
 		onSubmit: (value: string) => void,
 		onCancel: () => void,
 		opts?: ExtensionInputOptions,
 	) {
 		super();
+		title = title.split("\n").map(t).join("\n");
 
 		this.onSubmitCallback = onSubmit;
 		this.onCancelCallback = onCancel;
@@ -53,7 +58,7 @@ export class ExtensionInputComponent extends Container implements Focusable {
 		this.addChild(this.titleText);
 		if (opts?.description) {
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("text", opts.description), 1, 0));
+			this.addChild(new Text(theme.fg("text", opts.description.split("\n").map(t).join("\n")), 1, 0));
 		}
 		this.addChild(new Spacer(1));
 
@@ -66,7 +71,12 @@ export class ExtensionInputComponent extends Container implements Focusable {
 			);
 		}
 
-		this.input = new Input();
+		// fork: show the placeholder, which upstream ignored (the /skills source format, for example).
+		this.input = new Input({
+			mask: opts?.secret ? SECRET_MASK : undefined,
+			placeholder: placeholder ? t(placeholder) : undefined,
+			placeholderStyle: (text) => theme.fg("dim", text),
+		});
 		if (opts?.initialValue) this.input.setValue(opts.initialValue);
 		this.addChild(this.input);
 		this.addChild(new Spacer(1));

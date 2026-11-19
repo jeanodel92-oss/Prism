@@ -100,6 +100,8 @@ function distribute(
 ): void {
 	let remaining = amount;
 	while (remaining > 0) {
+		// prism-fork: each pass shares a frozen amount by weights computed once, then gives the rounding
+		// remainders one cell at a time, so equal weights get equal sizes whatever their order.
 		const candidates = entries
 			.map((entry, index) => ({ entry, index }))
 			.filter(({ entry, index }) => {
@@ -107,27 +109,40 @@ function distribute(
 					return (entry.grow ?? 0) > 0 && sizes[index]! < (entry.maxSize ?? Number.MAX_SAFE_INTEGER);
 				}
 				return (entry.shrink ?? 1) > 0 && sizes[index]! > (entry.minSize ?? 0);
-			});
+			})
+			.map(({ entry, index }) => ({
+				index,
+				weight: mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]!),
+				capacity:
+					mode === "grow"
+						? (entry.maxSize ?? Number.MAX_SAFE_INTEGER) - sizes[index]!
+						: sizes[index]! - (entry.minSize ?? 0),
+				given: 0,
+				fraction: 0,
+			}));
 		if (candidates.length === 0) return;
 
-		const totalWeight = candidates.reduce((sum, { entry, index }) => {
-			return sum + (mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]!));
-		}, 0);
+		const pass = remaining;
+		const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
 		let distributed = 0;
-		for (const { entry, index } of candidates) {
-			if (remaining <= 0) break;
-			const weight = mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]!);
-			const proposed = Math.max(1, Math.floor((remaining * weight) / totalWeight));
-			const capacity =
-				mode === "grow"
-					? (entry.maxSize ?? Number.MAX_SAFE_INTEGER) - sizes[index]!
-					: sizes[index]! - (entry.minSize ?? 0);
-			const delta = Math.min(remaining, proposed, capacity);
-			if (delta <= 0) continue;
-			sizes[index] = sizes[index]! + (mode === "grow" ? delta : -delta);
-			remaining -= delta;
-			distributed += delta;
+		for (const candidate of candidates) {
+			const exact = (pass * candidate.weight) / totalWeight;
+			candidate.given = Math.min(candidate.capacity, Math.floor(exact));
+			candidate.fraction = exact - Math.floor(exact);
+			distributed += candidate.given;
 		}
+		const byFraction = candidates
+			.filter((candidate) => candidate.given < candidate.capacity)
+			.sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+		for (const candidate of byFraction) {
+			if (distributed >= pass) break;
+			candidate.given++;
+			distributed++;
+		}
+		for (const candidate of candidates) {
+			sizes[candidate.index] = sizes[candidate.index]! + (mode === "grow" ? candidate.given : -candidate.given);
+		}
+		remaining -= distributed;
 		if (distributed === 0) return;
 	}
 }

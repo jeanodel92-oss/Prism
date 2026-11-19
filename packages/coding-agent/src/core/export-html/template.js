@@ -12,7 +12,7 @@
         bytes[i] = binary.charCodeAt(i);
       }
       const data = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-      const { header, entries, leafId: defaultLeafId, systemPrompt, tools, renderedTools } = data;
+      const { header, entries, leafId: defaultLeafId, systemPrompt, tools, renderedTools, userDisplay } = data;
 
       // ============================================================
       // URL PARAMETER HANDLING
@@ -38,19 +38,42 @@
         byId.set(entry.id, entry);
       }
 
-      // Tool call lookup (toolCallId -> {name, arguments})
-      const toolCallMap = new Map();
-      for (const entry of entries) {
-        if (entry.type === 'message' && entry.message.role === 'assistant') {
-          const content = entry.message.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === 'toolCall') {
-                toolCallMap.set(block.id, { name: block.name, arguments: block.arguments });
-              }
-            }
+      // fork: a tool call id may be reused by another turn or branch. A result
+      // belongs to the call of its id in the nearest assistant message above it; both are keyed by that message's
+      // entry id and the call id. Same pairing as src/fork/tool-call-occurrences.ts.
+      // BEGIN pairToolCalls
+      function toolCallKey(ownerEntryId, toolCallId) {
+        return `${ownerEntryId}:${toolCallId}`;
+      }
+      function pairToolCalls(entries) {
+        const byId = new Map(entries.map(entry => [entry.id, entry]));
+        const ownerOfResult = new Map();
+        const resultOfCall = new Map();
+        for (const entry of entries) {
+          if (entry.type !== 'message' || entry.message.role !== 'toolResult' || !entry.message.toolCallId) continue;
+          const callId = entry.message.toolCallId;
+          let parent = entry.parentId ? byId.get(entry.parentId) : undefined;
+          while (parent && !(parent.type === 'message' && parent.message.role === 'assistant')) {
+            parent = parent.parentId ? byId.get(parent.parentId) : undefined;
           }
+          if (!parent || parent.type !== 'message' || parent.message.role !== 'assistant') continue;
+          const content = parent.message.content;
+          if (!Array.isArray(content) || !content.some(block => block.type === 'toolCall' && block.id === callId)) continue;
+          ownerOfResult.set(entry.id, parent.id);
+          const key = toolCallKey(parent.id, callId);
+          if (!resultOfCall.has(key)) resultOfCall.set(key, entry.id);
         }
+        return { ownerOfResult, resultOfCall };
+      }
+      // END pairToolCalls
+      const { ownerOfResult, resultOfCall } = pairToolCalls(entries);
+
+      /** The call a tool result entry answers, or null. */
+      function toolCallOfResult(entry) {
+        const ownerId = ownerOfResult.get(entry.id);
+        const owner = ownerId ? byId.get(ownerId) : null;
+        if (!owner) return null;
+        return owner.message.content.find(block => block.type === 'toolCall' && block.id === entry.message.toolCallId) || null;
       }
 
       // Label lookup (entryId -> label string)
@@ -628,6 +651,13 @@
         return href;
       }
 
+      function safeEmbeddedImage(img) {
+        const mimeType = String(img.mimeType || 'image/png').toLowerCase();
+        const data = String(img.data || '');
+        if (!/^image\/(png|jpeg|gif|webp|bmp)$/.test(mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) return null;
+        return `data:${mimeType};base64,${data}`;
+      }
+
       /**
        * Truncate string to maxLen chars, append "..." if truncated.
        */
@@ -673,7 +703,7 @@
               return labelHtml + `<span class="tree-role-assistant">assistant:</span> <span class="tree-muted">(no text)</span>`;
             }
             if (msg.role === 'toolResult') {
-              const toolCall = msg.toolCallId ? toolCallMap.get(msg.toolCallId) : null;
+              const toolCall = msg.toolCallId ? toolCallOfResult(entry) : null;
               if (toolCall) {
                 return labelHtml + `<span class="tree-role-tool">${escapeHtml(formatToolCall(toolCall.name, toolCall.arguments))}</span>`;
               }
@@ -839,15 +869,9 @@
         return extToLang[ext];
       }
 
-      function findToolResult(toolCallId) {
-        for (const entry of entries) {
-          if (entry.type === 'message' && entry.message.role === 'toolResult') {
-            if (entry.message.toolCallId === toolCallId) {
-              return entry.message;
-            }
-          }
-        }
-        return null;
+      function findToolResult(ownerEntryId, toolCallId) {
+        const resultId = resultOfCall.get(toolCallKey(ownerEntryId, toolCallId));
+        return resultId ? byId.get(resultId).message : null;
       }
 
       function formatExpandableOutput(text, maxLines, lang) {
@@ -873,7 +897,7 @@
               previewHighlighted = escapeHtml(previewCode);
             }
 
-            return `<div class="tool-output expandable" onclick="if(window.getSelection().toString())return;this.classList.toggle('expanded')">
+            return `<div class="tool-output expandable" data-expand-class="expanded">
               <div class="output-preview"><pre><code class="hljs">${previewHighlighted}</code></pre>
               <div class="expand-hint">... (${remaining} more lines)</div></div>
               <div class="output-full"><pre><code class="hljs">${highlighted}</code></pre></div></div>`;
@@ -884,7 +908,7 @@
 
         // Plain text output
         if (remaining > 0) {
-          let out = '<div class="tool-output expandable" onclick="if(window.getSelection().toString())return;this.classList.toggle(\'expanded\')">';
+          let out = '<div class="tool-output expandable" data-expand-class="expanded">';
           out += '<div class="output-preview">';
           for (const line of displayLines) {
             out += `<div>${escapeHtml(replaceTabs(line))}</div>`;
@@ -906,8 +930,8 @@
         return out;
       }
 
-      function renderToolCall(call) {
-        const result = findToolResult(call.id);
+      function renderToolCall(call, ownerEntryId) {
+        const result = findToolResult(ownerEntryId, call.id);
         const isError = result?.isError || false;
         const statusClass = result ? (isError ? 'error' : 'success') : 'pending';
 
@@ -926,7 +950,7 @@
           const images = getResultImages();
           if (images.length === 0) return '';
           return '<div class="tool-images">' +
-            images.map(img => `<img src="data:${escapeHtml(img.mimeType || 'image/png')};base64,${escapeHtml(img.data || '')}" class="tool-image" />`).join('') +
+            images.map(img => { const src = safeEmbeddedImage(img); return src ? `<img src="${escapeHtml(src)}" class="tool-image" />` : ''; }).join('') +
             '</div>';
         };
 
@@ -945,7 +969,7 @@
           return formatExpandableOutput([title, ...lines].join('\n'), 1);
         };
 
-        const toolDomId = `tool-call-${escapeHtml(call.id)}`;
+        const toolDomId = `tool-call-${escapeHtml(ownerEntryId)}-${escapeHtml(call.id)}`;
         let html = `<div class="tool-execution ${statusClass}" id="${toolDomId}">`;
         const args = call.arguments || {};
         const name = call.name;
@@ -1043,7 +1067,7 @@
           }
           default: {
             // Check for pre-rendered custom tool HTML
-            const rendered = renderedTools?.[call.id];
+            const rendered = renderedTools?.[toolCallKey(ownerEntryId, call.id)];
             if (rendered?.callHtml || rendered?.resultHtmlCollapsed || rendered?.resultHtmlExpanded) {
               // Custom tool with pre-rendered HTML from TUI renderer
               if (rendered.callHtml) {
@@ -1054,7 +1078,7 @@
 
               if (rendered.resultHtmlCollapsed && rendered.resultHtmlExpanded && rendered.resultHtmlCollapsed !== rendered.resultHtmlExpanded) {
                 // Both collapsed and expanded differ - render expandable section
-                html += `<div class="tool-output expandable ansi-rendered" onclick="if(window.getSelection().toString())return;this.classList.toggle('expanded')">
+                html += `<div class="tool-output expandable ansi-rendered" data-expand-class="expanded">
                   <div class="output-preview">${rendered.resultHtmlCollapsed}</div>
                   <div class="output-full">${rendered.resultHtmlExpanded}</div>
                 </div>`;
@@ -1214,7 +1238,7 @@
               let html = `<div class="skill-user-entry" id="${entryDomId}">${copyBtnHtml}${tsHtml}`;
 
               // Skill invocation (collapsed by default, click to expand)
-              html += `<div class="skill-invocation" onclick="if(window.getSelection().toString())return;this.classList.toggle('expanded')">
+              html += `<div class="skill-invocation" data-expand-class="expanded">
                 <div class="skill-invocation-label">[skill] ${escapeHtml(skillBlock.name)}</div>
                 <div class="skill-invocation-collapsed">${escapeHtml(skillBlock.name)} (click to expand)</div>
                 <div class="skill-invocation-content markdown-content">${safeMarkedParse(skillBlock.content)}</div>
@@ -1226,7 +1250,8 @@
                 if (images.length > 0) {
                   html += '<div class="message-images">';
                   for (const img of images) {
-                    html += `<img src="data:${escapeHtml(img.mimeType || 'image/png')};base64,${escapeHtml(img.data || '')}" class="message-image" />`;
+                    const src = safeEmbeddedImage(img);
+                    if (src) html += `<img src="${escapeHtml(src)}" class="message-image" />`;
                   }
                   html += '</div>';
                 }
@@ -1248,14 +1273,16 @@
               if (images.length > 0) {
                 html += '<div class="message-images">';
                 for (const img of images) {
-                  html += `<img src="data:${escapeHtml(img.mimeType || 'image/png')};base64,${escapeHtml(img.data || '')}" class="message-image" />`;
+                  const src = safeEmbeddedImage(img);
+                  if (src) html += `<img src="${escapeHtml(src)}" class="message-image" />`;
                 }
                 html += '</div>';
               }
             }
 
             if (text.trim()) {
-              html += `<div class="markdown-content">${safeMarkedParse(text)}</div>`;
+              // fork: pasted code fenced as in the TUI.
+              html += `<div class="markdown-content">${safeMarkedParse(userDisplay?.[entry.id] ?? text)}</div>`;
             }
             html += '</div>';
             return html;
@@ -1277,7 +1304,7 @@
 
             for (const block of msg.content) {
               if (block.type === 'toolCall') {
-                html += renderToolCall(block);
+                html += renderToolCall(block, entry.id);
               }
             }
 
@@ -1313,7 +1340,7 @@
         }
 
         if (entry.type === 'compaction') {
-          return `<div class="compaction" id="${entryDomId}" onclick="if(window.getSelection().toString())return;this.classList.toggle('expanded')">
+          return `<div class="compaction" id="${entryDomId}" data-expand-class="expanded">
             <div class="compaction-label">[compaction]</div>
             <div class="compaction-collapsed">Compacted from ${entry.tokensBefore.toLocaleString()} tokens</div>
             <div class="compaction-content"><strong>Compacted from ${entry.tokensBefore.toLocaleString()} tokens</strong>\n\n${escapeHtml(entry.summary)}</div>
@@ -1411,7 +1438,7 @@
                 <button type="button" class="header-toggle-btn" data-action="toggle-thinking" aria-pressed="${thinkingExpanded}" title="Toggle thinking (T)">Toggle thinking</button>
                 <button type="button" class="header-toggle-btn" data-action="toggle-tools" aria-pressed="${toolOutputsExpanded}" title="Toggle tools (O)">Toggle tools</button>
                 <button type="button" class="header-toggle-btn" data-action="toggle-hidden-messages" aria-pressed="${showHiddenMessages}" title="Show custom messages marked as hidden in the terminal (H).">${showHiddenMessages ? 'Hide hidden messages' : 'Show hidden messages'}</button>
-                <button type="button" class="download-json-btn" onclick="downloadSessionJson()" title="Download session as JSONL">↓ JSONL</button>
+                <button type="button" class="download-json-btn" data-action="download-session-json" title="Download session as JSONL">↓ JSONL</button>
               </div>
             </div>
             <div class="header-info">
@@ -1431,7 +1458,7 @@
           if (lines.length > previewLines) {
             const preview = lines.slice(0, previewLines).join('\n');
             const remaining = lines.length - previewLines;
-            html += `<div class="system-prompt expandable" onclick="if(window.getSelection().toString())return;this.classList.toggle('expanded')">
+            html += `<div class="system-prompt expandable" data-expand-class="expanded">
               <div class="system-prompt-header">System Prompt</div>
               <div class="system-prompt-preview">${escapeHtml(preview)}</div>
               <div class="system-prompt-expand-hint">... (${remaining} more lines, click to expand)</div>
@@ -1468,7 +1495,7 @@
                   }
                   paramsHtml += `</div>`;
                 }
-                return `<div class="tool-item" onclick="if(window.getSelection().toString())return;this.classList.toggle('params-expanded')"><span class="tool-item-name">${escapeHtml(t.name)}</span> - <span class="tool-item-desc">${escapeHtml(t.description)}</span> <span class="tool-params-hint"></span><div class="tool-params-content">${paramsHtml}</div></div>`;
+                return `<div class="tool-item" data-expand-class="params-expanded"><span class="tool-item-name">${escapeHtml(t.name)}</span> - <span class="tool-item-desc">${escapeHtml(t.description)}</span> <span class="tool-params-hint"></span><div class="tool-params-content">${paramsHtml}</div></div>`;
               }).join('')}
             </div>
           </div>`;
@@ -1486,10 +1513,11 @@
 
       function getScrollTargetElementId(entryId) {
         const entry = byId.get(entryId);
-        if (entry?.type === 'message' && entry.message.role === 'toolResult' && entry.message.toolCallId) {
+        const ownerId = ownerOfResult.get(entryId);
+        if (entry?.type === 'message' && entry.message.role === 'toolResult' && entry.message.toolCallId && ownerId) {
           // getElementById() matches the parsed DOM id attribute, whose HTML entities
           // were already resolved from the escaped id rendered by renderToolCall().
-          return `tool-call-${entry.message.toolCallId}`;
+          return `tool-call-${ownerId}-${entry.message.toolCallId}`;
         }
         return `entry-${entryId}`;
       }
@@ -1629,15 +1657,7 @@
           // Sanitize image src URLs with the same scheme allow-list.
           image(token) {
             const href = sanitizeMarkdownUrl(token.href);
-            if (href === null) {
-              return escapeHtml(token.text || '');
-            }
-            let out = '<img src="' + escapeHtml(href) + '" alt="' + escapeHtml(token.text || '') + '"';
-            if (token.title) {
-              out += ' title="' + escapeHtml(token.title) + '"';
-            }
-            out += '>';
-            return out;
+            return `<span class="remote-image-placeholder">[Image: ${escapeHtml(token.text || '')}${href ? ` (${escapeHtml(href)})` : ''}]</span>`;
           },
           // Code blocks: syntax highlight, no HTML escaping
           code(token) {
@@ -1800,6 +1820,18 @@
       }
 
       setupSidebarResize();
+
+      document.addEventListener('click', (event) => {
+        if (!(event.target instanceof Element)) return;
+        const downloadButton = event.target.closest('[data-action="download-session-json"]');
+        if (downloadButton) {
+          downloadSessionJson();
+          return;
+        }
+        const expandable = event.target.closest('[data-expand-class]');
+        if (!expandable || window.getSelection().toString()) return;
+        expandable.classList.toggle(expandable.dataset.expandClass);
+      });
 
       hamburger.addEventListener('click', () => {
         sidebar.classList.add('open');

@@ -77,7 +77,8 @@ describe("documentation variant", () => {
 		expect(prompt).toContain("\n<docs>\nPi documentation (read only");
 		expect(prompt).toContain("\n<rules>\n");
 		expect(prompt).toContain("\n<cwd>\n/workspace\n</cwd>");
-		expect(prompt).toContain("docs/models.md");
+		// fork: the section points to the docs folder instead of naming each topic.
+		expect(prompt).toContain(getDocsPath());
 
 		const stripped = excludePiDocumentation(prompt);
 		expect(stripped).toContain("\n<rules>\n");

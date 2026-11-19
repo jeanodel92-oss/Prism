@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Prism</title>
+		<link rel="stylesheet" href="fonts.css" />
+		<link rel="stylesheet" href="style.css" />
+		<link rel="stylesheet" href="da.css" />
+		<link rel="stylesheet" href="scene.css" />
+		<link rel="stylesheet" href="readers.css" />
+		<link rel="stylesheet" href="menus.css" />
+		<link rel="stylesheet" href="inspector.css" />
+		<link rel="stylesheet" href="agents.css" />
+		<link rel="stylesheet" href="mobile.css" />
+		<link rel="stylesheet" href="phone/phone.css" />
+		<!-- The site's optical shader, copied at build time; the window works without it. -->
+		<script src="site/optics.js"></script>
+		<script type="module" src="js/app.js"></script>
+	</head>
+	<body>
+		<div class="backdrop" id="backdrop" aria-hidden="true"><i class="backdrop-glow"></i></div>
+		<div class="app">
+			<aside class="sidebar" id="sidebar">
+				<!-- a rail of icons, each opening its view in
+				     the panel beside it. The rail stays when the panel folds; side-menu.js shows the icons the session offers. -->
+				<nav class="rail" id="rail" data-i18n-label="sideMenu">
+					<span class="rail-mark" aria-hidden="true">
+						<svg class="mark" viewBox="0 0 40 32">
+							<path class="mark-fan" d="M24 19.5 39 15.5" />
+							<path class="mark-fan" d="M24 19.5 39 19.5" />
+							<path class="mark-fan" d="M24 19.5 39 23.5" />
+							<path class="mark-beam" pathLength="1" d="M1 19.5h8.4" />
+							<path class="mark-glass" pathLength="1" d="M16 5 28 26H4Z" />
+						</svg>
+					</span>
+					<button type="button" class="rail-button" data-view="chat" aria-controls="side-panel" data-i18n-label="viewChat">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5h15v10h-8.2L7 19v-3.5H4.5z" /></svg>
+					</button>
+					<button type="button" class="rail-button" data-view="search" aria-controls="side-panel" data-i18n-label="viewSearch">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4.5 4.5" /></svg>
+					</button>
+					<button type="button" class="rail-button" data-view="schedule" aria-controls="side-panel" data-i18n-label="viewSchedule" hidden>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" /><path d="M12 8v4.3l2.9 1.8" /></svg>
+					</button>
+					<button type="button" class="rail-button" data-view="agents" aria-controls="side-panel" data-i18n-label="viewAgents" hidden>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="6.5" r="2.5" /><circle cx="6" cy="17.5" r="2.5" /><circle cx="18" cy="17.5" r="2.5" /><path d="M10.7 8.7 7.3 15.3M13.3 8.7l3.4 6.6" /></svg>
+					</button>
+					<button type="button" class="rail-button" data-view="memory" aria-controls="side-panel" data-i18n-label="viewMemory" hidden>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10v15l-5-3.6-5 3.6z" /></svg>
+					</button>
+					<button type="button" class="rail-button" data-view="trace" aria-controls="side-panel" data-i18n-label="viewTrace" hidden>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6.5" r="1.6" /><circle cx="6" cy="12" r="1.6" /><circle cx="6" cy="17.5" r="1.6" /><path d="M10.5 6.5H19M10.5 12H19M10.5 17.5h5" /></svg>
+					</button>
+					<button type="button" class="rail-button" data-view="logs" aria-controls="side-panel" data-i18n-label="viewLogs" hidden>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 3.5 3.5L5 15M11 15.5h8" /></svg>
+					</button>
+					<button type="button" id="desktop-button" class="rail-button" data-command="desktop" data-i18n-label="desktopTitle" hidden>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10.5H4zM9.5 19.5h5M12 16v3.5" /></svg>
+					</button>
+					<span class="rail-fill"></span>
+					<button type="button" id="settings-button" class="rail-button" data-i18n-label="settings">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h9M18.5 8H20M4 16h1.5M11 16h9" /><circle cx="15.8" cy="8" r="2.4" /><circle cx="8.2" cy="16" r="2.4" /></svg>
+					</button>
+				</nav>
+				<div class="side-panel" id="side-panel">
+					<section class="side-view" data-view="chat" aria-labelledby="chat-label">
+						<h2 class="side-title" id="chat-label" data-i18n="viewChat"></h2>
+						<button type="button" id="new-session" class="action" data-i18n="newSession"></button>
+						<nav aria-labelledby="open-label">
+							<h2 id="open-label" data-i18n="openSessions"></h2>
+							<ul id="open-list" class="session-list"></ul>
+						</nav>
+						<nav aria-labelledby="history-label" class="history">
+							<h2 id="history-label" data-i18n="history"></h2>
+							<ul id="history-list" class="session-list"></ul>
+						</nav>
+					</section>
+					<section class="side-view" data-view="search" aria-labelledby="search-label" hidden>
+						<h2 class="side-title" id="search-label" data-i18n="viewSearch"></h2>
+						<input id="side-search" class="field side-filter" type="search" spellcheck="false" autocomplete="off" data-i18n-placeholder="sideSearchPlaceholder" data-i18n-label="sideSearchPlaceholder" />
+						<div id="side-search-scope"></div>
+						<ul id="side-search-list" class="session-list side-results" aria-live="polite"></ul>
+					</section>
+					<section class="side-view" data-view="schedule" aria-labelledby="schedule-label" hidden>
+						<div class="side-head">
+							<h2 class="side-title" id="schedule-label" data-i18n="viewSchedule"></h2>
+							<button type="button" id="side-schedule-new" class="ghost icon" data-i18n-label="scheduleNewTask">+</button>
+						</div>
+						<ul id="side-schedule-list" class="session-list side-results"></ul>
+					</section>
+					<section class="side-view" data-view="agents" aria-labelledby="agents-label" hidden>
+						<h2 class="side-title" id="agents-label" data-i18n="viewAgents"></h2>
+						<ul id="side-agents-list" class="session-list side-results"></ul>
+					</section>
+					<section class="side-view" data-view="memory" aria-labelledby="memory-label" hidden>
+						<h2 class="side-title" id="memory-label" data-i18n="viewMemory"></h2>
+						<div id="side-memory" class="side-memory"></div>
+					</section>
+					<section class="side-view" data-view="trace" aria-labelledby="trace-label" hidden>
+						<div class="side-head">
+							<h2 class="side-title" id="trace-label" data-i18n="viewTrace"></h2>
+							<button type="button" id="side-trace-open" class="ghost small" data-i18n="sideTraceOpen"></button>
+						</div>
+						<p id="side-trace-state" class="side-note"></p>
+						<ul id="side-trace-list" class="session-list side-results"></ul>
+					</section>
+					<section class="side-view" data-view="logs" aria-labelledby="logs-label" hidden>
+						<h2 class="side-title" id="logs-label" data-i18n="viewLogs"></h2>
+						<pre id="side-logs-output" class="side-text side-output"></pre>
+					</section>
+				</div>
+			</aside>
+
+			<main class="main">
+				<!-- The scene spans the main area between its two fixed bars, whatever the composer and the
+				     interaction surface take: they lie over it, they never resize it. -->
+				<div class="scene" id="scene" aria-hidden="true">
+					<canvas></canvas>
+					<!-- The prism, drawn here at the screen's resolution (prism-scene.js, scene.css): one layer per depth, so
+					     what moves never repaints what is blurred. Coordinates on a 1600 × 900 frame. -->
+					<div class="prism-scene" id="prism-scene">
+						<svg class="ps-layer ps-back" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<radialGradient id="ps-haze" cx="800" cy="300" r="760" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="ps-haze-0" />
+									<stop offset="1" class="ps-haze-1" />
+								</radialGradient>
+								<linearGradient id="ps-beam" x1="-40" y1="0" x2="660" y2="0" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="ps-beam-0" />
+									<stop offset="1" class="ps-beam-1" />
+								</linearGradient>
+								<filter id="ps-soft" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2000" height="1300"><feGaussianBlur stdDeviation="7" /></filter>
+								<filter id="ps-softer" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2000" height="1300"><feGaussianBlur stdDeviation="22" /></filter>
+							</defs>
+							<rect class="ps-ground" width="1600" height="900" />
+							<rect width="1600" height="900" fill="url(#ps-haze)" />
+							<path class="ps-ridge-glow" filter="url(#ps-soft)" d="M-60 292C120 286 240 266 380 280S640 252 790 258 1060 244 1230 254 1480 268 1660 258" />
+							<path class="ps-ridge" d="M-60 292C120 286 240 266 380 280S640 252 790 258 1060 244 1230 254 1480 268 1660 258" />
+							<path class="ps-shadow" filter="url(#ps-soft)" d="M596 508 912 494 1140 534 820 548Z" />
+							<path class="ps-beam-glow" filter="url(#ps-softer)" d="M-40 452 657 371" />
+							<path class="ps-beam-halo" filter="url(#ps-soft)" d="M-40 452 657 371" />
+							<path class="ps-beam" stroke="url(#ps-beam)" d="M-40 452 657 371" />
+							<path class="ps-inner-glow" filter="url(#ps-soft)" d="M657 371 997 448" />
+							<path class="ps-inner" d="M657 371 997 448" />
+							<circle class="ps-entry" filter="url(#ps-soft)" cx="657" cy="371" r="16" />
+						</svg>
+						<svg class="ps-layer ps-fan ps-fan-a" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<linearGradient id="ps-fade-a" x1="1000" y1="0" x2="1720" y2="0" gradientUnits="userSpaceOnUse">
+									<stop offset="0" stop-color="#fff" stop-opacity="1" />
+									<stop offset="0.4" stop-color="#fff" stop-opacity="0.7" />
+									<stop offset="1" stop-color="#fff" stop-opacity="0.12" />
+								</linearGradient>
+								<mask id="ps-fan-mask-a" maskUnits="userSpaceOnUse" x="0" y="0" width="1800" height="900"><rect x="0" y="0" width="1800" height="900" fill="url(#ps-fade-a)" /></mask>
+								<filter id="ps-fan-soft-a" filterUnits="userSpaceOnUse" x="900" y="250" width="900" height="560"><feGaussianBlur stdDeviation="9" /></filter>
+							</defs>
+							<g mask="url(#ps-fan-mask-a)" filter="url(#ps-fan-soft-a)">
+								<path class="ps-band ps-red" d="M997 448 1720 372 1720 428Z" />
+								<path class="ps-band ps-orange ps-dim" d="M997 448 1720 428 1720 484Z" />
+								<path class="ps-band ps-yellow" d="M997 448 1720 484 1720 540Z" />
+								<path class="ps-band ps-green ps-dim" d="M997 448 1720 540 1720 596Z" />
+								<path class="ps-band ps-blue" d="M997 448 1720 596 1720 652Z" />
+								<path class="ps-band ps-violet ps-dim" d="M997 448 1720 652 1720 708Z" />
+							</g>
+						</svg>
+						<svg class="ps-layer ps-fan ps-fan-b" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<linearGradient id="ps-fade-b" x1="1000" y1="0" x2="1720" y2="0" gradientUnits="userSpaceOnUse">
+									<stop offset="0" stop-color="#fff" stop-opacity="1" />
+									<stop offset="0.4" stop-color="#fff" stop-opacity="0.7" />
+									<stop offset="1" stop-color="#fff" stop-opacity="0.12" />
+								</linearGradient>
+								<mask id="ps-fan-mask-b" maskUnits="userSpaceOnUse" x="0" y="0" width="1800" height="900"><rect x="0" y="0" width="1800" height="900" fill="url(#ps-fade-b)" /></mask>
+								<filter id="ps-fan-soft-b" filterUnits="userSpaceOnUse" x="900" y="250" width="900" height="560"><feGaussianBlur stdDeviation="9" /></filter>
+							</defs>
+							<g mask="url(#ps-fan-mask-b)" filter="url(#ps-fan-soft-b)">
+								<path class="ps-band ps-red ps-dim" d="M997 448 1720 372 1720 428Z" />
+								<path class="ps-band ps-orange" d="M997 448 1720 428 1720 484Z" />
+								<path class="ps-band ps-yellow ps-dim" d="M997 448 1720 484 1720 540Z" />
+								<path class="ps-band ps-green" d="M997 448 1720 540 1720 596Z" />
+								<path class="ps-band ps-blue ps-dim" d="M997 448 1720 596 1720 652Z" />
+								<path class="ps-band ps-violet" d="M997 448 1720 652 1720 708Z" />
+							</g>
+						</svg>
+						<canvas class="ps-dust"></canvas>
+						<svg class="ps-layer ps-glass" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<linearGradient id="ps-front" x1="0" y1="170" x2="0" y2="505" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="ps-front-0" />
+									<stop offset="1" class="ps-front-1" />
+								</linearGradient>
+								<linearGradient id="ps-side" x1="760" y1="0" x2="1142" y2="0" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="ps-side-0" />
+									<stop offset="1" class="ps-side-1" />
+								</linearGradient>
+								<radialGradient id="ps-lit" cx="657" cy="371" r="150" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="ps-lit-0" />
+									<stop offset="1" class="ps-lit-1" />
+								</radialGradient>
+								<linearGradient id="ps-catch" x1="588" y1="505" x2="760" y2="170" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="ps-catch-0" />
+									<stop offset="0.6" class="ps-catch-1" />
+									<stop offset="1" class="ps-catch-0" />
+								</linearGradient>
+							</defs>
+							<path class="ps-face ps-face-side" d="M760 170 990 210 1142 532 912 492Z" />
+							<path class="ps-face ps-face-front" d="M760 170 588 505 912 492Z" />
+							<path class="ps-face-lit" d="M760 170 588 505 912 492Z" fill="url(#ps-lit)" />
+							<path class="ps-bevel" d="M760 196 606 494 894 482Z" />
+							<path class="ps-edge ps-edge-back" d="M760 170 990 210 1142 532 912 492" />
+							<path class="ps-edge ps-edge-front" d="M760 170 588 505 912 492Z" />
+							<path class="ps-edge-catch" d="M588 505 760 170" stroke="url(#ps-catch)" />
+							<g class="ps-specks">
+								<circle cx="702" cy="330" r="1.1" />
+								<circle cx="744" cy="268" r="0.8" />
+								<circle cx="812" cy="402" r="1" />
+								<circle cx="676" cy="452" r="0.9" />
+								<circle cx="846" cy="456" r="0.7" />
+								<circle cx="770" cy="452" r="1.2" />
+								<circle cx="934" cy="372" r="0.8" />
+								<circle cx="1002" cy="470" r="0.9" />
+								<circle cx="892" cy="306" r="0.7" />
+								<circle cx="728" cy="394" r="0.6" />
+							</g>
+						</svg>
+					</div>
+					<!-- The eclipse, drawn like the prism (eclipse-scene.js, scene.css): a dark disc, its rim lit by the light
+					     behind it, brightest at one bead on its upper left, toward the welcome text and clear of the notices. Disc centred at
+					     (1130, 360), radius 290, on the same 1600 × 900 frame. -->
+					<div class="eclipse-scene" id="eclipse-scene">
+						<svg class="es-layer es-back" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<radialGradient id="es-haze" cx="921" cy="160" r="980" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="es-haze-0" />
+									<stop offset="0.45" class="es-haze-1" />
+									<stop offset="1" class="es-haze-2" />
+								</radialGradient>
+								<filter id="es-wide" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2000" height="1300"><feGaussianBlur stdDeviation="26" /></filter>
+								<filter id="es-soft" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2000" height="1300"><feGaussianBlur stdDeviation="9" /></filter>
+							</defs>
+							<rect class="es-ground" width="1600" height="900" />
+							<rect width="1600" height="900" fill="url(#es-haze)" />
+							<g class="es-corona">
+								<circle class="es-corona-wide" filter="url(#es-wide)" cx="1130" cy="360" r="300" />
+								<circle class="es-corona-near" filter="url(#es-soft)" cx="1130" cy="360" r="294" />
+							</g>
+							<circle class="es-ghost" filter="url(#es-soft)" cx="560" cy="600" r="74" />
+						</svg>
+						<svg class="es-layer es-streak" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<linearGradient id="es-streak" x1="120" y1="0" x2="1600" y2="0" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="es-streak-0" />
+									<stop offset="0.54" class="es-streak-1" />
+									<stop offset="1" class="es-streak-2" />
+								</linearGradient>
+								<filter id="es-haze-line" filterUnits="userSpaceOnUse" x="-200" y="0" width="2000" height="300"><feGaussianBlur stdDeviation="3" /></filter>
+							</defs>
+							<path class="es-streak-glow" filter="url(#es-haze-line)" stroke="url(#es-streak)" d="M120 160 1600 160" />
+							<path class="es-streak-line" stroke="url(#es-streak)" d="M120 160 1600 160" />
+						</svg>
+						<svg class="es-layer es-disc" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<radialGradient id="es-moon" cx="1250" cy="230" r="420" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="es-moon-0" />
+									<stop offset="1" class="es-moon-1" />
+								</radialGradient>
+								<linearGradient id="es-rim" x1="921" y1="160" x2="1339" y2="560" gradientUnits="userSpaceOnUse">
+									<stop offset="0" class="es-rim-0" />
+									<stop offset="0.55" class="es-rim-1" />
+									<stop offset="1" class="es-rim-2" />
+								</linearGradient>
+								<filter id="es-rim-soft" filterUnits="userSpaceOnUse" x="700" y="-100" width="900" height="900"><feGaussianBlur stdDeviation="3.5" /></filter>
+							</defs>
+							<circle class="es-moon-base" cx="1130" cy="360" r="290" />
+							<circle cx="1130" cy="360" r="290" fill="url(#es-moon)" />
+							<circle class="es-rim-glow" filter="url(#es-rim-soft)" stroke="url(#es-rim)" cx="1130" cy="360" r="290" />
+							<circle class="es-rim" stroke="url(#es-rim)" cx="1130" cy="360" r="290" />
+						</svg>
+						<svg class="es-layer es-bead" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+							<defs>
+								<radialGradient id="es-bead-glow">
+									<stop offset="0" class="es-bead-0" />
+									<stop offset="1" class="es-bead-1" />
+								</radialGradient>
+								<radialGradient id="es-ray">
+									<stop offset="0" class="es-ray-0" />
+									<stop offset="1" class="es-ray-1" />
+								</radialGradient>
+							</defs>
+							<circle cx="921" cy="160" r="80" fill="url(#es-bead-glow)" />
+							<ellipse cx="921" cy="160" rx="190" ry="1.4" fill="url(#es-ray)" transform="rotate(16 921 160)" />
+							<ellipse cx="921" cy="160" rx="120" ry="1.1" fill="url(#es-ray)" transform="rotate(-58 921 160)" />
+							<circle class="es-bead-core" cx="921" cy="160" r="3.2" />
+						</svg>
+					</div>
+				</div>
+				<header class="topbar">
+					<button
+						type="button"
+						id="toggle-sidebar"
+						class="ghost icon"
+						aria-controls="sidebar"
+						aria-expanded="true"
+						data-i18n-label="sessions"
+					>
+						<span class="bars" aria-hidden="true"></span>
+					</button>
+					<!-- The conversation's name; a click renames it in place (app.js editTitle). -->
+					<h1 class="title" id="title-slot"><button type="button" id="session-title" class="title-button"></button></h1>
+					<!-- The conversation's search: the same as its keyboard shortcut. -->
+					<button type="button" id="search-button" class="ghost icon search-button" data-i18n-label="searchTranscript">
+						<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="14" cy="14" r="8" /><path d="m20 20 7 7" /></svg>
+					</button>
+				</header>
+
+				<div id="banner" class="banner" role="alert" hidden></div>
+
+				<div class="stage">
+				<!-- The terminal's transcript search (tui.altScreen.search), where the terminal puts it: top right. -->
+				<div class="search" id="search" role="search" hidden>
+					<input id="search-input" type="text" spellcheck="false" autocomplete="off" data-i18n-label="searchTranscript" />
+					<span class="search-result" id="search-result" aria-live="polite"></span>
+					<button type="button" class="ghost small" id="search-previous"></button>
+					<button type="button" class="ghost small" id="search-next"></button>
+				</div>
+				<div class="scroller" id="scroller">
+					<div class="column">
+						<section class="welcome" id="welcome" hidden>
+							<h2 data-i18n="welcomeTitle"></h2>
+							<p data-i18n="welcomeBody"></p>
+							<button type="button" id="choose-project" class="ghost" data-i18n="chooseProject"></button>
+							<!-- fork: the optional "Your phone" step (phone-link.js). -->
+							<div id="welcome-phone" class="welcome-phone" hidden></div>
+						</section>
+						<section class="loading" id="loading" role="status" hidden>
+							<span class="state half" aria-hidden="true"></span>
+							<span data-i18n="openingSession"></span>
+						</section>
+						<section class="empty-model" id="empty-model" hidden>
+							<span class="state empty" aria-hidden="true"></span>
+							<h2 data-i18n="noModelTitle"></h2>
+							<p data-i18n="noModelBody"></p>
+						</section>
+						<div id="transcript-slot"></div>
+					</div>
+				</div>
+				</div>
+
+				<div class="widgets column" id="widgets" hidden></div>
+
+				<!-- The interaction surface (surface.js): commands' panels, questions and the engine's views, above
+				     the composer where the terminal shows them. The probe and the empty panel measure a view's cell
+				     and line width. -->
+				<div class="surface column" id="surface"><span class="view-probe" id="view-probe" aria-hidden="true">MMMMMMMMMM</span><div class="panel view-measure" aria-hidden="true"><div class="panel-body" id="view-measure"></div></div></div>
+
+				<form class="composer column" id="composer" autocomplete="off">
+					<label for="input" class="offscreen" data-i18n="composerPlaceholder"></label>
+					<div class="slab">
+						<div class="work-rule" aria-hidden="true"><i></i></div>
+						<!-- What goes with the next message: a pasted screenshot, files added with the attach button. -->
+						<div class="attachments" id="attachments" hidden></div>
+						<textarea id="input" rows="1" spellcheck="true"></textarea>
+					</div>
+					<!-- The editor's completion list, under the text as in the terminal. -->
+					<ul class="completion" id="completion" role="listbox" hidden></ul>
+					<!-- As in the terminal: model and reasoning level at the bottom left of the composer. Each opens
+					     its picker on the interaction surface (app.js). -->
+					<div class="composer-row">
+						<button type="button" class="picker attach-button" id="attach-button" aria-label="" title="">+</button>
+						<button type="button" class="picker" id="model-button" aria-haspopup="listbox"
+							><span class="picker-label" id="model-label"></span><span class="picker-meta" id="model-meta"></span
+						></button>
+						<button type="button" class="picker" id="thinking-button" aria-haspopup="listbox"
+							><span class="picker-meta" data-i18n="thinking"></span><span class="picker-label" id="thinking-label"></span
+						></button>
+						<!-- Only while the engine starts: the keys are in /help and in the controls' tooltips. -->
+						<span class="hint" id="hint"></span>
+						<!-- The terminal's Plan, Goal and Files switches, at the right of the editor's bottom line. -->
+						<span class="mode-switches" id="mode-switches"></span>
+						<button type="submit" id="send" class="primary"></button>
+					</div>
+				</form>
+
+				<footer class="statusbar" id="statusbar" data-i18n-label="status"></footer>
+			</main>
+		</div>
+
+		<dialog id="settings" aria-labelledby="settings-title">
+			<div class="settings-shell">
+				<nav class="settings-nav" aria-labelledby="settings-title">
+					<h2 id="settings-title" data-i18n="settings"></h2>
+					<button type="button" class="settings-section" data-section="window" data-i18n="settingsWindow"></button>
+					<div id="settings-sections" class="settings-sections"></div>
+				</nav>
+				<section class="settings-pane">
+					<h3 id="settings-pane-title" class="settings-pane-title"></h3>
+					<div class="settings-body">
+						<div id="settings-window" class="settings-window">
+							<label class="field-row"
+								><span data-i18n="theme"></span>
+								<select id="pref-theme">
+									<option value="system" data-i18n="themeSystem"></option>
+									<option value="dark" data-i18n="themeDark"></option>
+									<option value="light" data-i18n="themeLight"></option></select
+							></label>
+							<label class="field-row"
+								><span data-i18n="language"></span>
+								<select id="pref-language">
+									<option value="system" data-i18n="languageSystem"></option>
+									<option value="fr">Français</option>
+									<option value="en">English</option></select
+							></label>
+							<label class="field-row"
+								><span data-i18n="animations"></span>
+								<select id="pref-animations">
+									<option value="system" data-i18n="animationsSystem"></option>
+									<option value="on" data-i18n="animationsOn"></option>
+									<option value="off" data-i18n="animationsOff"></option></select
+							></label>
+							<!-- The phone app: the linked PC (pair-screen.js); the PC window: "Link a phone" (phone-link.js). -->
+							<div id="settings-link" class="settings-link" hidden></div>
+							<dl class="info">
+								<dt data-i18n="folder"></dt>
+								<dd id="info-folder"></dd>
+								<dt data-i18n="version"></dt>
+								<dd id="info-version"></dd>
+							</dl>
+						</div>
+						<div id="settings-engine" class="native-menu-host settings-engine" hidden></div>
+					</div>
+					<form method="dialog" class="dialog-actions">
+						<button value="close" class="primary" data-i18n="close"></button>
+					</form>
+				</section>
+			</div>
+		</dialog>
+
+		<dialog id="link-dialog" aria-labelledby="link-title">
+			<form method="dialog">
+				<h2 id="link-title" data-i18n="openLink"></h2>
+				<p id="link-url" class="url"></p>
+				<div class="dialog-actions">
+					<button value="open" class="primary" data-i18n="open"></button>
+					<button value="cancel" data-i18n="cancel"></button>
+				</div>
+			</form>
+		</dialog>
+
+		<div id="toasts" class="toasts" aria-live="polite"></div>
+	</body>
+</html>

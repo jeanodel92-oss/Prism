@@ -212,7 +212,8 @@ describe("viewport layout", () => {
 
 		scrollView.scrollBy(2);
 		lines = render();
-		assert.deepStrictEqual(visible(lines), ["abcde│", "abcde┃", "abcde┃", "abcde│"]);
+		// fork: the thumb is drawn in blocks to an eighth of a cell, active or not.
+		assert.deepStrictEqual(visible(lines), ["abcde│", "abcde█", "abcde█", "abcde│"]);
 		assert.deepStrictEqual(
 			lines.map((line) => line.includes(trackColor)),
 			[true, false, false, true],
@@ -238,11 +239,11 @@ describe("viewport layout", () => {
 
 		scrollView.scrollToEnd();
 		lines = render();
-		assert.deepStrictEqual(visible(lines), ["abcde│", "abcde│", "abcde┃", "abcde┃"]);
+		assert.deepStrictEqual(visible(lines), ["abcde│", "abcde│", "abcde█", "abcde█"]); // fork
 
 		scrollView.scrollToStart();
 		lines = render();
-		assert.strictEqual(visible(lines)[0], "abcd ┃");
+		assert.strictEqual(visible(lines)[0], "abcd █"); // fork
 
 		const followedContent = new Text(sourceLines.join("\n"), 0, 0);
 		const followed = new ScrollView(followedContent, {
@@ -256,7 +257,7 @@ describe("viewport layout", () => {
 		followedContent.setText(`${sourceLines.join("\n")}\nabcde9`);
 		const growthFrame = renderLayoutFrame(followed, 6, 4, () => {});
 		assert.strictEqual(followed.scrollTop, 5);
-		assert.ok(growthFrame.lines.every((line) => !/[│┃]/.test(stripTerminalSequences(line))));
+		assert.ok(growthFrame.lines.every((line) => !/[│┃▁-█]/.test(stripTerminalSequences(line)))); // fork
 
 		const fittingContent = new Text("1\n2", 0, 0);
 		const automatic = new ScrollView(fittingContent, { scrollbar: "auto", scrollbarThumbStyle });
@@ -269,7 +270,7 @@ describe("viewport layout", () => {
 		const alwaysFitting = new ScrollView(fittingContent, { scrollbar: "always", scrollbarThumbStyle });
 		const alwaysFittingFrame = renderLayoutFrame(alwaysFitting, 6, 4, () => {});
 		assert.strictEqual(alwaysFittingFrame.root.children[0]?.rect.width, 5);
-		assert.ok(visible(alwaysFittingFrame.lines).every((line) => line.endsWith("┃")));
+		assert.ok(visible(alwaysFittingFrame.lines).every((line) => line.endsWith("█"))); // fork
 
 		const alwaysOverflowing = new ScrollView(content, {
 			scrollbar: "always",
@@ -278,7 +279,7 @@ describe("viewport layout", () => {
 		});
 		const alwaysOverflowingFrame = renderLayoutFrame(alwaysOverflowing, 6, 4, () => {});
 		assert.strictEqual(alwaysOverflowingFrame.root.children[0]?.rect.width, 5);
-		assert.strictEqual(visible(alwaysOverflowingFrame.lines).filter((line) => line.endsWith("┃")).length, 2);
+		assert.strictEqual(visible(alwaysOverflowingFrame.lines).filter((line) => line.endsWith("█")).length, 2); // fork
 		assert.strictEqual(visible(alwaysOverflowingFrame.lines).filter((line) => line.endsWith("│")).length, 2);
 		for (const line of alwaysOverflowingFrame.lines) {
 			const scrollbarStyleIndex = Math.max(line.lastIndexOf(trackColor), line.lastIndexOf(thumbColor));
@@ -292,9 +293,12 @@ describe("viewport layout", () => {
 				scrollbarThumbStyle,
 			});
 			renderLayoutFrame(sized, 6, 20, () => {});
+			// fork: back to the top after revealing the auto scrollbar, so the eighth-cell thumb
+			// starts on a cell boundary and its height reads as whole block cells.
 			sized.scrollBy(1);
+			sized.scrollBy(-1);
 			return renderLayoutFrame(sized, 6, 20, () => {}).lines.filter((line) =>
-				stripTerminalSequences(line).endsWith("┃"),
+				/[▁-█]$/.test(stripTerminalSequences(line)),
 			).length;
 		};
 		assert.strictEqual(thumbHeightFor(21), 19);
@@ -323,7 +327,8 @@ describe("viewport layout", () => {
 		scrollView.scrollBy(1);
 		const frame = renderLayoutFrame(scrollView, 6, 4, () => {});
 
-		assert.deepStrictEqual(frame.lines.map(stripTerminalSequences), ["xxxxx│", "xxxxx┃", "xxxxx┃", "xxxxx│"]);
+		// fork: eighth-cell thumb; its edges are half blocks here.
+		assert.deepStrictEqual(frame.lines.map(stripTerminalSequences), ["xxxxx▄", "xxxxx█", "xxxxx▄", "xxxxx│"]);
 		for (const line of frame.lines) {
 			assert.ok(line.includes(background));
 			assert.ok(!line.includes(borderForeground));
@@ -335,7 +340,7 @@ describe("viewport layout", () => {
 		const scrollView = new ScrollView(new Text("123456", 0, 0), { scrollbar: "always" });
 		const render = () => renderLayoutFrame(new HStack([scrollView], { align: "start" }), 6, 2, () => {});
 		const always = render();
-		assert.deepStrictEqual(visibleLines(always.lines), ["12345┃", "6    ┃"]);
+		assert.deepStrictEqual(visibleLines(always.lines), ["12345█", "6    █"]); // fork: block thumb
 		assert.strictEqual(always.root.children[0]?.rect.width, 6);
 		assert.strictEqual(always.root.children[0]?.children[0]?.rect.width, 5);
 

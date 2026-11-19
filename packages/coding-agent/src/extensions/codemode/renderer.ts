@@ -10,6 +10,8 @@
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { ToolDefinition } from "../../core/extensions/types.ts";
 import { getTextOutput, replaceTabs, str } from "../../core/tools/render-utils.ts";
+import { fill, t } from "../../fork/i18n/index.ts"; // fork: display text only
+import { mcpMarkerLine } from "../../fork/mcp-trust.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
 import { highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
@@ -22,7 +24,8 @@ const COLLAPSED_ARGS_CHARS = 80;
 const SCRIPT_HEADER = /^Script (completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/;
 
 function expandHint(theme: Theme, hidden: number, noun: string): string {
-	return `${theme.fg("muted", `... (${hidden} more ${noun},`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+	// fork: translate display wrappers; keep data and model content unchanged.
+	return `${theme.fg("muted", fill("... ({0} more {1},", String(hidden), t(noun)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 }
 
 function formatDuration(ms: number | undefined): string {
@@ -93,6 +96,7 @@ export const codemodeRenderers: Pick<
 		return component;
 	},
 	renderResult(result, options, theme, context) {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		const component = (context.lastComponent as Container | undefined) ?? new Container();
 		component.clear();
 		const calls = result.details?.calls ?? [];
@@ -101,7 +105,7 @@ export const codemodeRenderers: Pick<
 			const lines = shown.map((call) => formatCall(call, theme, options.expanded));
 			if (shown.length < calls.length) {
 				lines.unshift(
-					`${theme.fg("muted", `... (${calls.length - shown.length} earlier calls,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+					`${theme.fg("muted", fill("... ({0} earlier calls,", String(calls.length - shown.length)))} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
 				);
 			}
 			// Collapsed rows hide earlier calls, so the total covers every call.
@@ -118,16 +122,23 @@ export const codemodeRenderers: Pick<
 		// has no header.
 		const [first, ...rest] = result.content;
 		const hasHeader = first?.type === "text" && SCRIPT_HEADER.test(first.text);
-		const output = options.isPartial
-			? ""
-			: getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
+		// fork.9 (SEC-03): the external-content marker, translated and apart from the output.
+		const { label, rest: output } = mcpMarkerLine(
+			options.isPartial
+				? ""
+				: getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim(),
+		);
+		if (label) {
+			component.addChild(new Spacer(1));
+			component.addChild(new Text(theme.fg("warning", label), 0, 0));
+		}
 		if (output) {
 			const color = context.isError ? "error" : "toolOutput";
 			const styled = replaceTabs(output)
 				.split("\n")
 				.map((line) => theme.fg(color, line))
 				.join("\n");
-			component.addChild(new Spacer(1));
+			if (!label) component.addChild(new Spacer(1));
 			if (options.expanded) {
 				component.addChild(new Text(styled, 0, 0));
 			} else {
@@ -142,7 +153,8 @@ export const codemodeRenderers: Pick<
 				);
 				// The collapsed preview hides the truncation notice at the end, so name the file here.
 				const fullOutputPath = result.details?.fullOutputPath;
-				if (fullOutputPath) component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+				if (fullOutputPath)
+					component.addChild(new Text(theme.fg("muted", fill("Full output: {0}", fullOutputPath)), 0, 0));
 			}
 		}
 		return component;

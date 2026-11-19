@@ -1,0 +1,17 @@
+[
+	{ "do": "log", "text": "QA 2026-11-01: /changelog is the window's own screen, not the terminal's reader." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/changelog" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#surface .panel.changelog .changelog-notes h3" },
+	{ "do": "count", "selector": ".panel.changelog .listbox li", "min": 2 },
+	{ "do": "absent", "selector": "#surface .terminal-view, #surface .tui-view" },
+	{ "do": "shot", "name": "c1-notes" },
+	{ "do": "click", "selector": ".panel.changelog .listbox li:nth-child(2)" },
+	{ "do": "type", "selector": ".panel.changelog input[type='search']", "text": "zzz-no-such-word-zzz" },
+	{ "do": "wait", "selector": ".panel.changelog .listbox-empty" },
+	{ "do": "key", "selector": ".panel.changelog", "key": "Escape" },
+	{ "do": "wait", "selector": "#surface .panel.changelog", "gone": true },
+	{ "do": "log", "text": "qa-changelog-ok" },
+	{ "do": "quit" }
+]

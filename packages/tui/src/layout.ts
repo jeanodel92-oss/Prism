@@ -1,5 +1,7 @@
 import type { ScrollView } from "./components/scroll-view.ts";
 import { allocateStackSizes, visibleStackEntries } from "./components/stack.ts";
+import { withLayoutViewport } from "./fork/layout-viewport.ts";
+import { thumbCell } from "./fork/scrollbar-thumb.ts";
 import { getLayoutNode } from "./layout-node.ts";
 import { cropKittyImageLine, getKittyImageMetadata, isImageLine } from "./terminal-image.ts";
 import { type Component, CURSOR_MARKER, compositeTuiLine } from "./tui.ts";
@@ -48,6 +50,9 @@ export interface ScrollbarGeometry {
 	thumbTop: number;
 	thumbHeight: number;
 	maxScrollTop: number;
+	/** fork: the thumb's exact span in screen rows, [thumbStart, thumbEnd). */
+	thumbStart: number;
+	thumbEnd: number;
 }
 
 interface LayoutContext {
@@ -295,6 +300,10 @@ export function getScrollbarGeometry(box: LayoutBox, includeHiddenAuto = false):
 	const thumbOffset = maxScrollTop === 0 ? 0 : Math.round((box.scrollView.scrollTop / maxScrollTop) * maxThumbTop);
 	const column = box.rect.x + box.rect.width - 1;
 	if (column < box.clip.x || column >= box.clip.x + box.clip.width) return undefined;
+	// fork: exact span, drawn to an eighth of a cell (src/fork/scrollbar-thumb.ts).
+	const exactHeight = Math.max(minThumbHeight, Math.min(trackHeight, (trackHeight * trackHeight) / contentHeight));
+	const thumbStart =
+		box.rect.y + (maxScrollTop === 0 ? 0 : (box.scrollView.scrollTop / maxScrollTop) * (trackHeight - exactHeight));
 
 	return {
 		column,
@@ -303,6 +312,8 @@ export function getScrollbarGeometry(box: LayoutBox, includeHiddenAuto = false):
 		thumbTop: box.rect.y + thumbOffset,
 		thumbHeight,
 		maxScrollTop,
+		thumbStart,
+		thumbEnd: thumbStart + exactHeight,
 	};
 }
 
@@ -313,9 +324,13 @@ function paintScrollbar(box: LayoutBox, screen: string[], totalWidth: number): v
 	for (let offset = 0; offset < geometry.trackHeight; offset++) {
 		const row = geometry.trackTop + offset;
 		if (row < box.clip.y || row >= box.clip.y + box.clip.height || row < 0 || row >= screen.length) continue;
-		const isThumb = row >= geometry.thumbTop && row < geometry.thumbTop + geometry.thumbHeight;
-		const replacement = isThumb
-			? box.scrollView.scrollbarThumbStyle(box.scrollView.isScrollbarActive ? "█" : "┃")
+		// fork: thumb to an eighth of a cell, in blocks (src/fork/scrollbar-thumb.ts).
+		const thumb = thumbCell(row, geometry.thumbStart, geometry.thumbEnd);
+		const styled = thumb ? box.scrollView.scrollbarThumbStyle(thumb.glyph) : undefined;
+		const replacement = styled
+			? thumb?.reverse
+				? `\x1b[7m${styled}\x1b[27m`
+				: styled
 			: box.scrollView.scrollbarTrackStyle("│");
 		screen[row] = replaceScrollbarCell(
 			screen[row] ?? "",
@@ -328,7 +343,12 @@ function paintScrollbar(box: LayoutBox, screen: string[], totalWidth: number): v
 }
 
 function paintBox(box: LayoutBox, screen: string[], totalWidth: number): void {
-	if (box.lines) {
+	// prism-fork: a box wider than its parents' clip (a non-shrinking child of a narrow stack) is cut to it,
+	// so it neither overflows into a neighbour nor takes the full-width fast path.
+	const clipLeft = Math.max(box.rect.x, box.clip.x);
+	const clipRight = Math.min(box.rect.x + box.rect.width, box.clip.x + box.clip.width);
+	const clipped = clipLeft > box.rect.x || clipRight < box.rect.x + box.rect.width;
+	if (box.lines && clipRight > clipLeft) {
 		const offset = box.lineOffset ?? 0;
 		const firstRow = Math.max(box.rect.y, box.clip.y, 0);
 		const lastRow = Math.min(box.rect.y + box.rect.height, box.clip.y + box.clip.height, screen.length);
@@ -347,8 +367,12 @@ function paintBox(box: LayoutBox, screen: string[], totalWidth: number): void {
 			// string through ANSI/grapheme segmentation every frame; padding is
 			// unnecessary because rows are written with erase-line and the final
 			// width clamp still truncates over-wide lines.
-			if (box.rect.x === 0 && box.rect.width >= totalWidth && (isImageLine(line) || !screen[row])) {
+			if (!clipped && box.rect.x === 0 && box.rect.width >= totalWidth && (isImageLine(line) || !screen[row])) {
 				screen[row] = line;
+			} else if (clipped && !isImageLine(line)) {
+				// prism-fork: only the columns inside the parents' clip are painted.
+				const visible = sliceByColumn(line, clipLeft - box.rect.x, clipRight - clipLeft, true);
+				screen[row] = compositeTuiLine(screen[row] ?? "", visible, clipLeft, clipRight - clipLeft, totalWidth);
 			} else {
 				screen[row] = compositeTuiLine(screen[row] ?? "", line, box.rect.x, box.rect.width, totalWidth);
 			}
@@ -390,12 +414,15 @@ export function renderLayoutFrame(
 		requestRender,
 		primaryScrollView: undefined,
 	};
-	const rootBox = layoutComponent(context, root, 0, 0, safeWidth, safeHeight, {
-		x: 0,
-		y: 0,
-		width: safeWidth,
-		height: safeHeight,
-	});
+	// prism-fork: stacks rendered for the scroll and search lines use this frame's viewport, like the layout.
+	const rootBox = withLayoutViewport(context.viewport, () =>
+		layoutComponent(context, root, 0, 0, safeWidth, safeHeight, {
+			x: 0,
+			y: 0,
+			width: safeWidth,
+			height: safeHeight,
+		}),
+	);
 	const lines = Array.from({ length: safeHeight }, () => "");
 	paintBox(rootBox, lines, safeWidth);
 	return {

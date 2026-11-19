@@ -1,0 +1,239 @@
+/**
+ * fork (R3.3, F-H6): what the sandbox lets a command see and write, and the bubblewrap arguments that
+ * enforce it. Pure: the paths that exist are passed in, so tests can build any
+ * layout without touching the machine.
+ */
+
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
+import { saveGlobalSetting } from "../global-settings.ts";
+import type { Mode } from "../permissions.ts";
+import { DEFAULT_NETWORK_SETTINGS, type NetworkSettings } from "./proxy.ts";
+
+/** The `sandbox` object of the global settings.json; a project cannot change it (F-H9). */
+export interface SandboxSettings {
+	/** Modes in which shell commands run in the sandbox. Default: all but unrestricted (owner's answer, 2026-10-21). */
+	modes: Record<Exclude<Mode, "unrestricted">, boolean>;
+	/** Extra writable paths (`~` expands to the home folder). */
+	allowWrite: string[];
+	/** Extra hidden paths. */
+	hide: string[];
+	/** Hosts the commands may reach through Prism's proxy (owner's answer Q3). */
+	network: NetworkSettings;
+	/** Run the user's `!` commands in the sandbox too (owner's answer Q1: off by default). */
+	userCommands: boolean;
+	/** Commands run outside the sandbox, as `docker` or `docker compose` (owner's answer Q1). */
+	excludedCommands: string[];
+}
+
+export const DEFAULT_SANDBOX_SETTINGS: SandboxSettings = {
+	modes: { broad: true, ask: true, safe: true },
+	allowWrite: [],
+	hide: [],
+	network: DEFAULT_NETWORK_SETTINGS,
+	userCommands: false,
+	excludedCommands: [],
+};
+
+/** Credentials and agent configs hidden by default (owner's answer Q4), relative to the home folder. */
+export const DEFAULT_HIDDEN_HOME_PATHS: readonly string[] = [
+	".ssh",
+	".gnupg",
+	".aws",
+	".config/gh",
+	".docker",
+	".kube",
+	".netrc",
+	".git-credentials",
+	".pi",
+	".mozilla",
+	".config/google-chrome",
+	".config/chromium",
+	".config/BraveSoftware",
+	".config/net.imput.helium",
+	".local/share/keyrings",
+];
+
+/** Package manager caches left writable, or npm install and most builds fail (owner's answer Q5). */
+export const DEFAULT_WRITABLE_HOME_PATHS: readonly string[] = [".npm", ".cache", ".cargo/registry", "go/pkg"];
+
+const isStringList = (value: unknown): value is string[] =>
+	Array.isArray(value) && value.every((item) => typeof item === "string");
+
+/** Reads the settings; any field of the wrong type keeps its default. */
+export function parseSandboxSettings(value: unknown): SandboxSettings {
+	const raw =
+		typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+	const modes = typeof raw.modes === "object" && raw.modes !== null ? (raw.modes as Record<string, unknown>) : {};
+	const network =
+		typeof raw.network === "object" && raw.network !== null ? (raw.network as Record<string, unknown>) : {};
+	const flag = (key: "broad" | "ask" | "safe") =>
+		typeof modes[key] === "boolean" ? (modes[key] as boolean) : DEFAULT_SANDBOX_SETTINGS.modes[key];
+	return {
+		modes: { broad: flag("broad"), ask: flag("ask"), safe: flag("safe") },
+		allowWrite: isStringList(raw.allowWrite) ? raw.allowWrite : [],
+		hide: isStringList(raw.hide) ? raw.hide : [],
+		network: {
+			askNewHosts: network.askNewHosts !== false,
+			allow: isStringList(network.allow) ? network.allow : [],
+			deny: isStringList(network.deny) ? network.deny : [],
+		},
+		userCommands: raw.userCommands === true,
+		excludedCommands: isStringList(raw.excludedCommands)
+			? raw.excludedCommands.map((command) => command.trim()).filter(Boolean)
+			: [],
+	};
+}
+
+/** The global settings' sandbox object, read from the file so a project's settings never apply. */
+export function readSandboxSettings(agentDir = getAgentDir()): SandboxSettings {
+	try {
+		const settings: unknown = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"));
+		return parseSandboxSettings((settings as Record<string, unknown> | null)?.sandbox);
+	} catch {
+		return parseSandboxSettings(undefined);
+	}
+}
+
+/**
+ * fork (V2.56): sets one sandbox setting (`path` inside the `sandbox` object) in the global settings, under the
+ * settings lock, from /settings > Permissions & sandbox. Throws when settings.json is not valid JSON.
+ */
+export function saveSandboxSetting(path: readonly string[], value: unknown, agentDir = getAgentDir()): void {
+	saveGlobalSetting(["sandbox", ...path], value, agentDir);
+}
+
+/**
+ * Whether a command runs outside the sandbox: a single command whose words start with an entry of
+ * `excludedCommands`. A line with several commands, a substitution or a redirection never does, so
+ * `docker ps; rm -rf ~` stays inside.
+ */
+export function isExcludedCommand(command: string, excluded: readonly string[]): boolean {
+	if (excluded.length === 0 || /[;&|<>`\n\r]|\$\(/.test(command)) return false;
+	const words = command.trim().split(/\s+/).join(" ");
+	return excluded.some((entry) => {
+		const wanted = entry.split(/\s+/).join(" ");
+		return words === wanted || words.startsWith(`${wanted} `);
+	});
+}
+
+export function sandboxedMode(settings: SandboxSettings, mode: Mode): boolean {
+	return mode !== "unrestricted" && settings.modes[mode];
+}
+
+export interface SandboxLayout {
+	cwd: string;
+	/**
+	 * fork (owner, 2026-10-22): the session's private folder, bound at /tmp before everything else, so commands
+	 * never see the host's /tmp or other sessions' files. Undefined in a layout that is only shown.
+	 */
+	tmp?: string;
+	/** Bound read-write, in this order. */
+	writable: string[];
+	/** Read-only again inside a writable path: Prism's project config, Git hooks and config. */
+	readOnly: string[];
+	/** Replaced by an empty, unreadable folder or file. */
+	hidden: string[];
+}
+
+export interface LayoutInput {
+	cwd: string;
+	home?: string;
+	agentDir?: string;
+	uid?: number;
+	/** The session's private /tmp (`sessionTmpDir`); undefined when the layout is only shown. */
+	tmp?: string;
+	/** Folders the sandbox runs its own programs from (node, the network relay), bound read-only when the private
+	 * /tmp would hide them. */
+	runFrom?: string[];
+	settings: SandboxSettings;
+	/** Defaults to the file system; tests pass their own. */
+	exists?: (path: string) => boolean;
+	/** The path with its links resolved; defaults to the file system. */
+	realpath?: (path: string) => string;
+}
+
+const expandHome = (path: string, home: string) =>
+	path === "~" ? home : path.startsWith("~/") ? join(home, path.slice(2)) : path;
+
+export function buildLayout(input: LayoutInput): SandboxLayout {
+	const home = input.home ?? homedir();
+	const exists = input.exists ?? existsSync;
+	const realpath = input.realpath ?? realpathSync;
+	// bubblewrap mounts on the real path: through an absolute link (Ubuntu's /var/run -> /run) it cannot create
+	// the mount point and fails. Resolving also removes duplicates such as /var/run/dbus and /run/dbus.
+	const present = (paths: string[]) =>
+		paths
+			.filter(exists)
+			.map((path) => {
+				try {
+					return realpath(path);
+				} catch {
+					return path;
+				}
+			})
+			.filter((path, index, all) => all.indexOf(path) === index);
+	const cwd = resolve(input.cwd);
+	const uid = input.uid ?? process.getuid?.() ?? 0;
+	const writable = present([
+		cwd,
+		...DEFAULT_WRITABLE_HOME_PATHS.map((path) => join(home, path)),
+		...input.settings.allowWrite.map((path) => resolve(cwd, expandHome(path, home))),
+	]);
+	// A hook written from the sandbox would run outside it at the user's next git command.
+	const readOnly = present([
+		join(cwd, CONFIG_DIR_NAME),
+		join(cwd, ".git", "hooks"),
+		join(cwd, ".git", "config"),
+		...(input.tmp ? (input.runFrom ?? []).filter((path) => path.startsWith("/tmp/")) : []),
+	]);
+	const hidden = present([
+		input.agentDir ?? getAgentDir(),
+		// Sockets: the session bus, the keyring and the compositor. X11's, in the host's /tmp, are left out
+		// with it.
+		`/run/user/${uid}`,
+		// fork (owner, 2026-10-22): always closed; the old allowSystemBus setting is ignored (sandbox.md § 8.3).
+		"/run/dbus",
+		"/var/run/dbus",
+		...DEFAULT_HIDDEN_HOME_PATHS.map((path) => join(home, path)),
+		...input.settings.hide.map((path) => resolve(cwd, expandHome(path, home))),
+	]);
+	return { cwd, tmp: input.tmp, writable, readOnly, hidden };
+}
+
+/**
+ * bubblewrap's arguments, up to and excluding `--`. Later mounts cover earlier ones, so the order is:
+ * the whole system read-only, the private /tmp, writable paths (a project under /tmp stays reachable),
+ * read-only again inside them, hidden paths last.
+ */
+export function bwrapArgs(
+	layout: SandboxLayout,
+	isDirectory: (path: string) => boolean,
+	/** An empty file without permissions, bound over each hidden file. */
+	unreadableFile: string,
+): string[] {
+	const args = [
+		"--die-with-parent",
+		"--new-session",
+		"--unshare-all",
+		"--ro-bind",
+		"/",
+		"/",
+		"--dev",
+		"/dev",
+		"--proc",
+		"/proc",
+	];
+	if (layout.tmp) args.push("--bind", layout.tmp, "/tmp");
+	for (const path of layout.writable) args.push("--bind", path, path);
+	for (const path of layout.readOnly) args.push("--ro-bind", path, path);
+	for (const path of layout.hidden) {
+		// Unreadable rather than empty: "Permission denied" tells what happened, an empty ~/.ssh does not.
+		if (isDirectory(path)) args.push("--perms", "0000", "--tmpfs", path);
+		else args.push("--ro-bind", unreadableFile, path);
+	}
+	args.push("--chdir", layout.cwd);
+	return args;
+}

@@ -1,0 +1,16 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "click", "selector": "#settings-button", "sidebar": true },
+	{ "do": "click", "selector": "#settings .settings-section", "text": "Modules" },
+	{ "do": "wait", "selector": "#settings-engine label.native-menu-field", "text": "Goal mode" },
+	{ "do": "scroll-el", "selector": "#settings .settings-body", "top": 100000 },
+	{ "do": "scrolled", "selector": "#settings .settings-body", "min": 300 },
+	{ "do": "pref", "selector": "#settings-engine label.native-menu-field", "text": "Goal mode", "inside": "select", "value": "off", "why": "a module switched near the end of the list" },
+	{ "do": "sleep", "ms": 4000 },
+	{ "do": "wait", "selector": "#settings-engine label.native-menu-field", "text": "Goal mode" },
+	{ "do": "wait", "selector": "#settings-pane-title", "text": "Modules" },
+	{ "do": "scrolled", "selector": "#settings .settings-body", "min": 300, "why": "the list stays where it was, not back at its top" },
+	{ "do": "shot", "name": "module-scroll" },
+	{ "do": "log", "text": "qa-settings-module-scroll-ok" },
+	{ "do": "quit" }
+]

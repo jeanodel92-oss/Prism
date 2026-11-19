@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { hostCommand } from "../fork/host-program.ts";
 
 /**
  * Open a URL or file in the platform browser/default handler.
@@ -18,7 +19,8 @@ export function openBrowser(target: string): void {
 	// spawn reports launcher failures (for example, missing xdg-open) via an
 	// error event. Browser launch is best-effort: callers still present the target
 	// to the user, so keep the launcher failure from becoming a process crash.
-	spawn(cmd, args, { stdio: "ignore", detached: true })
+	// fork: never an `xdg-open` the sandbox could write.
+	spawn(hostCommand(cmd), args, { stdio: "ignore", detached: true })
 		.on("error", () => {})
 		.unref();
 }

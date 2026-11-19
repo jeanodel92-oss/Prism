@@ -1,0 +1,20 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/help" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.help .listbox-filter" },
+	{ "do": "key", "selector": ".panel.help .listbox-filter", "key": " " },
+	{ "do": "count", "selector": ".panel.help", "count": 1, "why": "Space remains available in search inputs" },
+	{ "do": "focus", "selector": ".panel.help .listbox" },
+	{ "do": "key", "selector": ".panel.help .listbox", "key": " " },
+	{ "do": "wait", "selector": ".panel.help", "gone": true },
+	{ "do": "focused", "selector": "#input" },
+	{ "do": "type", "text": "/changelog" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.report" },
+	{ "do": "focus", "selector": ".panel.report" },
+	{ "do": "key", "selector": ".panel.report", "key": " " },
+	{ "do": "wait", "selector": ".panel.report", "gone": true },
+	{ "do": "log", "text": "qa-panel-space-ok" },
+	{ "do": "quit" }
+]

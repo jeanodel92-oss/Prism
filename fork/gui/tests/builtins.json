@@ -1,0 +1,74 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+
+	{ "do": "type", "text": "/name Built-ins test" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Session name set: Built-ins test" },
+	{ "do": "wait", "selector": "#session-title", "text": "Built-ins test" },
+	{ "do": "absent", "selector": ".notice", "text": "Session name", "why": "renaming leaves nothing in the transcript" },
+	{ "do": "absent", "selector": "#input", "text": "/name" },
+
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md", "timeout": 30000 },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+
+	{ "do": "type", "text": "/session" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.report .facts", "text": "Built-ins test", "why": "a panel of facts, not a notice in the transcript" },
+	{ "do": "wait", "selector": ".panel.report .facts", "text": "(1 / 1)" },
+	{ "do": "absent", "selector": ".notice.block" },
+	{ "do": "shot", "name": "b1-session" },
+	{ "do": "key", "selector": ".panel.report", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.report", "gone": true },
+
+	{ "do": "type", "text": "/thinking nonsense" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast.warning", "text": "Unknown thinking level nonsense" },
+
+	{ "do": "type", "text": "/export" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast.sticky", "text": "Session exported to" },
+	{ "do": "click", "selector": "#toasts .toast.sticky .toast-close", "why": "a path stays until closed" },
+
+	{ "do": "type", "text": "/clone" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant .md" },
+
+	{ "do": "type", "text": "/model fake/scripted" },
+	{ "do": "send" },
+	{ "do": "absent", "selector": "#toasts .toast.warning", "text": "No available model" },
+
+	{ "do": "type", "text": "/settings" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#settings[open] .settings-section", "text": "Appearance", "why": "/settings opens the window's Settings, the engine's domains included" },
+	{ "do": "click", "selector": "#settings button", "text": "Close" },
+	{ "do": "wait", "selector": "#settings[open]", "gone": true },
+
+	{ "do": "type", "text": "/fork" },
+	{ "do": "send" },
+	{ "do": "click", "selector": ".panel.choice .listbox li", "text": "The whole conversation, as it is now", "why": "owner's decision 2026-11-05: /clone is the last entry of /fork" },
+	{ "do": "wait", "selector": ".panel.choice", "gone": true },
+	{ "do": "wait", "selector": ".msg.assistant .md", "why": "the copy keeps the reply, as /clone" },
+	{ "do": "wait", "selector": ".history li:nth-child(2)", "text": "Built-ins test", "why": "the copy is done: the original is in the history next to the first /clone's" },
+
+	{ "do": "type", "text": "/fork" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".panel.choice .listbox li", "text": "md" },
+	{ "do": "shot", "name": "b2-fork-choice" },
+	{ "do": "click", "selector": ".panel.choice .listbox li", "text": "md" },
+	{ "do": "wait", "selector": ".panel.choice", "gone": true },
+	{ "do": "wait", "selector": "#input", "text": "md" },
+	{ "do": "absent", "selector": ".msg.assistant" },
+
+	{ "do": "type", "text": "/name Reloaded" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Session name set: Reloaded" },
+	{ "do": "type", "text": "/reload" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Reloaded keybindings, extensions, skills, prompts, themes, and context files", "timeout": 30000 },
+	{ "do": "wait", "selector": "#session-title", "text": "Reloaded", "why": "the same session: a fork without a reply is not on disk yet, and keeps its name" },
+
+	{ "do": "log", "text": "builtins-ok" },
+	{ "do": "quit" }
+]

@@ -34,6 +34,9 @@ import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
 import { DefaultResourceLoader, isBuiltinExtension } from "./core/resource-loader.ts";
 import { SettingsManager } from "./core/settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
+import { brandedUpdateHelp, IS_BRANDED_BUILD } from "./fork/brand.ts";
+import { getSelfUpdateRequest, runPrismUpdate } from "./fork/self-update.ts";
+import { settingsSaved } from "./fork/settings-saved.ts";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "./utils/child-process.ts";
 import { canonicalizePath, getCwdRelativePath } from "./utils/paths.ts";
 import { getPiUserAgent } from "./utils/pi-user-agent.ts";
@@ -269,6 +272,10 @@ function getPackageCommandUsage(command: PackageCommand): string {
 		case "remove":
 			return `${APP_NAME} remove <source> [-l] [--approve|--no-approve]`;
 		case "update":
+			// fork: a branded build shows neither the `pi` alias nor --force, and has --check and --rollback.
+			if (IS_BRANDED_BUILD) {
+				return `${APP_NAME} update [source|self] [--self|--check|--rollback|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve]`;
+			}
 			return `${APP_NAME} update [source|self|pi] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
 		case "list":
 			return `${APP_NAME} list [--approve|--no-approve]`;
@@ -334,6 +341,11 @@ Examples:
 			return;
 
 		case "update":
+			// fork: a branded build updates from the Prism site (src/fork/brand.ts).
+			if (IS_BRANDED_BUILD) {
+				console.log(brandedUpdateHelp(`${chalk.bold("Usage:")}\n  ${getPackageCommandUsage("update")}`));
+				return;
+			}
 			console.log(`${chalk.bold("Usage:")}
   ${getPackageCommandUsage("update")}
 
@@ -862,13 +874,20 @@ export async function handleConfigCommand(
 		projectModeAvailable: settingsManager.isProjectTrusted(),
 	});
 
-	process.exit(0);
+	// fork: the selector's changes are saved, or the command fails.
+	process.exit((await settingsSaved(settingsManager)) ? 0 : 1);
 }
 
 export async function handlePackageCommand(
 	args: string[],
 	runtimeOptions: PackageCommandRuntimeOptions = {},
 ): Promise<boolean> {
+	// fork: `update --check`, `--rollback` and `--channel` for a site installation.
+	const selfUpdateRequest = IS_BRANDED_BUILD ? getSelfUpdateRequest(args) : undefined;
+	if (selfUpdateRequest) {
+		process.exitCode = runPrismUpdate(selfUpdateRequest.mode, undefined, selfUpdateRequest.channel);
+		return true;
+	}
 	const options = parsePackageCommand(args);
 	if (!options) {
 		return false;
@@ -957,6 +976,11 @@ export async function handlePackageCommand(
 		switch (options.command) {
 			case "install":
 				await packageManager.installAndPersist(source!, { local: options.local });
+				if (!(await settingsSaved(settingsManager))) {
+					console.error(chalk.red(`${source} was installed but is not configured.`));
+					process.exitCode = 1;
+					return true;
+				}
 				console.log(chalk.green(`Installed ${source}`));
 				return true;
 
@@ -964,6 +988,11 @@ export async function handlePackageCommand(
 				const removed = await packageManager.removeAndPersist(source!, { local: options.local });
 				if (!removed) {
 					console.error(chalk.red(`No matching package found for ${source}`));
+					process.exitCode = 1;
+					return true;
+				}
+				if (!(await settingsSaved(settingsManager))) {
+					console.error(chalk.red(`${source} is still configured.`));
 					process.exitCode = 1;
 					return true;
 				}
@@ -1022,6 +1051,12 @@ export async function handlePackageCommand(
 					} else {
 						console.log(chalk.green("Updated packages"));
 					}
+				}
+				// fork: branded builds (prism) update from the Prism site and never query pi.dev.
+				// Source checkouts keep upstream's behaviour so upstream tests still cover it.
+				if (APP_NAME !== "pi" && updateTargetIncludesSelf(target)) {
+					process.exitCode = runPrismUpdate("update");
+					return true;
 				}
 				if (updateTargetIncludesSelf(target)) {
 					const managedInstallRoot = getActiveManagedInstallRoot();

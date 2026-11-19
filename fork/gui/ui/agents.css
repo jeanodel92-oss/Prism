@@ -1,0 +1,11 @@
+.agents-form { display: grid; gap: 0.75rem; }
+/* the agents running in the background, each with its Stop button. */
+.agents-running { display: grid; gap: 0.4rem; margin-bottom: 0.75rem; }
+.agents-running h3 { margin: 0; font-size: inherit; }
+.agents-run { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.agents-run > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.agents .field-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
+.agents .field-row > .field { min-width: 0; width: 100%; max-width: 100%; }
+.agents fieldset { min-width: 0; margin: 0; padding: 0.7rem; border: 1px solid var(--line); }
+.agents textarea { resize: vertical; min-height: 8rem; }
+.agents .panel-actions { flex-wrap: wrap; }

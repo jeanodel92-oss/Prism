@@ -2,6 +2,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { EntryRenderer } from "../../../core/extensions/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
+import { fill } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { theme } from "../theme/theme.ts";
 
 /**
@@ -26,10 +27,9 @@ export class CustomEntryComponent extends Container {
 	}
 
 	setExpanded(expanded: boolean): void {
-		if (this._expanded !== expanded) {
-			this._expanded = expanded;
-			this.rebuild();
-		}
+		// fork: reapply to the renderer even after a local click at the same global state.
+		this._expanded = expanded;
+		this.rebuild();
 	}
 
 	override invalidate(): void {
@@ -38,6 +38,7 @@ export class CustomEntryComponent extends Container {
 	}
 
 	private rebuild(): void {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		this.clear();
 		this.customComponent = undefined;
 
@@ -47,7 +48,9 @@ export class CustomEntryComponent extends Container {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
-			box.addChild(new Text(theme.fg("error", `[${this.entry.customType}] renderer failed: ${message}`), 0, 0));
+			box.addChild(
+				new Text(theme.fg("error", fill("[{0}] renderer failed: {1}", this.entry.customType, message)), 0, 0),
+			);
 			component = box;
 		}
 

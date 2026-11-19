@@ -64,6 +64,8 @@ interface PendingRequest {
 	timer: ReturnType<typeof setTimeout> | undefined;
 	signal: AbortSignal | undefined;
 	onAbort: () => void;
+	/** Aborted when the request settles, so the transport does not dispatch (or retry) it afterwards. */
+	sendController: AbortController;
 	cancellable: boolean;
 	onProgress: ((progress: ProgressNotification) => void) | undefined;
 	progressToken: JsonRpcId | undefined;
@@ -363,7 +365,8 @@ export class McpClient {
 		let cursor: string | undefined;
 		for (let pageNumber = 0; pageNumber < MAX_LIST_PAGES; pageNumber++) {
 			const page = await this.listPage(method, key, isItem, cursor, options);
-			items.push(...page.items);
+			// fork: a large page is never spread into call arguments.
+			for (const item of page.items) items.push(item);
 			if (page.nextCursor === undefined) return items;
 			if (cursors.has(page.nextCursor))
 				throw new Error(`MCP ${method} returned duplicate cursor: ${page.nextCursor}`);
@@ -426,6 +429,7 @@ export class McpClient {
 						method !== "initialize",
 						String(options.signal?.reason ?? "Aborted"),
 					),
+				sendController: new AbortController(),
 				cancellable: method !== "initialize",
 				onProgress: options.onProgress,
 				progressToken,
@@ -434,7 +438,9 @@ export class McpClient {
 			if (progressToken !== undefined) this.progressRequests.set(progressToken, id);
 			options.signal?.addEventListener("abort", entry.onAbort, { once: true });
 			this.armTimeout(id, entry);
-			transport.send(message).catch((error) => this.cancelPending(id, error, false));
+			transport
+				.send(message, { signal: entry.sendController.signal })
+				.catch((error) => this.cancelPending(id, error, false));
 		});
 	}
 
@@ -530,6 +536,10 @@ export class McpClient {
 
 	private handleProgress(params: unknown): void {
 		if (!isObject(params) || !isJsonRpcId(params.progressToken) || typeof params.progress !== "number") return;
+		// fork: a message that is not text (or a total that is not a number)
+		// would reach renderers that call string methods on it.
+		if (params.message !== undefined && typeof params.message !== "string") return;
+		if (params.total !== undefined && typeof params.total !== "number") return;
 		const requestId = this.progressRequests.get(params.progressToken);
 		const entry = requestId === undefined ? undefined : this.pending.get(requestId);
 		if (requestId === undefined || !entry) return;
@@ -574,6 +584,7 @@ export class McpClient {
 		if (entry.timer) clearTimeout(entry.timer);
 		if (entry.progressToken !== undefined) this.progressRequests.delete(entry.progressToken);
 		entry.signal?.removeEventListener("abort", entry.onAbort);
+		entry.sendController.abort();
 	}
 
 	private rejectPending(error: unknown): void {

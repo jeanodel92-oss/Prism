@@ -1,4 +1,5 @@
 import type { Component } from "@earendil-works/pi-tui";
+import { renderHooks } from "../../../fork/render-hooks.ts";
 import { theme } from "../theme/theme.ts";
 
 /**
@@ -20,6 +21,8 @@ export class DynamicBorder implements Component {
 	}
 
 	render(width: number): string[] {
+		const hooked = renderHooks.dynamicBorder?.(width); // fork
+		if (hooked) return hooked;
 		return [this.color("─".repeat(Math.max(1, width)))];
 	}
 }

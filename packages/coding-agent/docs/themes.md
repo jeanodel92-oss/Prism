@@ -1,25 +1,25 @@
-# Customize Pi with themes
+# Customize Prism with themes
 
-Themes control the colors Pi uses in interactive mode and HTML exports. Pi includes the `system`, `dark`, and `light` themes. You can select one theme, follow your terminal's light or dark appearance, or create your own palette.
+Themes control the colors Prism uses in interactive mode and HTML exports. Prism includes the `prism`, `prism-light`, `system`, `dark`, and `light` themes. By default, the automatic `prism-light/prism` pair follows your terminal's light or dark appearance. You can select one theme or create your own palette.
 
 ## Use your terminal's colors
 
-The `system` theme is the default. It builds Pi's colors from your terminal's theme, so Pi matches the terminal instead of bringing its own palette:
+Select the `system` theme to build Prism's colors from your terminal's theme, so Prism matches the terminal instead of bringing its own palette:
 
-- Pi queries the terminal's default foreground and background colors and its 16 ANSI colors.
-- Each Pi color takes its hue from one ANSI color, for example errors from red and links from blue.
-- Pi sets each color's lightness so that it stands out from the background by a minimum contrast. Body text keeps at least a 4.5:1 WCAG contrast ratio on the background and every panel.
-- When the terminal switches between light and dark, Pi queries the colors again and rebuilds the theme.
+- Prism queries the terminal's default foreground and background colors and its 16 ANSI colors.
+- Each Prism color takes its hue from one ANSI color, for example errors from red and links from blue.
+- Prism sets each color's lightness so that it stands out from the background by a minimum contrast. Body text keeps at least a 4.5:1 WCAG contrast ratio on the background and every panel.
+- When the terminal switches between light and dark, Prism queries the colors again and rebuilds the theme.
 
 The theme adapts to what the terminal reports:
 
 | Terminal reports | Result |
 |---|---|
 | Background and ANSI colors | Colors from the terminal palette, placed for the actual background. |
-| Background only | Pi's own hues, placed for the actual background. |
+| Background only | Prism's own hues, placed for the actual background. |
 | Nothing | ANSI color indices and the terminal's default colors, which the terminal renders itself. Secondary text is faint, and panels have no background color. |
 
-Pi asks the terminal for its colors when it starts. Terminals usually answer within a few milliseconds, and Pi waits at most 100 ms before showing the startup header. If the terminal does not answer in time, Pi uses the ANSI color fallback, and it still applies the colors if they arrive later, for example over a slow SSH connection. `system` is a reserved name: a custom theme with that name is ignored.
+Prism asks the terminal for its colors when it starts. Terminals usually answer within a few milliseconds, and Prism waits at most 100 ms before showing the startup header. If the terminal does not answer in time, Prism uses the ANSI color fallback, and it still applies the colors if they arrive later, for example over a slow SSH connection. `system` is a reserved name: a custom theme with that name is ignored.
 
 <a id="selecting-a-theme"></a>
 
@@ -35,7 +35,7 @@ The selection is saved as the `theme` [setting](settings.md#terminal-and-display
 }
 ```
 
-Without a `theme` setting, Pi uses `system`.
+Without a `theme` setting, Prism uses the automatic `prism-light/prism` pair: `prism-light` for light terminals and `prism` for dark terminals.
 
 Automatic mode stores the light theme first and the dark theme second:
 
@@ -45,35 +45,39 @@ Automatic mode stores the light theme first and the dark theme second:
 }
 ```
 
-Pi decides whether the terminal is light or dark from its reported background and foreground colors. If the terminal does not report its background, Pi uses the terminal's light/dark notification, then the `COLORFGBG` environment variable, then dark. The same decision picks the theme of a light/dark pair and the appearance of `system`. When automatic mode is active, Pi changes themes when the terminal reports an appearance change. Theme names cannot contain `/` because Pi reserves it for this setting format.
+Prism decides whether the terminal is light or dark from its reported background and foreground colors. If the terminal does not report its background, Prism uses the terminal's light/dark notification, then the `COLORFGBG` environment variable, then dark. The same decision picks the theme of a light/dark pair and the appearance of `system`. When automatic mode is active, Prism changes themes when the terminal reports an appearance change. Theme names cannot contain `/` because Prism reserves it for this setting format.
 
 Use `--use-theme` to choose the initial theme for one invocation without changing the saved setting:
 
 ```bash
-pi --use-theme light
-pi --use-theme light/dark
+prism --use-theme light
+prism --use-theme light/dark
 ```
 
 See [CLI resources](cli.md#resources) for the command-line option.
 
 ## Create a custom theme
 
+To change a few colours, open `/settings` > Appearance > Customize theme. It edits a copy of the theme in use: pick a palette entry or a colour, type a new value (a hex colour such as `#3a7bd5`, a palette name, a 256-colour index, or nothing for the terminal's own colour) and the whole interface shows it as you type. Enter saves the copy as `<agent-dir>/themes/<name>-custom.json` and makes it your theme; Esc goes back to the saved colours. A theme already in `<agent-dir>/themes/` is edited in place.
+
+To write a theme by hand:
+
 Copy one of the [built-in themes](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive/theme) or create a new JSON file conforming to the [schema](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json). The built-in themes use OKHSL colors, with variables for colors that several roles share, so you can adjust a hue, saturation, or lightness directly.
 
-1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.pi/agent`.
+1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.prism/agent`.
 2. Set its `name` to `my-theme`.
 3. Change values in `vars` and `colors`.
 4. Select `my-theme` through `/settings`.
 
-Use the theme name as the filename. Pi hot-reloads the active user theme only from `<agent-dir>/themes/<name>.json`. Run `/reload` after adding or changing a theme from any other source.
+Use the theme name as the filename. Prism hot-reloads the active user theme only from `<agent-dir>/themes/<name>.json`. Run `/reload` after adding or changing a theme from any other source.
 
 ## Understand the theme file
 
 | Property | Required | Responsibility |
 |---|---|---|
-| `$schema` | No | Enables editor validation and completion against Pi's published schema. |
+| `$schema` | No | Enables editor validation and completion against Prism's published schema. |
 | `name` | Yes | Identifies the theme in selectors and settings. It must be unique, cannot contain `/`, and cannot be `system`. |
-| `appearance` | No | `"dark"` or `"light"`: the background the theme is designed for. Pi detects it from the theme colors when omitted. |
+| `appearance` | No | `"dark"` or `"light"`: the background the theme is designed for. Prism detects it from the theme colors when omitted. |
 | `vars` | No | Defines reusable color values. Variables can reference other variables. |
 | `colors` | Yes | Assigns colors to terminal UI roles. The schema identifies required and optional roles. |
 | `export` | No | Overrides page and panel backgrounds in HTML exports. |
@@ -89,13 +93,13 @@ A color can be written in six forms:
 | Variable reference | `"primary"` | The value of an entry in `vars`. |
 | Terminal default | `""` | The terminal's default foreground or background color. |
 
-Terminal default colors render as the terminal's own colors. Where Pi needs a concrete value, such as HTML export or extension color math, it uses the default colors the terminal reports, or a black or white guess based on the theme's appearance.
+Terminal default colors render as the terminal's own colors. Where Prism needs a concrete value, such as HTML export or extension color math, it uses the default colors the terminal reports, or a black or white guess based on the theme's appearance.
 
-Pi resolves chained variable references. A missing variable or circular reference makes the theme invalid. Pi uses truecolor when available, gamut-maps OKLCH to sRGB, and approximates colors for 256-color terminals. HTML exports convert OKHSL values to hexadecimal because CSS does not support them. If colors differ from their source values, check your terminal's truecolor detection and contrast settings. See [Configure Your Terminal](terminal-setup.md#override-detected-capabilities).
+Prism resolves chained variable references. A missing variable or circular reference makes the theme invalid. Prism uses truecolor when available, gamut-maps OKLCH to sRGB, and approximates colors for 256-color terminals. HTML exports convert OKHSL values to hexadecimal because CSS does not support them. If colors differ from their source values, check your terminal's truecolor detection and contrast settings. See [Configure Your Terminal](terminal-setup.md#override-detected-capabilities).
 
 Use the [theme JSON schema](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json) for the exact properties, required colors, and accepted value types.
 
-Pi reports invalid theme files during startup and `/reload`.
+Prism reports invalid theme files during startup and `/reload`.
 
 ## Find the color to change
 
@@ -125,12 +129,12 @@ Five colors are optional and inherit another color when omitted:
 | `searchMatchText` | `text` |
 | `thinkingMax` | `thinkingXhigh` |
 
-If `export` colors are omitted, Pi derives HTML page and panel backgrounds from `userMessageBg`.
+If `export` colors are omitted, Prism derives HTML page and panel backgrounds from `userMessageBg`.
 
 ## Load a theme from a project or package
 
-Place a project theme in `.pi/themes/`. Project themes load only after [project trust](security.md#understand-project-trust) is granted.
+Place a project theme in `.prism/themes/`. Project themes load only after [project trust](security.md#understand-project-trust) is granted.
 
-You can also load theme files and directories through the `themes` setting or distribute them in a Pi package. See [Configuration](configuration.md), [Settings](settings.md#resources), and [Pi Packages](packages.md).
+You can also load theme files and directories through the `themes` setting or distribute them in a Prism package. See [Configuration](configuration.md), [Settings](settings.md#resources), and [Prism Packages](packages.md).
 
-Each loaded theme must have a unique name. Pi reports duplicate names as resource collisions.
+Each loaded theme must have a unique name. Prism reports duplicate names as resource collisions.

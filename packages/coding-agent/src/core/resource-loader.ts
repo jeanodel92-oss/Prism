@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { detectCapabilities, getTerminalColorMode, type TerminalColorMode } from "@earendil-works/pi-tui";
 import chalk from "chalk";
-import { CONFIG_DIR_NAME } from "../config.ts";
+import { APP_NAME, CONFIG_DIR_NAME } from "../config.ts";
 import { loadThemeFromPath, type Theme } from "../modes/interactive/theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 
@@ -16,6 +16,7 @@ import {
 	createExtensionRuntime,
 	loadExtensionFromFactory,
 	loadExtensionsCached,
+	withdrawExtension,
 } from "./extensions/loader.ts";
 import type {
 	Extension,
@@ -120,12 +121,33 @@ export function isBuiltinExtension(input: InlineExtension): input is BuiltinExte
 function omitReplacedExtensions(
 	extensions: Extension[],
 	warnings?: Array<{ path: string; warning: string }>,
+	isProjectExtension: (extension: Extension) => boolean = () => false,
 ): Extension[] {
 	const names = (extension: Extension) => [
 		...[...extension.tools.keys()].map((name) => `tool:${name}`),
 		...[...extension.commands.keys()].map((name) => `command:${name}`),
 		...[...extension.flags.keys()].map((name) => `flag:${name}`),
 	];
+	// fork: a project extension cannot replace a `userReplaceableOnly` extension (the permission gate).
+	const guarded = new Set(
+		extensions
+			.filter((extension) => extension.replaceable && extension.userReplaceableOnly)
+			.flatMap((extension) => names(extension)),
+	);
+	const blocked = new Set<Extension>();
+	for (const extension of extensions) {
+		if (extension.replaceable || !isProjectExtension(extension)) continue;
+		const name = names(extension).find((value) => guarded.has(value));
+		if (!name) continue;
+		blocked.add(extension);
+		warnings?.push({
+			path: extension.path,
+			warning: `Project extension ${extension.path} registers ${name}, which belongs to a built-in extension that only a user extension can replace, so it was not loaded.`,
+		});
+	}
+	extensions = extensions.filter((extension) => !blocked.has(extension));
+	// fork: an extension left out takes back what it published to the shared runtime.
+	for (const extension of blocked) withdrawExtension(extension);
 	const taken = new Map(
 		extensions
 			.filter((extension) => !extension.replaceable)
@@ -143,9 +165,10 @@ function omitReplacedExtensions(
 			const registeredName = kind === "command" ? `/${rawName}` : kind === "flag" ? `--${rawName}` : rawName;
 			warnings?.push({
 				path: extension.path,
-				warning: `Extension ${replacement.extension.path} registers ${kind} \`${registeredName}\`, so built-in extension \`${builtinName}\` was not loaded. To use \`${builtinName}\`, run \`pi config\` and make sure it is enabled under Built-in extensions, then disable or remove the existing extension. We recommend only having one or the other loaded at a time.`,
+				warning: `Extension ${replacement.extension.path} registers ${kind} \`${registeredName}\`, so built-in extension \`${builtinName}\` was not loaded. To use \`${builtinName}\`, run \`${APP_NAME} config\` and make sure it is enabled under Built-in extensions, then disable or remove the existing extension. We recommend only having one or the other loaded at a time.`,
 			});
 		}
+		withdrawExtension(extension);
 		return false;
 	});
 }
@@ -232,6 +255,7 @@ function findShadowedContextFile(cwd: string): string | undefined {
 export function loadProjectContextFiles(options: {
 	cwd: string;
 	agentDir: string;
+	projectTrusted?: boolean;
 }): Array<{ path: string; content: string }> {
 	const resolvedCwd = resolvePath(options.cwd);
 	const resolvedAgentDir = resolvePath(options.agentDir);
@@ -244,6 +268,7 @@ export function loadProjectContextFiles(options: {
 		contextFiles.push(globalContext);
 		seenPaths.add(globalContext.path);
 	}
+	if (options.projectTrusted === false) return contextFiles;
 
 	const ancestorContextFiles: Array<{ path: string; content: string }> = [];
 
@@ -378,6 +403,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
 			builtinExtensions: [...this.builtinExtensions.keys()],
+			// fork: built-in extensions that stay off until the `extensions` setting turns them on.
+			builtinExtensionsDisabledByDefault: [...this.builtinExtensions.values()]
+				.filter((extension) => extension.disabledByDefault)
+				.map((extension) => extension.name),
 		});
 		this.additionalExtensionPaths = options.additionalExtensionPaths ?? [];
 		this.additionalSkillPaths = options.additionalSkillPaths ?? [];
@@ -518,7 +547,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 		// reload() preserves SettingsManager.projectTrusted and reloads settings for that trust state.
 		await this.settingsManager.reload();
-		const resolvedPaths = await this.packageManager.resolve();
+		const resolvedPaths = await this.packageManager.resolve(
+			this.discoveredPackagesOff() ? async () => "skip" : undefined,
+		);
 		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
 			temporary: true,
 		});
@@ -637,6 +668,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 				: loadProjectContextFiles({
 						cwd: this.cwd,
 						agentDir: this.agentDir,
+						projectTrusted: this.settingsManager.isProjectTrusted(),
 					}),
 		};
 		const resolvedAgentsFiles = this.agentsFilesOverride ? this.agentsFilesOverride(agentsFiles) : agentsFiles;
@@ -665,8 +697,19 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.loaded = true;
 	}
 
+	/**
+	 * fork: with every kind of discovered resource off (--safe), a package of the
+	 * settings that is missing or out of date is not installed: none of its resources would load, and the install
+	 * would reach the network and may run its scripts before the interface even starts.
+	 */
+	private discoveredPackagesOff(): boolean {
+		return this.noExtensions && this.noSkills && this.noPromptTemplates && this.noThemes;
+	}
+
 	private async loadCurrentExtensionSet(options: { includeInlineFactories: boolean }): Promise<LoadExtensionsResult> {
-		const resolvedPaths = await this.packageManager.resolve();
+		const resolvedPaths = await this.packageManager.resolve(
+			this.discoveredPackagesOff() ? async () => "skip" : undefined,
+		);
 		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
 			temporary: true,
 		});
@@ -694,7 +737,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		extensionsResult.extensions.push(...inlineExtensions.extensions);
 		extensionsResult.errors.push(...inlineExtensions.errors);
 		const replacementWarnings: Array<{ path: string; warning: string }> = [];
-		extensionsResult.extensions = omitReplacedExtensions(extensionsResult.extensions, replacementWarnings);
+		extensionsResult.extensions = omitReplacedExtensions(extensionsResult.extensions, replacementWarnings, (e) =>
+			this.isProjectExtension(e, metadataByPath),
+		);
 		mergeExtensionWarnings(extensionsResult, replacementWarnings);
 		return extensionsResult;
 	}
@@ -728,6 +773,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 				);
 				extension.hidden = true;
 				extension.replaceable = builtin.replaceable === true;
+				extension.userReplaceableOnly = builtin.userReplaceableOnly === true;
 				result.extensions.push(extension);
 			} catch (error) {
 				result.errors.push({ path, error: error instanceof Error ? error.message : "failed to load extension" });
@@ -770,7 +816,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 		const replacementWarnings: Array<{ path: string; warning: string }> = [];
 		const extensionsResult: LoadExtensionsResult = {
-			extensions: omitReplacedExtensions(orderedExtensions, replacementWarnings),
+			extensions: omitReplacedExtensions(orderedExtensions, replacementWarnings, (e) =>
+				this.isProjectExtension(e, this.resourceMetadataByPath),
+			),
 			errors: [...(preTrustExtensions?.errors ?? []), ...remainingExtensions.errors, ...inlineExtensions.errors],
 			warnings: [...(preTrustExtensions?.warnings ?? []), ...(remainingExtensions.warnings ?? [])],
 			runtime: remainingExtensions.runtime,
@@ -901,6 +949,14 @@ export class DefaultResourceLoader implements ResourceLoader {
 			return theme;
 		});
 		this.themeDiagnostics = resolvedThemes.diagnostics;
+	}
+
+	/** fork: whether an extension comes from the project (see `omitReplacedExtensions`). */
+	private isProjectExtension(extension: Extension, metadataByPath: Map<string, PathMetadata>): boolean {
+		const sourceInfo =
+			this.findSourceInfoForPath(extension.path, undefined, metadataByPath) ??
+			this.getDefaultSourceInfoForPath(extension.path);
+		return sourceInfo.scope === "project";
 	}
 
 	private applyExtensionSourceInfo(extensions: Extension[], metadataByPath: Map<string, PathMetadata>): void {
@@ -1135,6 +1191,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 				const extension = await loadExtensionFromFactory(factory, this.cwd, this.eventBus, runtime, extensionPath);
 				extension.hidden = isNamed && input.hidden;
 				extension.replaceable = isNamed && input.replaceable === true;
+				extension.userReplaceableOnly = isNamed && input.userReplaceableOnly === true;
 				extensions.push(extension);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "failed to load extension";

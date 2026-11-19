@@ -13,8 +13,15 @@ function dosDateTime(date: Date): { time: number; day: number } {
 	};
 }
 
+/** Classic ZIP (no ZIP64) stores the entry count in 16 bits. */
+export const ZIP_MAX_ENTRIES = 0xffff;
+
 /** Create the small, classic ZIP archives used by bug reports. */
-function createZipArchive(entries: readonly ZipEntry[]): Buffer {
+export function createZipArchive(entries: readonly ZipEntry[]): Buffer {
+	// fork: refuse before compressing anything rather than failing on the trailer.
+	if (entries.length > ZIP_MAX_ENTRIES) {
+		throw new Error(`A ZIP archive holds at most ${ZIP_MAX_ENTRIES} entries; got ${entries.length}`);
+	}
 	const files: Buffer[] = [];
 	const directory: Buffer[] = [];
 	const { time, day } = dosDateTime(new Date());

@@ -1,0 +1,10 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "log", "text": "writes next to the working folder; run with sandbox.userCommands on and off (see gui-fork10.md)" },
+	{ "do": "type", "text": "! touch inside.txt; echo inside=$?; echo x > ../outside.txt; echo outside=$?" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='done'] .tool-output", "text": "outside=" },
+	{ "do": "shot", "name": "s1-user-bash" },
+	{ "do": "log", "text": "bash-sandbox-ok" },
+	{ "do": "quit" }
+]

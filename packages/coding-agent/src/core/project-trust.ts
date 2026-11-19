@@ -1,4 +1,5 @@
-import { APP_NAME, CONFIG_DIR_NAME } from "../config.ts";
+import { APP_NAME } from "../config.ts";
+import { fill, t } from "../fork/i18n/index.ts";
 import { emitProjectTrustEvent } from "./extensions/runner.ts";
 import type { LoadExtensionsResult, ProjectTrustContext } from "./extensions/types.ts";
 import type { DefaultProjectTrust } from "./settings-manager.ts";
@@ -22,7 +23,12 @@ export interface ResolveProjectTrustedOptions {
 }
 
 function formatProjectTrustPrompt(cwd: string): string {
-	return `Trust project folder?\n${cwd}\n\nThis allows ${APP_NAME} to load ${CONFIG_DIR_NAME} settings and resources, install missing project packages, and execute project extensions.`;
+	// fork: in the interface language, like the /trust selector.
+	return fill(
+		"Trust project folder?\n{0}\n\nThis allows {1} to load its settings, extensions, and project instructions, install missing project packages, and execute project extensions.",
+		cwd,
+		APP_NAME,
+	);
 }
 
 async function selectProjectTrustOption(
@@ -30,11 +36,14 @@ async function selectProjectTrustOption(
 	ctx: ProjectTrustContext,
 ): Promise<ProjectTrustOption | undefined> {
 	const options = getProjectTrustOptions(cwd, { includeSessionOnly: true });
-	const selected = await ctx.ui.select(
-		formatProjectTrustPrompt(cwd),
-		options.map((option) => option.label),
+	// fork: labels shown translated, the choice found by its shown label.
+	const shown = options.map((option) =>
+		option.label.startsWith("Trust parent folder (") && option.savedPath
+			? fill("Trust parent folder ({0})", option.savedPath)
+			: t(option.label),
 	);
-	return options.find((option) => option.label === selected);
+	const selected = await ctx.ui.select(formatProjectTrustPrompt(cwd), shown);
+	return options[shown.indexOf(selected ?? "")];
 }
 
 function saveProjectTrustPromptResult(trustStore: ProjectTrustStore, result: ProjectTrustOption): void {

@@ -5,6 +5,7 @@ import { type CredentialStore, createModels, type Provider } from "@earendil-wor
 import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage, FileAuthStorageBackend } from "../src/core/auth-storage.ts";
+import { RACY_MS } from "../src/fork/file-cache.ts";
 
 describe("AuthStorage", () => {
 	const tempDir = join(tmpdir(), `pi-test-auth-storage-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -18,10 +19,17 @@ describe("AuthStorage", () => {
 	afterEach(() => {
 		if (existsSync(tempDir)) rmSync(tempDir, { recursive: true });
 		vi.restoreAllMocks();
+		vi.useRealTimers();
 	});
 
 	function writeAuthJson(data: Record<string, unknown>): void {
 		writeFileSync(authJsonPath, JSON.stringify(data));
+	}
+
+	// fork: a file changed in the last RACY_MS has no revision and is read again;
+	// this moves the clock past that, for the tests that count reloads of an unchanged file.
+	function ageFiles(): void {
+		vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + RACY_MS + 1_000 });
 	}
 
 	test("reads and resolves stored API-key credentials", async () => {
@@ -79,6 +87,7 @@ describe("AuthStorage", () => {
 			anthropic: { type: "api_key", key: "new" },
 			openai: { type: "api_key", key: "openai-key" },
 		});
+		ageFiles();
 
 		const [anthropic, openai, credentials] = await Promise.all([
 			first.read("anthropic", { signal: new AbortController().signal }),
@@ -98,6 +107,7 @@ describe("AuthStorage", () => {
 
 		const otherPath = join(tempDir, "other-auth.json");
 		writeFileSync(otherPath, JSON.stringify({ other: { type: "api_key", key: "other-key" } }));
+		ageFiles();
 		const otherFirst = AuthStorage.create(otherPath);
 		const otherSecond = AuthStorage.create(otherPath);
 		await otherFirst.read("other");

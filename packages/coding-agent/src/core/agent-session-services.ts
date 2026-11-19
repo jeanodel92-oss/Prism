@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import { getAgentDir } from "../config.ts";
+import { releaseFlagValue } from "../fork/cli-flag-values.ts";
 import { resolvePath } from "../utils/paths.ts";
 import type { SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -105,6 +106,8 @@ function applyExtensionFlagValues(
 		}
 		if (flag.type === "boolean") {
 			extensionsResult.runtime.flagValues.set(name, true);
+			// fork: a word parsed as this flag's value was a prompt.
+			if (typeof value === "string") releaseFlagValue(extensionFlagValues, name);
 			continue;
 		}
 		if (typeof value === "string") {

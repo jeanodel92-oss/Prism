@@ -1,0 +1,31 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "md" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".composer[data-busy='false']", "timeout": 30000 },
+	{ "do": "type", "text": "/name Alpha" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "Session name set: Alpha" },
+
+	{ "do": "click", "selector": "#new-session", "sidebar": true },
+	{ "do": "wait", "selector": "#composer[data-starting='true']", "why": "the window renders on the next frame: the old state first" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "click", "selector": "#open-list li:nth-child(1) .close", "why": "renaming a session open in another tab is two engines on one file, as two terminals", "sidebar": true },
+	{ "do": "wait", "selector": "#open-list li:nth-child(2)", "gone": true },
+	{ "do": "type", "text": "/resume" },
+	{ "do": "send" },
+	{ "do": "wait", "selector": "#surface .panel.sessions .sessions-row", "text": "Alpha" },
+	{ "do": "shot", "name": "r1-selector" },
+	{ "do": "click", "selector": ".panel.sessions .sessions-row [data-action='rename']" },
+	{ "do": "wait", "selector": ".panel.sessions [data-rename]" },
+	{ "do": "type", "selector": ".panel.sessions [data-rename]", "text": "Beta" },
+	{ "do": "click", "selector": ".panel.sessions .sessions-form button[type='submit']" },
+	{ "do": "wait", "selector": ".panel.sessions .sessions-name", "text": "Beta" },
+	{ "do": "click", "selector": ".panel.sessions .sessions-open", "text": "Beta", "why": "opens the chosen session" },
+	{ "do": "wait", "selector": ".panel.sessions", "gone": true },
+	{ "do": "wait", "selector": "#session-title", "text": "Beta" },
+	{ "do": "wait", "selector": ".msg.user", "text": "md" },
+
+	{ "do": "log", "text": "resume-ok" },
+	{ "do": "quit" }
+]

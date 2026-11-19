@@ -11,6 +11,7 @@ import {
 	Spacer,
 	Text,
 } from "@earendil-works/pi-tui";
+import { fill, t } from "../../../fork/i18n/index.ts";
 import { getSelectListTheme, theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
@@ -67,17 +68,21 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 
 		this.allItems = availableLevels.map((level) => ({
 			value: level,
-			label: `${level === currentLevel ? "✓ " : "  "}${level}`,
+			label: `${level === currentLevel ? "✓ " : "  "}${t(level)}`,
 			description:
-				level === defaultThinkingLevel ? `${LEVEL_DESCRIPTIONS[level]} · default` : LEVEL_DESCRIPTIONS[level],
+				level === defaultThinkingLevel
+					? `${t(LEVEL_DESCRIPTIONS[level])}${t(" · default")}`
+					: t(LEVEL_DESCRIPTIONS[level]),
 		}));
 
 		// Add top border
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-		this.addChild(new Text("Thinking Level", 0, 0));
+		this.addChild(new Text(t("Thinking Level"), 0, 0));
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(`${keyDisplayText("app.thinking.cycle")} cycles thinking levels in-session`, 0, 0));
+		this.addChild(
+			new Text(fill("{0} cycles thinking levels in-session", keyDisplayText("app.thinking.cycle")), 0, 0),
+		);
 		this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
@@ -94,7 +99,12 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 			new Text(
 				theme.fg(
 					"dim",
-					`  ${keyDisplayText("tui.select.confirm")} to select · ${keyDisplayText("app.thinking.save")} to set as default · ${keyDisplayText("tui.select.cancel")} to cancel`,
+					fill(
+						"  {0} to select · {1} to set as default · {2} to cancel",
+						keyDisplayText("tui.select.confirm"),
+						keyDisplayText("app.thinking.save"),
+						keyDisplayText("tui.select.cancel"),
+					),
 				),
 				0,
 				0,

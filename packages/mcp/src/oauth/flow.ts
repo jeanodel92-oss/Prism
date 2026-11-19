@@ -122,10 +122,11 @@ function applyClientAuthentication(
 ): void {
 	if (method === "client_secret_basic") {
 		if (!information.client_secret) throw new Error("client_secret_basic requires a client secret");
-		headers.set(
-			"Authorization",
-			`Basic ${Buffer.from(`${information.client_id}:${information.client_secret}`).toString("base64")}`,
-		);
+		// fork: RFC 6749 section 2.3.1 form-encodes each part first, so a client id with a
+		// ":" is not split there by the server.
+		const form = (value: string) => new URLSearchParams({ v: value }).toString().slice(2);
+		const pair = `${form(information.client_id)}:${form(information.client_secret)}`;
+		headers.set("Authorization", `Basic ${Buffer.from(pair).toString("base64")}`);
 	} else {
 		params.set("client_id", information.client_id);
 		if (method === "client_secret_post" && information.client_secret)
@@ -337,10 +338,11 @@ async function runFlow(provider: OAuthClientProvider, options: OAuthFlowOptions)
 		fetch: options.fetch,
 	};
 	if (options.authorizationCode) {
-		// RFC 9207: never send a code from another authorization server to this one.
+		// RFC 9207: never send a code from another authorization server to this one. Without metadata there
+		// is no issuer to compare with, so any `iss` is rejected.
 		const iss = options.iss;
-		if (metadata && (iss !== undefined || metadata.authorization_response_iss_parameter_supported)) {
-			if (iss !== metadata.issuer) throw new OAuthIssuerMismatchError(metadata.issuer, iss);
+		if (iss !== undefined || metadata?.authorization_response_iss_parameter_supported) {
+			if (iss !== metadata?.issuer) throw new OAuthIssuerMismatchError(metadata?.issuer, iss);
 		}
 		const tokens = await exchangeAuthorizationCode(discovered.authorizationServerUrl, {
 			...tokenOptions,

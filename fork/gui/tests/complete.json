@@ -1,0 +1,54 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "! touch notes-demo.md" },
+	{ "do": "send", "why": "a file in the session's folder, for @" },
+	{ "do": "wait", "selector": ".tool.user-bash[data-status='done']" },
+
+	{ "do": "keys", "text": "/comp" },
+	{ "do": "wait", "selector": "#completion li.selected", "text": "compact" },
+	{ "do": "shot", "name": "c1-commands" },
+	{ "do": "key", "selector": "#input", "key": "Escape", "why": "closes the list only" },
+	{ "do": "wait", "selector": "#completion", "gone": true },
+	{ "do": "wait", "selector": "#input", "text": "/comp" },
+	{ "do": "key", "selector": "#input", "key": "Tab", "why": "Tab on the first word of / lists the commands" },
+	{ "do": "wait", "selector": "#completion li.selected", "text": "compact" },
+	{ "do": "key", "selector": "#input", "key": "Tab", "why": "Tab writes the chosen command" },
+	{ "do": "wait", "selector": "#input", "text": "/compact" },
+	{ "do": "absent", "selector": "#completion li" },
+
+	{ "do": "type", "text": "" },
+	{ "do": "keys", "text": "/exi" },
+	{ "do": "keys", "text": "t" },
+	{ "do": "wait", "selector": "#completion li.selected", "text": "quit", "why": "an alias finds its command" },
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+
+	{ "do": "type", "text": "" },
+	{ "do": "keys", "text": "/thinking" },
+	{ "do": "keys", "text": "of" },
+	{ "do": "wait", "selector": "#completion li", "text": "off" },
+	{ "do": "key", "selector": "#input", "key": "Escape" },
+
+	{ "do": "type", "text": "" },
+	{ "do": "keys", "text": "read @notes-dem" },
+	{ "do": "wait", "selector": "#completion li", "text": "notes-demo.md" },
+	{ "do": "shot", "name": "c2-files" },
+	{ "do": "key", "selector": "#input", "key": "Enter", "why": "a file is written, nothing is sent" },
+	{ "do": "wait", "selector": "#input", "text": "read @notes-demo.md" },
+	{ "do": "absent", "selector": ".msg.user" },
+	{ "do": "absent", "selector": "#completion li" },
+
+	{ "do": "type", "text": "" },
+	{ "do": "keys", "text": "plain text" },
+	{ "do": "absent", "selector": "#completion li", "why": "prose does not open the list" },
+
+	{ "do": "type", "text": "" },
+	{ "do": "keys", "text": "/sessio" },
+	{ "do": "keys", "text": "n" },
+	{ "do": "wait", "selector": "#completion li.selected", "text": "session" },
+	{ "do": "key", "selector": "#input", "key": "Enter", "why": "a command is written and sent at once" },
+	{ "do": "wait", "selector": ".panel.report .panel-title", "text": "Session" },
+	{ "do": "absent", "selector": "#input", "text": "/session" },
+
+	{ "do": "log", "text": "complete-ok" },
+	{ "do": "quit" }
+]

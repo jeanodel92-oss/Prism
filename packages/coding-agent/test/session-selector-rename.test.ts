@@ -108,4 +108,43 @@ describe("session selector rename", () => {
 		expect(renameSession).toHaveBeenCalledTimes(1);
 		expect(renameSession).toHaveBeenCalledWith(sessions[0]!.path, "XOld");
 	});
+
+	// fork: a rename that fails is shown in the selector, never left to end the
+	// process, and the next attempt works.
+	it("shows a failed rename and lets the user try again", async () => {
+		const sessions = [makeSession({ id: "a", name: "Old" })];
+		const renameSession = vi
+			.fn<(path: string, name: string | undefined) => Promise<void>>()
+			.mockRejectedValueOnce(new Error("session file is gone"))
+			.mockResolvedValueOnce(undefined);
+		const rejections: unknown[] = [];
+		const onRejection = (reason: unknown) => rejections.push(reason);
+		process.on("unhandledRejection", onRejection);
+		try {
+			const keybindings = new KeybindingsManager();
+			const selector = new SessionSelectorComponent(
+				async () => sessions,
+				async () => [],
+				() => {},
+				() => {},
+				() => {},
+				() => {},
+				{ renameSession, showRenameHint: true, keybindings },
+			);
+			await flushPromises();
+			for (const _attempt of [1, 2]) {
+				selector.getSessionList().handleInput(CTRL_R);
+				await flushPromises();
+				selector.handleInput("X");
+				selector.handleInput("\r");
+				await flushPromises();
+				await flushPromises();
+				if (_attempt === 1) expect(selector.render(120).join("\n")).toContain("session file is gone");
+			}
+			expect(renameSession).toHaveBeenCalledTimes(2);
+			expect(rejections).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onRejection);
+		}
+	});
 });

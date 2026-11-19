@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { knownSecrets } from "../fork/secrets/env.ts";
+import { maskValue } from "../fork/secrets/mask.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { CURRENT_SESSION_VERSION, type SessionHeader, type SessionManager } from "./session-manager.ts";
 
@@ -25,7 +27,9 @@ export function serializeSessionBranch(
 		parentId = entry.id;
 	}
 	entries.push(...(createTrailingEntries?.(parentId, timestamp) ?? []));
-	return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+	// fork: no known secret in an export or a share, even from a session saved before.
+	const secrets = knownSecrets();
+	return `${entries.map((entry) => JSON.stringify(maskValue(entry, secrets))).join("\n")}\n`;
 }
 
 /** Write the current session branch and optional export-only entries as JSONL. */

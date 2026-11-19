@@ -1,3 +1,4 @@
+import { layoutViewport } from "../fork/layout-viewport.ts";
 import { allocateStackSizes, Stack, type StackChild, type StackOptions, visibleStackEntries } from "./stack.ts";
 
 export class VStack extends Stack {
@@ -9,7 +10,8 @@ export class VStack extends Stack {
 
 	override render(width: number): string[] {
 		const viewport = { width: Math.max(1, width), height: Number.MAX_SAFE_INTEGER };
-		const entries = visibleStackEntries(this.entries, viewport);
+		// prism-fork: inside a layout pass, the same entries as the layout (src/fork/layout-viewport.ts).
+		const entries = visibleStackEntries(this.entries, layoutViewport() ?? viewport);
 		const rendered = entries.map((entry) => entry.component.render(viewport.width));
 		const sizes = allocateStackSizes(
 			entries,

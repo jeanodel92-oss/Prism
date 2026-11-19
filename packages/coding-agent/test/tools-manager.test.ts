@@ -132,7 +132,7 @@ describe("ensureTool", () => {
 
 		expect(result).toBeUndefined();
 		expect(statuses).toEqual([
-			{ type: "info", message: "fd not found. Downloading..." },
+			{ type: "info", message: "Downloading fd (file search)..." }, // fork
 			{
 				type: "warning",
 				message: "Failed to download fd: fetch failed: connect ETIMEDOUT 140.82.113.3:443",

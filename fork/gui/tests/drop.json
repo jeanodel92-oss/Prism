@@ -1,0 +1,19 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "type", "text": "attachments? look" },
+	{ "do": "drop", "paths": ["/tmp/prism-drive-drop/a b.txt", "/tmp/prism-drive-drop/doc.pdf"], "why": "files dropped from the file manager become attachments, as with the attach button" },
+	{ "do": "wait", "selector": "#attachments .attachment", "text": "a b.txt" },
+	{ "do": "wait", "selector": "#attachments .attachment", "text": "doc.pdf" },
+	{ "do": "wait", "selector": "#input", "text": "attachments? look" },
+	{ "do": "focused", "selector": "#input" },
+	{ "do": "drop", "paths": ["/tmp/prism-drive-drop/missing.txt"] },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "missing.txt" },
+	{ "do": "attach-refused", "path": "/tmp/prism-drive-drop/secret.txt", "why": "a path never picked nor dropped, asked by the page" },
+	{ "do": "count", "selector": "#attachments .attachment", "count": 2 },
+	{ "do": "send" },
+	{ "do": "wait", "selector": ".msg.assistant", "text": "a b.txt: drop line; doc.pdf: [1 KB, a copy the user attached", "timeout": 30000 },
+	{ "do": "wait", "selector": ".msg.user .attachments.sent .attachment", "text": "doc.pdf" },
+	{ "do": "absent", "selector": ".msg.user .bubble", "text": "<file name" },
+	{ "do": "log", "text": "drop-ok" },
+	{ "do": "quit" }
+]

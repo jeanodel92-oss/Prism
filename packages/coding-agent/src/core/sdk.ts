@@ -1,8 +1,14 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ModelsSimpleStreamOptions } from "@earendil-works/pi-ai";
+import type { Api, ModelsSimpleStreamOptions } from "@earendil-works/pi-ai";
 import { clampThinkingLevel, type Message, type Model, streamSimple } from "@earendil-works/pi-ai/compat";
 import { getAgentDir } from "../config.ts";
+import {
+	capturePreparedRequest,
+	captureProviderPayload,
+	markProviderResponseReceived,
+	setCloudWarningEnabled,
+} from "../fork/request-inspector.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
@@ -307,6 +313,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	};
 
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	setCloudWarningEnabled(settingsManager.getShowLocalCloudWarning());
 	const cacheWarmer = new CacheWarmer(
 		modelRuntime,
 		sessionManager,
@@ -355,12 +362,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			);
 		};
 	};
-	const transformProviderPayload = async (payload: unknown) => {
+	const transformProviderPayload = async (payload: unknown, requestModel: Model<Api>, capture = true) => {
 		const runner = extensionRunnerRef.current;
-		if (!runner?.hasHandlers("before_provider_request")) return payload;
-		return runner.emitBeforeProviderRequest(payload);
+		const transformed = runner?.hasHandlers("before_provider_request")
+			? await runner.emitBeforeProviderRequest(payload)
+			: payload;
+		if (capture) captureProviderPayload(transformed, requestModel);
+		return transformed;
 	};
-	const handleProviderResponse: NonNullable<ModelsSimpleStreamOptions["onResponse"]> = async (response) => {
+	const handleProviderResponse: NonNullable<ModelsSimpleStreamOptions["onResponse"]> = async (
+		response,
+		requestModel,
+	) => {
+		markProviderResponseReceived(requestModel);
 		const runner = extensionRunnerRef.current;
 		if (!runner?.hasHandlers("after_provider_response")) return;
 		await runner.emit({
@@ -394,6 +408,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		},
 		convertToLlm: convertToLlmWithBlockImages,
 		streamFn: async (model, context, options) => {
+			capturePreparedRequest(model, context);
 			const requestOptions = buildRequestOptions(model, options);
 			// Compaction and summaries use their own routing ids; only session requests
 			// replace the cache entry, so warming restarts from them. Keep warming while
@@ -401,7 +416,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// shallow-copy the messages array or refresh the model object without changing
 			// the provider request, so top-level object identity is not a valid cache key.
 			if (options?.sessionId === sessionManager.getSessionId()) {
-				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
+				// fork: a warm request keeps the payload hooks but must not replace
+				// the payload /sent shows for this request with its own (one output token).
+				const warmOptions: ModelsSimpleStreamOptions = {
+					...requestOptions,
+					onPayload: requestOptions.onPayload
+						? (payload, requestModel) => transformProviderPayload(payload, requestModel, false)
+						: undefined,
+				};
+				cacheWarmer.start({ model, context, options: warmOptions }, cacheContextIsCurrent(model));
 			}
 			return modelRuntime.streamSimple(model, context, requestOptions);
 		},

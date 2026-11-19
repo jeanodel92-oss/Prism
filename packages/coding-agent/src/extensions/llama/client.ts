@@ -1,3 +1,8 @@
+import { fill, t } from "../../fork/i18n/index.ts"; // fork: display text only
+
+// fork: server messages must stay verbatim even when they match a catalog key.
+export class LlamaServerError extends Error {}
+
 export type LlamaModelStatus = "unloaded" | "loading" | "loaded" | "downloading" | "sleeping";
 
 export interface LlamaModelInfo {
@@ -45,12 +50,12 @@ export interface LlamaProgress {
 	detail?: string;
 }
 
-function errorMessage(payload: unknown, fallback: string): string {
-	if (typeof payload !== "object" || payload === null) return fallback;
+function errorMessage(payload: unknown, fallback: string): Error {
+	if (typeof payload !== "object" || payload === null) return new Error(fallback);
 	const error = (payload as { error?: unknown }).error;
-	if (typeof error !== "object" || error === null) return fallback;
+	if (typeof error !== "object" || error === null) return new Error(fallback);
 	const message = (error as { message?: unknown }).message;
-	return typeof message === "string" && message ? message : fallback;
+	return typeof message === "string" && message ? new LlamaServerError(message) : new Error(fallback);
 }
 
 function isModelInfo(value: unknown): value is LlamaModelInfo {
@@ -105,7 +110,7 @@ function parseLoadProgress(data: unknown): LlamaProgress | undefined {
 		if (index >= 0) ratio = (index + (stageRatio ?? 0)) / stages.length;
 	}
 	return {
-		message: stage ? `Loading ${stage.replaceAll("_", " ")}` : "Loading model",
+		message: stage ? fill("Loading {0}", stage.replaceAll("_", " ")) : t("Loading model"),
 		ratio,
 	};
 }
@@ -125,7 +130,7 @@ function parseDownloadProgress(data: unknown): LlamaProgress | undefined {
 	}
 	if (total <= 0) return undefined;
 	return {
-		message: "Downloading model",
+		message: t("Downloading model"),
 		ratio: done / total,
 		detail: `${formatBytes(done)} / ${formatBytes(total)}`,
 	};
@@ -180,7 +185,7 @@ export class LlamaClient {
 		} catch {
 			payload = undefined;
 		}
-		if (!response.ok) throw new Error(errorMessage(payload, `llama.cpp returned HTTP ${response.status}`));
+		if (!response.ok) throw errorMessage(payload, `llama.cpp returned HTTP ${response.status}`);
 		return payload;
 	}
 
@@ -280,7 +285,7 @@ export class LlamaClient {
 		}, watcher.signal).catch(() => {});
 		try {
 			await this.load(model, signal);
-			onProgress({ message: "Loading model" });
+			onProgress({ message: t("Loading model") });
 			while (true) {
 				if (signal?.aborted) throw signal.reason ?? new Error("Cancelled");
 				const entry = (await this.list({ signal })).find((candidate) => candidate.id === model);
@@ -309,7 +314,7 @@ export class LlamaClient {
 		const watcher = new AbortController();
 		const unlink = linkSignal(signal, watcher);
 		let finished = false;
-		let failure: string | undefined;
+		let failure: Error | undefined;
 		let sawDownloading = false;
 		let polls = 0;
 		void this.watch((event) => {
@@ -324,10 +329,10 @@ export class LlamaClient {
 		}, watcher.signal).catch(() => {});
 		try {
 			await this.download(model, signal);
-			onProgress({ message: "Downloading model" });
+			onProgress({ message: t("Downloading model") });
 			while (true) {
 				if (signal?.aborted) throw signal.reason ?? new Error("Cancelled");
-				if (failure) throw new Error(failure);
+				if (failure) throw failure;
 				const models = await this.list({ signal });
 				polls++;
 				const entry = models.find((candidate) => candidate.id === model);

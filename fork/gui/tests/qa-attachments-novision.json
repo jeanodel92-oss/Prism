@@ -1,0 +1,7 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "paste", "image": true, "why": "LIV-08: a model without images is said so when the image is added" },
+	{ "do": "wait", "selector": "#attachments .attachment-thumb" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "This model does not take images" },
+	{ "do": "quit" }
+]

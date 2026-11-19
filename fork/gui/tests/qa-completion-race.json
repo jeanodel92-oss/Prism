@@ -1,0 +1,9 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "completion-race", "stage": "suggestions" },
+	{ "do": "key", "selector": ".panel.report", "key": "Escape" },
+	{ "do": "wait", "selector": ".panel.report", "gone": true },
+	{ "do": "completion-race", "stage": "apply" },
+	{ "do": "log", "text": "qa-completion-race-ok" },
+	{ "do": "quit" }
+]

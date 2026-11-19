@@ -1,12 +1,12 @@
 # Keybindings Reference
 
-Pi exposes named actions, such as `app.session.new`, that can be assigned keybindings. You can change default assignments or bind unassigned actions in Pi's [user configuration](configuration.md#agent-directory).
+Prism exposes named actions, such as `app.session.new`, that can be assigned keybindings. You can change default assignments or bind unassigned actions in Prism's [user configuration](configuration.md#agent-directory).
 
-Run `/hotkeys` to see the active shortcuts for the main editor and application.
+Run `/help` to see the active shortcuts for the main editor and application.
 
 ## Assign keybindings
 
-Create `<agent-dir>/keybindings.json`. The agent directory defaults to `~/.pi/agent` and is described in [Agent directory](configuration.md#agent-directory).
+Create `<agent-dir>/keybindings.json`. The agent directory defaults to `~/.prism/agent` and is described in [Agent directory](configuration.md#agent-directory).
 
 Map each action identifier to one key or a list of keys:
 
@@ -109,7 +109,7 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | `tui.altScreen.lineDown` | None | Scroll the transcript down by one line |
 | `tui.altScreen.previousPrompt` | `ctrl+shift+up`, `ctrl+up` (`ctrl+up` only on Windows and WSL) | Jump to the previous marked message |
 | `tui.altScreen.nextPrompt` | `ctrl+shift+down`, `ctrl+down` (`ctrl+down` only on Windows and WSL) | Jump to the next marked message |
-| `tui.altScreen.search` | `ctrl+shift+f` (`ctrl+f` on Windows and WSL) | Search the rendered transcript |
+| `tui.altScreen.search` | `ctrl+f`, `ctrl+shift+f` (`ctrl+f` on Windows and WSL) | Search the rendered transcript |
 | `tui.altScreen.searchNext` | `enter`, `ctrl+g` | Select the next search match while searching |
 | `tui.altScreen.searchPrevious` | `shift+enter`, `ctrl+shift+g` | Select the previous search match while searching |
 | `tui.altScreen.searchClose` | `escape` | Close transcript search |
@@ -127,7 +127,9 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | `app.editor.external` | `ctrl+g` | Open in external editor (`externalEditor`, `$VISUAL`, `$EDITOR`, Notepad on Windows, or `nano` elsewhere) |
 | `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows and WSL) | Paste files on macOS, images, or text from clipboard |
 
-On native Windows, `app.suspend` has no default because Windows terminals do not support Unix job control. If you assign it manually, Pi shows a status message instead of suspending. WSL uses the normal `ctrl+z` and `fg` behavior.
+On native Windows, `app.suspend` has no default because Windows terminals do not support Unix job control. If you assign it manually, Prism shows a status message instead of suspending. WSL uses the normal `ctrl+z` and `fg` behavior.
+
+The built-in `files` extension adds `alt+e` to open the project file browser (`/files`).
 
 ### Sessions
 
@@ -160,7 +162,7 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 | Keybinding id | Default | Description |
 |--------|---------|-------------|
-| `app.tools.expand` | `ctrl+o` | Collapse or expand tool output |
+| `app.tools.expand` | `ctrl+o` | Force every expandable block closed or open, including thinking; reset per-block choices |
 | `app.message.copy` | `ctrl+x` | Copy the selected message in `/tree`; in fullscreen mode, copy the active selection when `fullscreenCopyOnSelect` is `false`; otherwise copy the last assistant message |
 | `app.message.followUp` | `alt+enter` (`ctrl+q` on Windows and WSL) | Queue follow-up message |
 | `app.message.dequeue` | `alt+up` (`alt+q` on Windows and WSL) | Restore queued messages to editor |

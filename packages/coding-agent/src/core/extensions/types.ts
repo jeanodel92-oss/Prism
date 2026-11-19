@@ -55,6 +55,7 @@ import type {
 	TUI,
 } from "@earendil-works/pi-tui";
 import type { Static, TSchema } from "typebox";
+import type { ToolPermissions } from "../../fork/tool-capabilities.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { BashResult } from "../bash-executor.ts";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../cache-warmer.ts";
@@ -116,6 +117,14 @@ export interface ExtensionUIDialogOptions {
 	signal?: AbortSignal;
 	/** Timeout in milliseconds. Dialog auto-dismisses with live countdown display. */
 	timeout?: number;
+	/** fork: for `input()`, mask the typed text (secrets such as API keys). */
+	secret?: boolean;
+	/** fork: the tool call this dialog decides on, so a client can show it with that call. */
+	toolCallId?: string;
+	/** fork: "warning" shows the question as a warning (the Prism window colours it). */
+	tone?: "warning";
+	/** fork: for `select()` and `confirm()`, a risk the answer accepts, shown in red by every client. */
+	warning?: string;
 }
 
 /** Placement for extension widgets. */
@@ -224,6 +233,8 @@ export interface ExtensionUIContext {
 			overlayOptions?: OverlayOptions | (() => OverlayOptions);
 			/** Called with the overlay handle after the overlay is shown. Use to control visibility. */
 			onHandle?: (handle: OverlayHandle) => void;
+			/** fork: closes the component when aborted; the promise then resolves with `undefined`. */
+			signal?: AbortSignal;
 		},
 	): Promise<T>;
 
@@ -236,8 +247,11 @@ export interface ExtensionUIContext {
 	/** Get the current text from the core input editor. */
 	getEditorText(): string;
 
-	/** Show a multi-line editor for text editing. */
-	editor(title: string, prefill?: string): Promise<string | undefined>;
+	/**
+	 * Show a multi-line editor for text editing. fork: `opts.signal` closes it, as it
+	 * closes the other dialogs.
+	 */
+	editor(title: string, prefill?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
 
 	/** Stack additional autocomplete behavior on top of the built-in provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
@@ -599,6 +613,12 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 
 	/** Hints about what the tool does, for example from an MCP server. */
 	annotations?: ToolAnnotations;
+
+	/**
+	 * fork: what a call can do, by capability (src/fork/tool-capabilities.ts). The permission gate
+	 * refuses an extension tool that declares nothing, except in the broad and unrestricted modes.
+	 */
+	permissions?: ToolPermissions;
 
 	/**
 	 * Whether registering the tool activates it. Default: `true` for `direct` and `model-only` tools;
@@ -974,6 +994,8 @@ export interface BoundaryState {
 export interface BoundaryResult {
 	entries?: SessionBoundaryDraft[];
 	continue?: boolean;
+	/** Stop the current agent loop after this boundary, including after a tool batch. */
+	stop?: boolean;
 }
 
 /** Fired before final settlement. May append entries and ensure one next provider request. */
@@ -1732,8 +1754,9 @@ export interface ExtensionAPI {
 	/**
 	 * Set the model for the current session without changing the configured default for new sessions.
 	 * Returns false if authentication is not configured for the model's provider.
+	 * fork: `onlyIf` is checked after the auth wait; false leaves the selection as it is.
 	 */
-	setModel(model: Model<any>): Promise<boolean>;
+	setModel(model: Model<any>, options?: { onlyIf?: () => boolean }): Promise<boolean>;
 
 	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel;
@@ -2017,6 +2040,13 @@ export type InlineExtension =
 			 * extensions use it.
 			 */
 			builtin?: boolean;
+			/**
+			 * fork: with `replaceable`, only a user or CLI extension can replace it. A project
+			 * extension that registers one of its names is left out instead, with a warning.
+			 */
+			userReplaceableOnly?: boolean;
+			/** fork: with `builtin`, off until `+builtin:<name>` in the `extensions` setting turns it on. */
+			disabledByDefault?: boolean;
 	  };
 
 // ============================================================================
@@ -2064,7 +2094,10 @@ export type GetSessionNameHandler = () => string | undefined;
 export type GetActiveToolsHandler = () => string[];
 
 /** Tool info with name, description, parameter schema, prompt guidelines, and source metadata. */
-export type ToolInfo = Pick<ToolDefinition, "name" | "description" | "parameters" | "promptGuidelines"> & {
+export type ToolInfo = Pick<
+	ToolDefinition,
+	"name" | "description" | "parameters" | "promptGuidelines" | "permissions"
+> & {
 	exposure: ToolExposure;
 	namespace?: ToolNamespace;
 	annotations?: ToolAnnotations;
@@ -2081,7 +2114,7 @@ export type SetActiveToolsHandler = (toolNames: string[]) => void;
 
 export type RefreshToolsHandler = () => void;
 
-export type SetModelHandler = (model: Model<any>) => Promise<boolean>;
+export type SetModelHandler = (model: Model<any>, options?: { onlyIf?: () => boolean }) => Promise<boolean>;
 
 export type GetThinkingLevelHandler = () => ThinkingLevel;
 
@@ -2213,6 +2246,8 @@ export interface Extension {
 	hidden?: boolean;
 	/** See {@link InlineExtension}. */
 	replaceable?: boolean;
+	/** fork: see {@link InlineExtension}. */
+	userReplaceableOnly?: boolean;
 	sourceInfo: SourceInfo;
 	handlers: Map<string, HandlerFn[]>;
 	tools: Map<string, RegisteredTool>;

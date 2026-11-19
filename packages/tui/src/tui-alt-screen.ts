@@ -6,6 +6,14 @@ import {
 } from "./alt-screen-search.ts";
 import { AltScreenFlashContainer } from "./components/alt-screen-flash.ts";
 import { ScrollView } from "./components/scroll-view.ts";
+import {
+	type CellSize,
+	DISABLE_PIXEL_MOUSE,
+	ENABLE_PIXEL_MOUSE,
+	pixelMouseReply,
+	QUERY_PIXEL_MOUSE,
+	toCellMouseReport,
+} from "./fork/pixel-mouse.ts";
 import { getKeybindings } from "./keybindings.ts";
 import { isKeyRelease } from "./keys.ts";
 import {
@@ -195,6 +203,8 @@ export interface TuiAltScreenOptions {
 	 * via an OSC 52 write.
 	 */
 	copySelection?: (text: string) => Promise<boolean | string>;
+	/** fork: the host app's translation of the flash messages written here ("Copied!"). */
+	translateFlash?: (message: string) => string;
 }
 
 /** Alternate-screen TUI with a scrollable, application-owned viewport. */
@@ -224,12 +234,22 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private selectionAutoScrollTimer?: NodeJS.Timeout;
 	private selectionPressActive = false;
 	private scrollbarDrag?: ScrollbarDrag;
+	// fork: pixel mouse reports (src/fork/pixel-mouse.ts).
+	private cellSize?: CellSize;
+	private pixelMouse: "off" | "asked" | "on" = "off";
+	/** Exact pointer row of the current mouse report, in cells, when the terminal reports pixels. */
+	private pointerRow?: number;
 	private scrollbarHover?: ScrollView;
 	private scrollToEndIndicatorRect?: ScrollToEndIndicatorRect;
 	private activeSearch?: ActiveSearch;
 	private pressedUrl?: string;
 	private selectionDragged = false;
 	private mouseCapture?: TuiMouseDispatchTarget;
+	/**
+	 * fork: called on a left press that hits no overlay, before the layout gets it.
+	 * Returning true consumes the press. The host closes an open menu with it, as Esc does.
+	 */
+	onPressOutside?: (press: { overlayFocused: boolean; inLayout: (component: Component) => boolean }) => boolean;
 	private mousePressTarget?: TuiMouseDispatchTarget;
 	private mousePressPoint?: { x: number; y: number };
 	private mousePressMoved = false;
@@ -250,6 +270,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly onRightClickPaste?: () => void;
 	private copyOnSelect: boolean;
 	private readonly copySelection?: (text: string) => Promise<boolean | string>;
+	private readonly translateFlash: (message: string) => string; // fork
 
 	constructor(
 		terminal: Terminal,
@@ -277,6 +298,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.onRightClickPaste = options.onRightClickPaste;
 		this.copyOnSelect = options.copyOnSelect ?? true;
 		this.copySelection = options.copySelection;
+		this.translateFlash = options.translateFlash ?? ((message) => message); // fork
 		this.addInputListener((data) => this.handleViewportInput(data));
 	}
 
@@ -376,6 +398,35 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.terminal.write(
 			`${ENTER_ALT_SCREEN}${DISABLE_AUTOWRAP}${this.mouseEnabled ? mouseSequence : ""}\x1b[2J\x1b[H\x1b[?25l`,
 		);
+		this.pixelMouse = "off";
+		if (this.cellSize) this.askPixelMouse();
+	}
+
+	protected override onCellSizeReported(widthPx: number, heightPx: number): void {
+		this.cellSize = { widthPx, heightPx };
+		if (this.pixelMouse === "off") this.askPixelMouse();
+	}
+
+	private askPixelMouse(): void {
+		if (!this.mouseEnabled || !this.altScreenActive) return;
+		this.pixelMouse = "asked";
+		this.terminal.write(ENABLE_PIXEL_MOUSE + QUERY_PIXEL_MOUSE);
+	}
+
+	protected override normalizeInput(data: string): string {
+		const reply = this.pixelMouse === "asked" ? pixelMouseReply(data) : undefined;
+		if (reply !== undefined) {
+			this.pixelMouse = reply ? "on" : "off";
+			if (!reply) this.terminal.write(DISABLE_PIXEL_MOUSE);
+			return "";
+		}
+		if (this.pixelMouse !== "on" || !this.cellSize) {
+			this.pointerRow = undefined;
+			return data;
+		}
+		const report = toCellMouseReport(data, this.cellSize);
+		this.pointerRow = report.row;
+		return report.data;
 	}
 
 	protected override beforeTerminalStop(_options: TuiStopOptions): void {
@@ -387,8 +438,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.clearComponentMouseGesture();
 		this.flashes.dispose();
 		if (!this.altScreenActive) return;
+		const pixelMouse = this.pixelMouse !== "off" ? DISABLE_PIXEL_MOUSE : ""; // fork
+		this.pixelMouse = "off";
 		this.terminal.write(
-			`${BEGIN_SYNCHRONIZED_OUTPUT}${this.deleteKittyImages()}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`,
+			`${BEGIN_SYNCHRONIZED_OUTPUT}${this.deleteKittyImages()}${pixelMouse}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`,
 		);
 		this.uploadedKittyImages.clear();
 	}
@@ -844,8 +897,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	private applyMouseDispatchResult(event: TuiMouseEvent, result: TuiMouseDispatchResult): boolean {
 		const focusTarget = this.resolveMouseFocusTarget(result.focusTarget ?? result.target.component);
-		const focusChanged = result.focus === true && this.getFocusedComponent() !== focusTarget;
-		if (result.focus) this.setFocus(focusTarget);
+		// fork: a click whose handler closed its own menu does not focus the closed menu again.
+		const focus = result.focus === true && this.isComponentShown(focusTarget);
+		const focusChanged = focus && this.getFocusedComponent() !== focusTarget;
+		if (focus) this.setFocus(focusTarget);
 		if (result.capture) this.mouseCapture = result.target;
 		return (
 			result.render ??
@@ -927,6 +982,22 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		if (this.handleSearchMouseEvent(raw)) return;
 
 		const overlay = this.dispatchMouseToOverlay(event);
+		if (
+			!overlay.hit &&
+			type === "press" &&
+			this.decodeMouseButton(raw.button) === "left" &&
+			this.onPressOutside?.({
+				overlayFocused: this.isOverlayFocused(),
+				inLayout: (component) =>
+					!!this.currentLayout &&
+					getLayoutBoxesAt(this.currentLayout, event.screenX, event.screenY).some(
+						(box) => box.component === component,
+					),
+			})
+		) {
+			this.requestRender();
+			return;
+		}
 		if (!overlay.hit) {
 			if (this.handleScrollToEndIndicatorMouseEvent(raw)) return;
 			const scrollbarHandled = this.handleScrollbarMouseEvent(raw);
@@ -1091,7 +1162,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				this.scrollScrollbarToPointer(
 					this.scrollbarDrag.scrollView,
 					geometry,
-					event.y,
+					this.pointerRow ?? event.y, // fork: exact row with pixel reports
 					this.scrollbarDrag.grabOffset,
 				);
 			}
@@ -1113,8 +1184,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.setScrollbarHover(target.scrollView);
 		const onThumb =
 			event.y >= target.geometry.thumbTop && event.y < target.geometry.thumbTop + target.geometry.thumbHeight;
-		const grabOffset = onThumb ? event.y - target.geometry.thumbTop : Math.floor(target.geometry.thumbHeight / 2);
-		if (!onThumb) this.scrollScrollbarToPointer(target.scrollView, target.geometry, event.y, grabOffset);
+		// fork: exact row with pixel reports.
+		const pointerY = this.pointerRow ?? event.y;
+		const grabOffset = onThumb ? pointerY - target.geometry.thumbTop : Math.floor(target.geometry.thumbHeight / 2);
+		if (!onThumb) this.scrollScrollbarToPointer(target.scrollView, target.geometry, pointerY, grabOffset);
 		this.scrollbarDrag = {
 			scrollView: target.scrollView,
 			grabOffset,
@@ -1467,13 +1540,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			const result = await this.copySelection(text);
 			const ok = result === true;
 			this.flash(
-				ok ? "Copied!" : typeof result === "string" ? result : "Copy failed",
+				ok
+					? this.translateFlash("Copied!")
+					: typeof result === "string"
+						? result
+						: this.translateFlash("Copy failed"),
 				ok ? undefined : COPY_ERROR_FLASH_DURATION_MS,
 			);
 			return ok;
 		}
 		this.terminal.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
-		this.flash("Copied!");
+		this.flash(this.translateFlash("Copied!"));
 		return true;
 	}
 

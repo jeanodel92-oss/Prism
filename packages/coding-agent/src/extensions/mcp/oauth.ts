@@ -125,6 +125,11 @@ function storeKeys(name: string, serverUrl: string): { key: string; legacyKey: s
 export interface McpOAuthServerStore extends McpOAuthStateStore {
 	/** Run `fn` while no other process refreshes the server's tokens. */
 	withRefreshLock<T>(fn: () => Promise<T>): Promise<T>;
+	/**
+	 * fork: save `state` only if the stored state still passes `expected`, checked under
+	 * the same lock as the write. Returns whether it was saved.
+	 */
+	saveIf(expected: (current: McpOAuthState | undefined) => boolean, state: McpOAuthState): boolean;
 }
 
 /** Per-server OAuth state (client registration, tokens, pending PKCE verifier) in `mcp-auth.json`. */
@@ -155,6 +160,13 @@ export class McpOAuthCredentialStore {
 					states[key] = state;
 				}),
 			withRefreshLock: (fn) => this.withRefreshLock(key, fn),
+			saveIf: (expected, state) =>
+				this.backend.withLock((current) => {
+					const states = parseStates(current);
+					if (!expected(states[key])) return { result: false };
+					states[key] = state;
+					return { result: true, next: serializeStates(states) };
+				}),
 		};
 	}
 
@@ -274,7 +286,17 @@ export function createMcpAuthProvider(options: {
 					callbackSettings(settings).fixedRedirectUrl ??
 					registeredRedirectUrls(state.clientInformation)[0] ??
 					FALLBACK_REDIRECT_URL;
-				const provider = createProvider(serverUrl, store, settings, redirectUrl, () => {});
+				// fork: a sign-out, here or in another process, removes the state while the
+				// refresh waits for the server. The refresh then saves nothing, so the removed credentials stay removed.
+				let refreshToken: string | undefined = state.tokens.refresh_token;
+				const refreshStore: McpOAuthStateStore = {
+					load: () => store.load(),
+					save: (next) => {
+						if (store.saveIf((current) => current?.tokens?.refresh_token === refreshToken, next))
+							refreshToken = next.tokens?.refresh_token;
+					},
+				};
+				const provider = createProvider(serverUrl, refreshStore, settings, redirectUrl, () => {});
 				// Refreshes the tokens, or reports that a new sign-in is needed.
 				const result = await authorizeMcp(provider, {
 					serverUrl,
@@ -397,6 +419,18 @@ async function listenForCallback(
 }
 
 /**
+ * fork: the address a discovered authorization server gives is opened only when it is a
+ * web page, https or http on this machine. `xdg-open` would hand `file:` or an application's scheme to its handler.
+ */
+export function webAuthorizationUrl(url: URL): URL {
+	const local = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+	if (url.protocol === "https:" || (url.protocol === "http:" && local)) return url;
+	throw new Error(
+		`the authorization server gave the address ${url.protocol}//${url.host}, which Prism does not open: only https, or http on this machine`,
+	);
+}
+
+/**
  * Sign in to an MCP server. Uses the stored refresh token when possible; otherwise runs the browser
  * authorization code flow. Tokens are saved to `store`.
  */
@@ -452,7 +486,7 @@ export async function signInMcpServer(options: {
 		if (!authorizationUrl) throw new Error("OAuth flow did not produce an authorization URL");
 
 		const state = await provider.state();
-		options.prompt.showAuthorizationUrl(authorizationUrl);
+		options.prompt.showAuthorizationUrl(webAuthorizationUrl(authorizationUrl));
 		const { code, iss } = await waitForAuthorizationResponse(callback, state, options.prompt);
 		await authorizeMcp(provider, { ...flow, authorizationCode: code, iss });
 	} finally {

@@ -115,7 +115,15 @@ export class OAuthCallbackServer {
 	}
 
 	private handle(rawUrl: string, response: ServerResponse): void {
-		const url = new URL(rawUrl, this.redirectUrl);
+		// fork: a target such as `//[` throws in the URL parser; answer 400
+		// instead of letting the exception escape the HTTP handler.
+		let url: URL;
+		try {
+			url = new URL(rawUrl, this.redirectUrl);
+		} catch {
+			this.reply(response, 400, { ok: false, message: "Bad request" });
+			return;
+		}
 		if (url.pathname !== this.path) {
 			this.reply(response, 404, { ok: false, message: "Not found" });
 			return;

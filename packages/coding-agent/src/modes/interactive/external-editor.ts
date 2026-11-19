@@ -9,10 +9,16 @@ export interface ExternalEditorOptions {
 	content: string;
 }
 
-export type ExternalEditorResult = { status: "complete"; content: string } | { status: "failed" };
+// fork: `error` says why the prompt file could not be made or read back.
+export type ExternalEditorResult = { status: "complete"; content: string } | { status: "failed"; error?: string };
 
 export async function editInExternalEditor(options: ExternalEditorOptions): Promise<ExternalEditorResult> {
-	const directory = mkdtempSync(join(tmpdir(), "pi-editor-"));
+	let directory: string;
+	try {
+		directory = mkdtempSync(join(tmpdir(), "pi-editor-"));
+	} catch (error) {
+		return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+	}
 	const filePath = join(directory, "prompt.md");
 	try {
 		writeFileSync(filePath, options.content, "utf-8");
@@ -36,6 +42,8 @@ export async function editInExternalEditor(options: ExternalEditorOptions): Prom
 		}
 
 		return { status: "complete", content: stripBom(readFileSync(filePath, "utf-8")).replace(/\n$/, "") };
+	} catch (error) {
+		return { status: "failed", error: error instanceof Error ? error.message : String(error) };
 	} finally {
 		try {
 			rmSync(directory, { recursive: true, force: true });

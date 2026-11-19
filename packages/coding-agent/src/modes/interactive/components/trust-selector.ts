@@ -4,6 +4,7 @@ import {
 	type ProjectTrustOption,
 	type ProjectTrustStoreEntry,
 } from "../../../core/trust-manager.ts";
+import { fill, t } from "../../../fork/i18n/index.ts"; // fork: display text only
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
@@ -19,12 +20,13 @@ export interface TrustSelectorOptions {
 }
 
 function formatDecision(trustPath: string | undefined, decision: ProjectTrustStoreEntry | null): string {
+	// fork: translate display wrappers; keep data and model content unchanged.
 	if (decision === null) {
-		return "none";
+		return t("none");
 	}
-	const label = decision.decision ? "trusted" : "untrusted";
+	const label = decision.decision ? t("trusted") : t("untrusted");
 	if (trustPath !== undefined && decision.path !== trustPath) {
-		return `${label} (inherited from ${decision.path})`;
+		return fill("{0} (inherited from {1})", label, decision.path);
 	}
 	return `${label} (${decision.path})`;
 }
@@ -38,6 +40,7 @@ export class TrustSelectorComponent extends Container {
 	private readonly onCancelCallback: () => void;
 
 	constructor(options: TrustSelectorOptions) {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		super();
 
 		this.savedDecision = options.savedDecision;
@@ -51,21 +54,25 @@ export class TrustSelectorComponent extends Container {
 
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("accent", theme.bold("Project trust")), 1, 0));
+		this.addChild(new Text(theme.fg("accent", theme.bold(t("Project trust"))), 1, 0));
 		this.addChild(new Text(theme.fg("muted", options.cwd), 1, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
 				theme.fg(
 					"muted",
-					`Saved decision: ${formatDecision(this.trustOptions[0]?.savedPath, options.savedDecision)}`,
+					fill("Saved decision: {0}", formatDecision(this.trustOptions[0]?.savedPath, options.savedDecision)),
 				),
 				1,
 				0,
 			),
 		);
 		this.addChild(
-			new Text(theme.fg("muted", `Current session: ${options.projectTrusted ? "trusted" : "untrusted"}`), 1, 0),
+			new Text(
+				theme.fg("muted", fill("Current session: {0}", options.projectTrusted ? t("trusted") : t("untrusted"))),
+				1,
+				0,
+			),
 		);
 		this.addChild(new Spacer(1));
 
@@ -98,6 +105,7 @@ export class TrustSelectorComponent extends Container {
 	}
 
 	private updateList(): void {
+		// fork: translate display wrappers; keep data and model content unchanged.
 		this.listContainer.clear();
 		for (let i = 0; i < this.trustOptions.length; i++) {
 			const option = this.trustOptions[i];
@@ -109,7 +117,11 @@ export class TrustSelectorComponent extends Container {
 			const isCurrent = this.isSavedOption(option);
 			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
 			const prefix = isSelected ? theme.fg("accent", "→ ") : "  ";
-			const label = isSelected ? theme.fg("accent", option.label) : theme.fg("text", option.label);
+			const text =
+				option.savedPath && option.label.startsWith("Trust parent folder (")
+					? fill("Trust parent folder ({0})", option.savedPath)
+					: t(option.label);
+			const label = isSelected ? theme.fg("accent", text) : theme.fg("text", text);
 			this.listContainer.addChild(new Text(`${prefix}${currentMarker}${label}`, 1, 0));
 		}
 	}

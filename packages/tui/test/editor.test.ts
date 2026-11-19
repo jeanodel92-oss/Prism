@@ -2175,6 +2175,35 @@ describe("Editor component", () => {
 			}
 		});
 
+		// fork: a completion that fails does not block the ones after it.
+		it("asks the provider again after a completion request failed", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			const rejections: unknown[] = [];
+			const onRejection = (reason: unknown) => rejections.push(reason);
+			process.on("unhandledRejection", onRejection);
+			try {
+				let requests = 0;
+				editor.setAutocompleteProvider({
+					getSuggestions: async () => {
+						requests++;
+						if (requests === 1) throw Object.assign(new Error("cancelled"), { name: "AbortError" });
+						return { prefix: "/a", items: [{ value: "abc", label: "abc" }] };
+					},
+					applyCompletion,
+				});
+				editor.handleInput("/");
+				await flushAutocomplete();
+				editor.handleInput("a");
+				await flushAutocomplete();
+				await new Promise((resolve) => setImmediate(resolve));
+				assert.strictEqual(requests, 2);
+				assert.strictEqual(editor.isShowingAutocomplete(), true);
+				assert.deepStrictEqual(rejections, []);
+			} finally {
+				process.off("unhandledRejection", onRejection);
+			}
+		});
+
 		it("does not auto-trigger after CJK letters or for unprefixed paths", async (t) => {
 			t.mock.timers.enable({ apis: ["setTimeout"] });
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);

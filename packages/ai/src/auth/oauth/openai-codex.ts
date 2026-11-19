@@ -13,6 +13,7 @@ if (typeof process !== "undefined" && (process.versions?.node || process.version
 	});
 }
 
+import { getOAuthBrandName } from "../../utils/oauth-page.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { startOAuthCallbackServer, waitForCallbackOrManualInput } from "./callback-server.ts";
@@ -357,7 +358,8 @@ async function loginOpenAICodexDeviceCode(interaction: ProviderAuthInteraction):
 }
 
 async function loginOpenAICodex(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {
-	const { verifier, state, url } = await createAuthorizationFlow();
+	// fork: a branded harness introduces itself by its own name, as in the ChatGPT flow.
+	const { verifier, state, url } = await createAuthorizationFlow(getOAuthBrandName()?.toLowerCase() ?? "pi");
 	// Port 1455 is shared with the Codex CLI; when it is taken, fall back to the pasted redirect URL.
 	const callback = await startOAuthCallbackServer({
 		providerName: "OpenAI",

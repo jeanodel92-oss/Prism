@@ -24,6 +24,13 @@ const DEFAULT_SEQUENCE_TIMEOUT_MS = 50;
 const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
+// Color and program-status OSC replies, XTVersion, and Kitty graphics replies.
+// Until their header is complete, the input may be batched legacy Alt keystrokes.
+const TERMINAL_REPLY_HEADER_PATTERN = /^\x1b(?:\](?:1[01];|4;\d{1,3};|7501;\?)|P>\||_G(?:[a-z]=\d+,)*[a-z]=\d+;)/;
+
+function isControlString(data: string): boolean {
+	return data.startsWith(`${ESC}]`) || data.startsWith(`${ESC}P`) || data.startsWith(`${ESC}_`);
+}
 
 /**
  * Check if a string is a complete escape sequence or needs more data
@@ -105,7 +112,8 @@ function isCompleteCsiSequence(data: string): "complete" | "incomplete" {
 		// Format: ESC[<B;X;Ym or ESC[<B;X;YM
 		if (payload.startsWith("<")) {
 			// Must have format: <digits;digits;digits[Mm]
-			const mouseMatch = /^<\d+;\d+;\d+[Mm]$/.test(payload);
+			// fork: pixel reports (mode 1016) can be negative outside the window.
+			const mouseMatch = /^<\d+;-?\d+;-?\d+[Mm]$/.test(payload);
 			if (mouseMatch) {
 				return "complete";
 			}
@@ -200,9 +208,24 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
 
 		// Try to extract a sequence starting at this position
 		if (remaining.startsWith(ESC)) {
+			const terminalReply = isControlString(remaining) && TERMINAL_REPLY_HEADER_PATTERN.test(remaining);
 			// Find the end of this escape sequence
 			let seqEnd = 1;
 			while (seqEnd <= remaining.length) {
+				if (terminalReply && seqEnd > 2) {
+					const char = remaining[seqEnd - 1];
+					if (char === "\x18" || char === "\x1a") {
+						// CAN and SUB cancel the string, not subsequent keyboard input.
+						pos += seqEnd;
+						break;
+					}
+					if (char === ESC && seqEnd < remaining.length && remaining[seqEnd] !== "\\") {
+						// A new escape sequence aborts an unterminated reply. Keep a
+						// trailing ESC buffered until we can distinguish it from ST.
+						pos += seqEnd - 1;
+						break;
+					}
+				}
 				const candidate = remaining.slice(0, seqEnd);
 				const status = isCompleteSequence(candidate);
 
@@ -248,8 +271,15 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
 			}
 		} else {
 			// Not an escape sequence - take a single character
-			sequences.push(remaining[0]!);
-			pos++;
+			// fork: a whole code point, so a character outside the BMP stays one
+			// sequence; a high surrogate whose pair has not arrived yet waits for the next input.
+			const codepoint = remaining.codePointAt(0)!;
+			if (codepoint >= 0xd800 && codepoint <= 0xdbff && remaining.length === 1) {
+				return { sequences, remainder: remaining };
+			}
+			const character = String.fromCodePoint(codepoint);
+			sequences.push(character);
+			pos += character.length;
 		}
 	}
 
@@ -258,8 +288,10 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
 
 export type StdinBufferOptions = {
 	/**
-	 * Maximum time to wait for an incomplete sequence such as CSI or mouse
-	 * (default: 50ms).
+	 * Maximum time to wait for an incomplete keyboard or mouse sequence
+	 * (default: 50ms). Strings with a recognized terminal reply header wait for
+	 * their terminator instead, so delayed replies cannot become keypresses.
+	 * Ambiguous legacy Alt-key input still uses this timeout.
 	 */
 	timeout?: number;
 	/**
@@ -351,6 +383,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 				for (const sequence of result.sequences) {
 					this.emitDataSequence(sequence);
 				}
+				// fork: what cannot complete before the paste starts (a lone
+				// Escape) is emitted as it is, as the timeout would have, instead of being dropped.
+				if (result.remainder.length > 0) this.emitDataSequence(result.remainder);
 			}
 
 			this.pendingKittyPrintableCodepoint = undefined;
@@ -385,19 +420,32 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 
 		if (this.buffer.length > 0) {
+			// Only a recognizable reply header establishes a delimited string.
+			// Flushing it would turn a delayed tail into text and an OSC's BEL
+			// terminator into Ctrl+G (the external editor shortcut). Other input,
+			// including Alt+] followed by text, must retain bounded recovery.
+			if (TERMINAL_REPLY_HEADER_PATTERN.test(this.buffer)) return;
 			const timeoutMs = this.buffer === ESC ? this.escapeTimeoutMs : this.timeoutMs;
 			this.timeout = setTimeout(() => {
 				const flushed = this.flush();
 
 				for (const sequence of flushed) {
-					this.emitDataSequence(sequence);
+					if (sequence.length > 2 && isControlString(sequence)) {
+						// Recover the Alt key and reparse its tail so batched text,
+						// Enter, and control keys are not swallowed as one event.
+						this.emitDataSequence(sequence.slice(0, 2));
+						this.process(sequence.slice(2));
+					} else {
+						this.emitDataSequence(sequence);
+					}
 				}
 			}, timeoutMs);
 		}
 	}
 
 	private emitDataSequence(sequence: string): void {
-		const rawCodepoint = sequence.length === 1 ? sequence.codePointAt(0) : undefined;
+		const first = sequence.codePointAt(0);
+		const rawCodepoint = first !== undefined && String.fromCodePoint(first) === sequence ? first : undefined;
 		if (rawCodepoint !== undefined && rawCodepoint === this.pendingKittyPrintableCodepoint) {
 			this.pendingKittyPrintableCodepoint = undefined;
 			return;

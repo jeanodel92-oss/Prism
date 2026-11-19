@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Prism's desktop icon (fork.10.5): the prism in volume of the site's still (black glass,
+       grey edges, white beam, dark spectral fan), drawn for a launcher rather than the 32-pixel favicon scaled up. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#171718"/>
+      <stop offset="1" stop-color="#060606"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#2b2b2a"/>
+      <stop offset="1" stop-color="#0d0d0d"/>
+    </linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a3a38"/>
+      <stop offset="1" stop-color="#161616"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f0f0ee" stop-opacity="0"/>
+      <stop offset="0.6" stop-color="#f0f0ee" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="351" y1="0" x2="520" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="fan-fade">
+      <rect width="512" height="512" fill="url(#fade)"/>
+    </mask>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <clipPath id="tile-clip">
+      <rect width="512" height="512" rx="112"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+  <rect x="2" y="2" width="508" height="508" rx="110" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="2"/>
+
+  <g clip-path="url(#tile-clip)">
+    <!-- The beam, from the upper left, with its glow. -->
+    <path d="M-10 186 L167 270" stroke="#ffffff" stroke-opacity="0.3" stroke-width="14" stroke-linecap="round" filter="url(#glow)"/>
+    <path d="M-10 186 L167 270" stroke="url(#beam)" stroke-width="6" stroke-linecap="round"/>
+
+    <!-- The dark fan leaving the far face: short, muted, fading into the tile. -->
+    <g mask="url(#fan-fade)" opacity="0.9">
+      <path d="M351 255 L520 266 L520 284 Z" fill="#a8463f"/>
+      <path d="M351 257 L520 284 L520 302 Z" fill="#a8743a"/>
+      <path d="M351 259 L520 302 L520 320 Z" fill="#a39440"/>
+      <path d="M351 261 L520 320 L520 338 Z" fill="#4a8352"/>
+      <path d="M351 263 L520 338 L520 356 Z" fill="#3c5f9c"/>
+      <path d="M351 265 L520 356 L520 374 Z" fill="#634a93"/>
+    </g>
+  </g>
+
+  <!-- The prism in volume: the side face, then the front face, an equilateral triangle (owner's choice, 2026-11-07);
+       grey edges, the lit edge brighter. -->
+  <path d="M226 169 L286 147 L416 372 L356 394 Z" fill="url(#side)" stroke="#6f6f6b" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M226 169 L356 394 L96 394 Z" fill="url(#front)" stroke="#8a8a86" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M226 169 L96 394" stroke="#e4e4e0" stroke-width="8" stroke-linecap="round"/>
+  <!-- No line inside the glass: a horizontal one makes the prism read as an "A" (da-site.md, variant C). -->
+  <!-- Where the beam strikes the glass. -->
+  <circle cx="167" cy="270" r="8" fill="#ffffff" filter="url(#glow)"/>
+  <circle cx="167" cy="270" r="4.5" fill="#ffffff"/>
+</svg>

@@ -12,6 +12,7 @@ import {
 	Input,
 	matchesKey,
 	Spacer,
+	sanitizeTerminalLabel,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -111,7 +112,8 @@ function buildGroups(resolved: ResolvedPaths, agentDir: string): ResourceGroup[]
 			if (!groupMap.has(groupKey)) {
 				groupMap.set(groupKey, {
 					key: groupKey,
-					label: getGroupLabel(metadata, agentDir),
+					// fork: sources and file names are shown, never interpreted.
+					label: sanitizeTerminalLabel(getGroupLabel(metadata, agentDir)),
 					scope: metadata.scope,
 					origin: metadata.origin,
 					source: metadata.source,
@@ -149,7 +151,7 @@ function buildGroups(resolved: ResolvedPaths, agentDir: string): ResourceGroup[]
 				enabled,
 				metadata,
 				resourceType,
-				displayName,
+				displayName: sanitizeTerminalLabel(displayName),
 				groupKey,
 				subgroupKey,
 			});
@@ -276,6 +278,8 @@ class ResourceList implements Component, Focusable {
 
 	setWriteScope(writeScope: ConfigWriteScope): void {
 		this.writeScope = writeScope;
+		// fork: what the project inherits shows the global setting as it is now.
+		if (writeScope === "project") this.refreshInheritedItems();
 		this.buildFlatList();
 		this.filterItems(this.searchInput.getValue());
 	}
@@ -380,6 +384,8 @@ class ResourceList implements Component, Focusable {
 	}
 
 	updateItem(item: ResourceItem, enabled: boolean): void {
+		// fork: a global change is what the project inherits from now on.
+		if (this.writeScope === "global") this.inheritedEnabledByKey.set(this.getResourceItemKey(item), enabled);
 		item.enabled = enabled;
 		// Update in groups too
 		for (const group of this.groups) {
@@ -548,11 +554,11 @@ class ResourceList implements Component, Focusable {
 		const disablePattern = `-${pattern}`;
 		const enablePattern = `+${pattern}`;
 
-		// Filter out existing patterns for this resource
-		const updated = current.filter((p) => {
-			const stripped = p.startsWith("!") || p.startsWith("+") || p.startsWith("-") ? p.slice(1) : p;
-			return stripped !== pattern;
-		});
+		// fork: only this resource's +/- overrides go, written in any form
+		// the loader reads as the same file (relative, "./", absolute). A plain entry is where the file is found, and a
+		// "!" exclusion a glob the override wins over: both stay.
+		const baseDir = item.metadata.baseDir ?? this.getTopLevelBaseDir(item.metadata.scope as "user" | "project");
+		const updated = current.filter((p) => !this.isOverrideOf(p, pattern, item, baseDir));
 
 		if (enabled) {
 			updated.push(enablePattern);
@@ -613,14 +619,15 @@ class ResourceList implements Component, Focusable {
 		const disablePattern = `-${pattern}`;
 		const enablePattern = `+${pattern}`;
 
-		// Filter out existing patterns for this resource
-		const updated = current.filter((p) => {
-			const stripped = p.startsWith("!") || p.startsWith("+") || p.startsWith("-") ? p.slice(1) : p;
-			return stripped !== pattern;
-		});
+		// fork: only this resource's +/- overrides go; the package's plain
+		// entries say which of its files load and stay, so turning one file on or off leaves the others as they were.
+		const baseDir = item.metadata.baseDir ?? dirname(item.path);
+		// An empty list loads none of the package's files; a list of overrides alone would load them all.
+		const loadsNone = Array.isArray(pkg[arrayKey]) && current.length === 0;
+		const updated = current.filter((p) => !this.isOverrideOf(p, pattern, item, baseDir));
 
 		if (enabled) {
-			updated.push(enablePattern);
+			updated.push(loadsNone ? pattern : enablePattern);
 		} else {
 			updated.push(disablePattern);
 		}
@@ -779,6 +786,19 @@ class ResourceList implements Component, Focusable {
 		return state;
 	}
 
+	/** fork: project items without an override of their own follow the global state. */
+	private refreshInheritedItems(): void {
+		for (const group of this.groupsByScope.project) {
+			for (const subgroup of group.subgroups) {
+				for (const item of subgroup.items) {
+					if (this.isInheritedGlobalItem(item) && this.getProjectOverrideState(item) === "inherit") {
+						item.enabled = this.getInheritedEnabled(item);
+					}
+				}
+			}
+		}
+	}
+
 	private getInheritedEnabled(item: ResourceItem): boolean {
 		return (
 			this.inheritedEnabledByKey.get(this.getResourceItemKey(item)) ??
@@ -853,6 +873,19 @@ class ResourceList implements Component, Focusable {
 
 	private getItemScope(item: ResourceItem): SettingsScope {
 		return item.metadata.scope === "project" ? "project" : "user";
+	}
+
+	/** fork: a "+" or "-" entry naming the item's file as the loader resolves it from `baseDir`. */
+	private isOverrideOf(entry: string, pattern: string, item: ResourceItem, baseDir: string): boolean {
+		if (!entry.startsWith("+") && !entry.startsWith("-")) return false;
+		const named = entry
+			.slice(1)
+			.replace(/^\.[\\/]/, "")
+			.replaceAll("\\", "/");
+		if (named === pattern.replaceAll("\\", "/")) return true;
+		if (item.metadata.source === "builtin") return false;
+		const file = resolvePath(named, baseDir);
+		return file === item.path || (basename(item.path) === "SKILL.md" && file === dirname(item.path));
 	}
 
 	private getTopLevelBaseDir(scope: "user" | "project"): string {

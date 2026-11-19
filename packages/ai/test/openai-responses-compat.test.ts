@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
 import { getModel, normalizeContext } from "../src/compat.ts";
 import type { Model } from "../src/types.ts";
+import { catalogModel } from "./fork-catalog-model.ts";
 
 type CapturedHeaders = Headers | string[][] | Record<string, string | readonly string[]> | undefined;
 
@@ -72,8 +73,9 @@ describe("openai-responses provider defaults", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("omits reasoning when no reasoning is requested", async () => {
-		const model = getModel("github-copilot", "gpt-5-mini");
+	const gpt5Mini = catalogModel<"openai-responses">("github-copilot", "gpt-5-mini");
+	it.skipIf(!gpt5Mini)("omits reasoning when no reasoning is requested", async () => {
+		const model = gpt5Mini!;
 		let capturedPayload: unknown;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(

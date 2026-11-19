@@ -7,6 +7,9 @@ import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../config.ts";
 import type { ExtensionFlag } from "../core/extensions/types.ts";
 import type { TuiMode } from "../core/settings-manager.ts";
+import { BRANDED_UPDATE_COMMAND_LINE, IS_BRANDED_BUILD } from "../fork/brand.ts";
+import { recordAbsorbedValue } from "../fork/cli-flag-values.ts";
+import { applySafeMode } from "../fork/safe-mode.ts";
 
 export type Mode = "text" | "json" | "rpc";
 
@@ -49,6 +52,10 @@ export interface Args {
 	offline?: boolean;
 	tuiMode?: TuiMode;
 	verbose?: boolean;
+	/** fork: --safe, see src/fork/safe-mode.ts */
+	safe?: boolean;
+	/** fork: --gui opens the window, --tui the terminal, whatever `openIn` says. */
+	openIn?: "terminal" | "window";
 	projectTrustOverride?: boolean;
 	messages: string[];
 	fileArgs: string[];
@@ -226,6 +233,10 @@ export function parseArgs(args: string[]): Args {
 			}
 		} else if (arg === "--verbose") {
 			result.verbose = true;
+		} else if (arg === "--safe") {
+			applySafeMode(result);
+		} else if (arg === "--gui" || arg === "--tui") {
+			result.openIn = arg === "--gui" ? "window" : "terminal";
 		} else if (arg === "--approve" || arg === "-a") {
 			result.projectTrustOverride = true;
 		} else if (arg === "--no-approve" || arg === "-na") {
@@ -243,6 +254,7 @@ export function parseArgs(args: string[]): Args {
 				const next = args[i + 1];
 				if (next !== undefined && !next.startsWith("-") && !next.startsWith("@")) {
 					result.unknownFlags.set(flagName, next);
+					recordAbsorbedValue(result, flagName, next);
 					i++;
 				} else {
 					result.unknownFlags.set(flagName, true);
@@ -278,12 +290,13 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} install <source> [-l]     Install extension source and add to settings
   ${APP_NAME} remove <source> [-l]      Remove extension source from settings
   ${APP_NAME} uninstall <source> [-l]   Alias for remove
-  ${APP_NAME} update [source|self|pi]   Update pi, extensions, or model catalogs
+  ${IS_BRANDED_BUILD ? BRANDED_UPDATE_COMMAND_LINE : `${APP_NAME} update [source|self|pi]   Update pi, extensions, or model catalogs`}
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
   ${APP_NAME} mcp <command>             Check MCP servers, sign in to or out of OAuth servers
-  ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/config/auth/mcp
+  ${APP_NAME} doctor [details]          Check the local setup without starting the interface
+  ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/config/auth/mcp/doctor
 
 ${chalk.bold("Options:")}
   --provider <name>              Provider to search for --model (requires --model)
@@ -323,7 +336,11 @@ ${chalk.bold("Options:")}
   --export <file>                Export session file to HTML and exit
   --list-models [search]         List available models (with optional fuzzy search)
   --verbose                      Force verbose startup (overrides quietStartup setting)
+  --safe                         Safe mode: no discovered extensions, skills, prompt templates,
+                                 themes or context files; verbose startup (explicit paths still load)
   --tui-mode <mode>              TUI mode: fullscreen (default) or regular
+  --gui                          Open Prism's window instead of the terminal interface
+  --tui                          Open the terminal interface, whatever /settings says
   --approve, -a                  Trust project-local files for this run
   --no-approve, -na              Ignore project-local files for this run
   --offline                      Disable startup network operations (same as PI_OFFLINE=1)
