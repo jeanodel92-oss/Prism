@@ -38,9 +38,24 @@ fi
 cp -r "$APP/android/res/." gen/android/app/src/main/res/
 # R8 rules the release build needs beyond the libraries' own (the QR scanner's components).
 cp "$APP/android/proguard-prism.pro" gen/android/app/proguard-prism.pro
-# A release APK carries the licences and notices of its Java and Kotlin libraries, in the
-# window's interface that the app serves; fork/scripts/release.sh adds the Rust crates' beside them.
-if [[ " $* " != *" --debug "* ]]; then
-	node "$APP/scripts/notices/android-notices.mjs" gen/android "$APP/../gui/ui/vendor/THIRD-PARTY-ANDROID.txt"
+build() { cargo tauri android build --apk --target "${PRISM_ANDROID_TARGET:-aarch64}" "$@"; }
+if [[ " $* " == *" --debug "* ]]; then
+	build "$@"
+	exit
 fi
-cargo tauri android build --apk --target "${PRISM_ANDROID_TARGET:-aarch64}" "$@"
+# A release APK carries the licences and notices of its Java and Kotlin libraries, in the
+# window's interface that the app serves; fork/scripts/release.sh adds the Rust crates' beside them. Listing those
+# libraries needs the Gradle files Tauri writes while it compiles the Rust side (tauri.settings.gradle), which a fresh
+# checkout does not have: the notices are written again
+# after the build, and when they differ from the ones it embedded, the app is built again with them. Cargo does not see
+# a file new to the interface (seen: the second build kept the APK without them), so the app's crate is touched first.
+notices="$APP/../gui/ui/vendor/THIRD-PARTY-ANDROID.txt"
+list_notices() { node "$APP/scripts/notices/android-notices.mjs" gen/android "$notices"; }
+[[ ! -f gen/android/tauri.settings.gradle ]] || list_notices
+build "$@"
+embedded="$(sha256sum "$notices" 2>/dev/null || true)"
+list_notices
+if [[ "$(sha256sum "$notices")" != "$embedded" ]]; then
+	touch src/lib.rs
+	build "$@"
+fi

@@ -89,7 +89,9 @@ describe("fork: children held by their process group", () => {
 	});
 
 	it("waits for the descendant that ignores SIGTERM when the first process quits on it", async () => {
-		const entry = start(`(${STUBBORN}) & echo $!; wait`);
+		// The worker prints its pid once it ignores SIGTERM: `echo $!` from its parent could come before its trap, and
+		// a stop sent in between killed it at once.
+		const entry = start(`sh -c 'trap "" TERM; echo $$; while :; do sleep 0.05; done' & wait`);
 		const worker = Number(await firstLine(entry.child.stdout as Readable));
 		const startedAt = Date.now();
 		await expect(entry.stop()).resolves.toEqual({ confirmed: true });

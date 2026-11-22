@@ -8,6 +8,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
@@ -117,6 +118,32 @@ async function until(check: () => boolean, timeout = 20000): Promise<void> {
 
 const has = (prefix: string) => () => events.some((event) => event.startsWith(prefix));
 
+/**
+ * Stops a browser launched in its own process group, and waits until none of its processes is left. Killing the main
+ * process alone left Chromium's helpers writing the profile while the test removed it: ENOTEMPTY in 2 runs of 10 under
+ * load, and a profile folder written again after its removal in every run.
+ */
+async function stopBrowser(browser: ChildProcess, home: string): Promise<void> {
+	const exited = browser.exitCode !== null || browser.signalCode !== null;
+	const exit = exited ? Promise.resolve() : new Promise((resolve) => browser.once("exit", resolve));
+	try {
+		process.kill(-browser.pid!, "SIGKILL");
+	} catch {
+		browser.kill("SIGKILL");
+	}
+	await exit;
+	// A helper that left the group (Chromium's crash handler) still names the profile on its command line.
+	const usesHome = () =>
+		readdirSync("/proc").some((pid) => {
+			try {
+				return /^\d+$/.test(pid) && readFileSync(`/proc/${pid}/cmdline`, "utf-8").includes(home);
+			} catch {
+				return false;
+			}
+		});
+	await until(() => !usesHome(), 10000);
+}
+
 async function scenario(launch: (desktop: AgentDesktop, home: string) => ChildProcess): Promise<void> {
 	const home = mkdtempSync(join(tmpdir(), "prism-desktop-home-"));
 	const desktop = await AgentDesktop.start({ helper: helper!, labwc });
@@ -153,7 +180,7 @@ async function scenario(launch: (desktop: AgentDesktop, home: string) => ChildPr
 		await until(has("ctrl-a:"));
 		expect(events).toContain("ctrl-a:true");
 	} finally {
-		browser?.kill("SIGKILL");
+		if (browser) await stopBrowser(browser, home);
 		desktop.stop();
 		rmSync(home, { recursive: true, force: true });
 	}
@@ -233,6 +260,7 @@ describe.skipIf(!labwc)("agent desktop", () => {
 						MOZ_ENABLE_WAYLAND: "1",
 					},
 					stdio: "ignore",
+					detached: true,
 				});
 			});
 		},
@@ -263,6 +291,7 @@ describe.skipIf(!labwc)("agent desktop", () => {
 							WAYLAND_DISPLAY: desktop.socket,
 						},
 						stdio: "ignore",
+						detached: true,
 					},
 				),
 			);

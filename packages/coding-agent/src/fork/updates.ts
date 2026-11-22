@@ -25,6 +25,8 @@ import {
 	readReleaseChannel,
 	runPrismInstaller,
 	SITE_URL,
+	systemPackageManager,
+	systemPackageNotice,
 	updateMode,
 } from "./self-update.ts";
 
@@ -75,9 +77,14 @@ async function install(ctx: ExtensionContext, target: ReleaseInstall, args: stri
 }
 
 /** What the update mode asks for at start. */
-export async function startupUpdate(ctx: ExtensionContext, target = findReleaseInstall()): Promise<void> {
+export async function startupUpdate(
+	ctx: ExtensionContext,
+	target = findReleaseInstall(),
+	manager = systemPackageManager(),
+): Promise<void> {
 	const mode = updateMode();
-	if (mode === "manual" || !target || process.env.PI_OFFLINE) return;
+	// A packaged Prism is updated by its package manager, never at start.
+	if (mode === "manual" || manager || !target || process.env.PI_OFFLINE) return;
 	const pending = pendingVersion(target);
 	if (pending) {
 		ctx.ui.notify(fill("Prism {0} is installed: it opens at the next start.", pending), "info");
@@ -94,7 +101,15 @@ export async function startupUpdate(ctx: ExtensionContext, target = findReleaseI
 }
 
 /** `/update`. */
-export async function updateCommand(ctx: ExtensionContext, target = findReleaseInstall()): Promise<void> {
+export async function updateCommand(
+	ctx: ExtensionContext,
+	target = findReleaseInstall(),
+	manager = systemPackageManager(),
+): Promise<void> {
+	if (manager) {
+		ctx.ui.notify(systemPackageNotice(manager), "info");
+		return;
+	}
 	if (!target) {
 		ctx.ui.notify(
 			fill(

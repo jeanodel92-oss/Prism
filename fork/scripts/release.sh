@@ -13,6 +13,12 @@
 #                           DIR/releases/<version>/prism-<version>-android-arm64.apk (stable only)
 #                           DIR/releases/android/prism-android-arm64.apk (the latest stable APK)
 #                           DIR/releases/<version>/prism-{firefox,chromium}-<x.y.z>.zip (stable only)
+#                           DIR/releases/<version>/prism_<v>-1_amd64.deb, prism-<v>-1.x86_64.rpm (stable only;
+#                           <v> is the version with "+" for "-", fork/scripts/package-linux.sh)
+#                           DIR/releases/<version>/prism-<version>-x86_64.AppImage (stable only;
+#                           fork/scripts/package-appimage.sh)
+#                           DIR/releases/LATEST-x86_64.AppImage.zsync (the latest stable AppImage, for
+#                           AppImage managers; stable only)
 #                           DIR/releases/<version>/SHA256SUMS (+ .minisig)
 #   --fork-number N       version suffix, <upstream>-fork.N (default 1)
 #   --maintenance P       a stable maintenance release of fork.N, <upstream>-fork.N.P: the P-th
@@ -134,7 +140,7 @@ done
 	die "maintenance number must be a positive integer, got '$maintenance'"
 [[ -z "$maintenance" || -z "$canary" ]] || die "--maintenance and --canary do not combine: a maintenance release is stable"
 [[ -z "$no_sign" || -n "$canary" ]] || die "--unsigned is for a canary: a stable release is signed here"
-for tool in curl xz sha256sum $([[ -n "$no_sign" ]] || echo minisign) $([[ -n "$canary" ]] || echo unzip); do
+for tool in curl xz sha256sum $([[ -n "$no_sign" ]] || echo minisign) $([[ -n "$canary" ]] || echo unzip unshare); do
 	command -v "$tool" >/dev/null || die "$tool is required"
 done
 if [[ -n "$canary" ]]; then
@@ -199,6 +205,12 @@ else
 	[[ -n "$notes" ]] || die "fork/CHANGELOG.md has no '## [$version]' section: move the [Unreleased] entries under it first"
 	comment="prism $version"
 	latest_file=LATEST
+	# The Android app's versionCode must grow with each update: N.p after N, N+1 after every N.p. f-droid.org reads it
+	# from fork/android/version-code at the version's public tag to build updates on its own (f-droid.org plan), so
+	# the release commit holds it.
+	version_code=$((fork_number * 10000 + ${maintenance:-0}))
+	[[ "$(cat "$ROOT/fork/android/version-code" 2>/dev/null)" == "$version_code" ]] ||
+		die "fork/android/version-code must hold $version_code, the versionCode of $version: write it in the release commit"
 fi
 
 # Refuse a key that install.sh would reject: each channel has its own.
@@ -338,16 +350,23 @@ mkdir -p "$release_dir"
 # The Android app, with stable releases only: a canary is the Linux archive alone.
 apk=""
 if [[ -z "$canary" ]]; then
-	# Android's versionCode must grow with each update: N.p after N, N+1 after every N.p.
-	version_code=$((fork_number * 10000 + ${maintenance:-0}))
 	apk="prism-$version-android-arm64.apk"
 	say "building the Android app ($version, versionCode $version_code)"
-	printf '{"version":"%s","bundle":{"android":{"versionCode":%s}}}\n' "$version" "$version_code" >"$work/android.json"
-	"$ROOT/fork/android/scripts/build.sh" --config "$work/android.json" >"$work/android-build.log" 2>&1 ||
+	# Built as f-droid.org builds it, so that its build of this commit is this APK, unsigned: from the public
+	# repository's tree, which the export rewrites (comments of the window's HTML, CSS and JS, which the APK embeds as
+	# they are), and by the same script as the recipe. Hence from HEAD as committed.
+	[[ -z "$(git -C "$ROOT" status --porcelain)" ]] ||
+		die "the Android app is built from the public export of HEAD: commit or remove the uncommitted changes first"
+	node "$ROOT/fork/scripts/public-export.mjs" --out "$work/public" --author "Prism <prism@odelserver.space>" --ref HEAD \
+		>"$work/public-export.log" 2>&1 || die "the public export failed: $(tail -n 20 "$work/public-export.log")"
+	# The public commit pushed after the tag must hold this very tree, or f-droid.org builds another APK.
+	public_tree="$(git -C "$work/public" rev-parse 'HEAD^{tree}')"
+	unsigned="$("$work/public/fork/android/scripts/build-release.sh" "$version" "$version_code" 2>"$work/android-build.log" | tail -n 1)" ||
 		die "the Android app did not build: $(tail -n 30 "$work/android-build.log")"
-	unsigned="$ROOT/fork/android/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
 	"$android_tools/zipalign" -f -p 4 "$unsigned" "$work/aligned.apk"
-	"$android_tools/apksigner" sign --v4-signing-enabled false --ks "$apk_key" --ks-pass "file:$apk_key.pass" --ks-key-alias prism \
+	# --alignment-preserved: apksigner otherwise lays the ZIP out again, and f-droid.org, which copies this signature
+	# onto its own build of the tag (apksigcopier), finds digests that no longer match.
+	"$android_tools/apksigner" sign --v4-signing-enabled false --alignment-preserved --ks "$apk_key" --ks-pass "file:$apk_key.pass" --ks-key-alias prism \
 		--out "$release_dir/$apk" "$work/aligned.apk" 2>"$work/apksigner.log" ||
 		die "the Android app could not be signed: $(tail -n 5 "$work/apksigner.log")"
 	# Every signer's certificate ("Signer #1", "V3.0 Signer"… depending on the build-tools): one, the app's.
@@ -374,8 +393,27 @@ no_build_paths "$root"
 
 say "packing $name.tar.gz"
 tar --sort=name --owner=0 --group=0 --numeric-owner -C "$work" -czf "$release_dir/$name.tar.gz" "$name"
+# The deb and rpm packages, stable releases only: the archive
+# repacked as is, covered by SHA256SUMS like the rest.
+linux_packages=()
+if [[ -z "$canary" ]]; then
+	say "packing the deb and rpm packages"
+	mapfile -t linux_packages < <("$ROOT/fork/scripts/package-linux.sh" "$release_dir/$name.tar.gz" "$release_dir" 2>"$work/package-linux.log" |
+		xargs -r -n1 basename) || true
+	[[ ${#linux_packages[@]} -eq 2 ]] || die "the deb and rpm packages were not built: $(tail -n 30 "$work/package-linux.log")"
+fi
+# The AppImage (the light one, the window on the host's WebKitGTK), stable releases
+# only, from the same archive.
+appimage=""
+if [[ -z "$canary" ]]; then
+	say "packing the AppImage"
+	appimage="$("$ROOT/fork/scripts/package-appimage.sh" "$release_dir/$name.tar.gz" "$release_dir" 2>"$work/package-appimage.log" |
+		xargs -r -n1 basename)" || true
+	[[ "$appimage" == "prism-$version-x86_64.AppImage" ]] ||
+		die "the AppImage was not built: $(tail -n 30 "$work/package-appimage.log")"
+fi
 printf '%s\n' "$notes" >"$release_dir/NOTES.md"
-(cd "$release_dir" && sha256sum "$name.tar.gz" ${apk:+"$apk"} "${extension_packages[@]}" NOTES.md >SHA256SUMS)
+(cd "$release_dir" && sha256sum "$name.tar.gz" ${apk:+"$apk"} "${extension_packages[@]}" "${linux_packages[@]}" ${appimage:+"$appimage"} NOTES.md >SHA256SUMS)
 if [[ -n "$no_sign" ]]; then
 	say "canary $version in $release_dir, unsigned: $(du -h "$release_dir/$name.tar.gz" | cut -f1)"
 	say "the build server's signer signs it and lists it in LATEST-canary"
@@ -387,6 +425,8 @@ if [[ -z "$canary" ]]; then
 	# The fixed address of the latest stable APK, and the installer the site serves: a canary changes neither.
 	mkdir -p "$out/releases/android"
 	cp "$release_dir/$apk" "$out/releases/android/prism-android-arm64.apk"
+	# Where AppImage managers look for an update (the address the AppImage embeds): a pointer, like LATEST.
+	mv "$release_dir/$appimage.zsync" "$out/releases/LATEST-x86_64.AppImage.zsync"
 	cp "$ROOT/fork/scripts/install.sh" "$out/install.sh"
 	# The installer's own signature: a user can check install.sh with the release key published in the public
 	# repository before running it, independently of the site.
@@ -397,3 +437,4 @@ say "release $version in $out ($(du -h "$release_dir/$name.tar.gz" | cut -f1)${a
 say "npm run check passed on $checked; ./test.sh and fork/tools/test-release.sh are still to run"
 say "publish: copy $out/ over the site's folder (rsync -rt)"
 [[ -n "$canary" ]] || say "then tag: git tag -a prism-v$version -F $release_dir/NOTES.md && git push origin prism-v$version"
+[[ -n "$canary" ]] || say "the public commit of this version must have the tree $public_tree (the APK's)"

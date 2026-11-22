@@ -1,0 +1,3 @@
+Prism est un harnais d'agent qui tourne sur ton ordinateur. Cette app est sa fenêtre sur ton téléphone : les mêmes sessions, outils et réglages, pilotés depuis le téléphone, tandis que l'agent, sa sandbox, ses clés et ses modèles restent sur l'ordinateur.
+
+Le téléphone joint l'ordinateur par le réseau local ou par Tailscale, sans serveur entre les deux. Relie le téléphone depuis Prism sur l'ordinateur : « Lier un téléphone » dans les réglages de la fenêtre, ou /phone dans le terminal.

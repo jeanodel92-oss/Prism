@@ -213,6 +213,20 @@ prism_menu_entry() {
 		'Comment=AI coding agent' 'Terminal=false' 'Categories=Development;' 'StartupNotify=true')" ]
 }
 
+# The sandbox for the agent's commands runs them in bubblewrap (offered like the window's libraries)
+# . Without it, commands stay blocked while the sandbox is on; checked at every install and update.
+sandbox_program() {
+	command -v bwrap >/dev/null 2>&1 && return 0
+	command=$(package_command bubblewrap bubblewrap bubblewrap bubblewrap)
+	if [ -z "$command" ]; then
+		say "the sandbox for the agent's commands needs bubblewrap: install the bubblewrap package; until then commands stay blocked while the sandbox is on"
+		return 0
+	fi
+	say "the sandbox for the agent's commands needs bubblewrap: $command"
+	say "until then commands stay blocked while the sandbox is on"
+	offer_command "$command"
+}
+
 # Remove the link, but only if it points into the installation directory.
 # The window (gui/prism-gui) uses the system's WebKitGTK 4.1 and GTK 3 (LIV-02): nothing to build, but a system
 # without them gets told which package to install; until then Prism opens in the terminal.
@@ -576,6 +590,7 @@ main() {
 			cat "$work/NOTES.md"
 		fi
 	fi
+	sandbox_program
 	window_libraries
 	[ "$mode" != install ] || desktop_libraries
 	[ "$mode" != install ] || portal_libraries

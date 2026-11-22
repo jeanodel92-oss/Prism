@@ -27,15 +27,4 @@ tauri-plugin-barcode-scanner = "=2.5.3"
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-notification = "=2.8.0"
 
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "s"
-strip = true
-panic = "abort"
-
-# The barcode plugin with ZXing (Apache-2.0) in place of ML Kit, which comes from the non-free Google Play services
-# GPL-compatible, accepted by F-Droid, and reading QR codes on phones without Google.
-# Changes listed in ../vendor/tauri-plugin-barcode-scanner/FORK.md.
-[patch.crates-io]
-tauri-plugin-barcode-scanner = { path = "../vendor/tauri-plugin-barcode-scanner" }
+# Release profile and the barcode plugin's patch: in the workspace root, fork/Cargo.toml.

@@ -230,7 +230,8 @@ async function walkDirectoryWithFd(
 			const results: Array<{ path: string; isDirectory: boolean }> = [];
 
 			for (const line of lines) {
-				const displayLine = toDisplayPath(line);
+				// fork: fd 10.5 writes a name that starts with "-" as "./-name", so it is not read as an option.
+				const displayLine = toDisplayPath(line).replace(/^\.\//, "");
 				const hasTrailingSeparator = displayLine.endsWith("/");
 				const normalizedPath = hasTrailingSeparator ? displayLine.slice(0, -1) : displayLine;
 				if (normalizedPath === ".git" || normalizedPath.startsWith(".git/") || normalizedPath.includes("/.git/")) {

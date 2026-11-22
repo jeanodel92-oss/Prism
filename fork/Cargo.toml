@@ -1,0 +1,29 @@
+# The phone app's Rust crates in one workspace. Cargo derives each
+# crate's symbol hash from its path: from the workspace root for a crate inside it, from the absolute path otherwise.
+# With prism-mobile alone at the root, prism-phone, prism-link, prism-host and the vendored barcode plugin were hashed
+# by absolute path, so two checkouts in different folders built different APKs; with this root
+# they build the same APK, bit for bit. The window and the phone server keep their own Cargo.lock and target.
+[workspace]
+resolver = "2"
+members = [
+	"android/src-tauri",
+	"android/phone",
+	"android/link",
+	"host",
+	"android/vendor/tauri-plugin-barcode-scanner",
+]
+exclude = ["gui/src-tauri", "android/server"]
+
+# Profiles and patches apply from the workspace root only (moved here from android/src-tauri).
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+panic = "abort"
+
+# The barcode plugin with ZXing (Apache-2.0) in place of ML Kit, which comes from the non-free Google Play services
+# GPL-compatible, accepted by F-Droid, and reading QR codes on phones without Google.
+# Changes listed in android/vendor/tauri-plugin-barcode-scanner/FORK.md.
+[patch.crates-io]
+tauri-plugin-barcode-scanner = { path = "android/vendor/tauri-plugin-barcode-scanner" }

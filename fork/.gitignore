@@ -1,0 +1,2 @@
+# The workspace of the phone app's crates (Cargo.toml).
+/target/

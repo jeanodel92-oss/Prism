@@ -18,7 +18,7 @@ import { APP_NAME, getPackageDir } from "../config.ts";
 import { isNewerPackageVersion } from "../utils/version-check.ts";
 import { readGlobalSetting } from "./global-settings.ts";
 import { hostCommand, hostPath } from "./host-program.ts";
-import { t } from "./i18n/index.ts";
+import { fill, t } from "./i18n/index.ts";
 
 const MARKER = ".prism-install";
 export const SITE_URL = "https://prism.odelserver.space";
@@ -86,8 +86,52 @@ export function findReleaseInstall(packageDir: string = getPackageDir()): Releas
 	return { installDir, installer };
 }
 
+/**
+ * fork: a deb or rpm package puts this file at the release's root, holding the name of the package
+ * manager that updates it (apt, dnf…), and the AppImage holds "appimage". Prism then never updates itself: two updaters would fight over the same files.
+ */
+const PACKAGE_MARKER = ".prism-package";
+
+/** The package manager that installed the release at `packageDir`, if a system package did. */
+export function systemPackageManager(packageDir: string = getPackageDir()): string | undefined {
+	try {
+		// <release>/node_modules/@earendil-works/pi-coding-agent
+		const release = resolve(realpathSync(packageDir), "..", "..", "..");
+		const name = readFileSync(join(release, PACKAGE_MARKER), "utf8").split("\n")[0].trim();
+		return /^[a-z0-9][a-z0-9.+-]{0,31}$/.test(name) ? name : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** What `prism update` and `/update` say instead of updating a packaged Prism. */
+export function systemPackageNotice(manager: string): string {
+	// The AppImage (fork/scripts/package-appimage.sh) is one read-only file: a newer one replaces it.
+	if (manager === "appimage") {
+		return fill(
+			"This {0} is an AppImage: download the new one from {1}/downloads/ and replace this file with it.",
+			APP_NAME,
+			SITE_URL,
+		);
+	}
+	return fill(
+		"This {0} was installed by {1}: update it with {1}, which keeps it with the rest of the system.",
+		APP_NAME,
+		manager,
+	);
+}
+
 /** Runs the installer in `mode` (on `channel`, when switching) with inherited output; returns the exit code. */
-export function runPrismUpdate(mode: SelfUpdateMode, install = findReleaseInstall(), channel?: ReleaseChannel): number {
+export function runPrismUpdate(
+	mode: SelfUpdateMode,
+	install = findReleaseInstall(),
+	channel?: ReleaseChannel,
+	manager = systemPackageManager(),
+): number {
+	if (manager) {
+		console.error(systemPackageNotice(manager));
+		return 1;
+	}
 	if (!install) {
 		console.error(
 			`This ${APP_NAME} was not installed from ${SITE_URL}, so it cannot update itself. Install it from there with:\n  curl -fsSL ${SITE_URL}/install.sh | sh`,

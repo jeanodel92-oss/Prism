@@ -13,7 +13,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 /** How a cache is shown to one command: an overlay over the real cache, or a private folder bound in its place. */
@@ -32,11 +32,25 @@ const isAlive = (pid: number) => {
 	}
 };
 
+/** Gives the maintainer access to every folder under `dir`, symbolic links left alone. */
+function openFolders(dir: string): void {
+	chmodSync(dir, 0o700);
+	for (const entry of readdirSync(dir, { withFileTypes: true }))
+		if (entry.isDirectory()) openFolders(join(dir, entry.name));
+}
+
 const removeLayer = (dir: string) => {
 	live.delete(dir);
 	try {
 		rmSync(dir, { recursive: true, force: true });
-	} catch {}
+	} catch {
+		// overlayfs makes each layer's work/work folder mode 000 and can leave entries in it (after a command deleted a
+		// folder of the real cache): it can only be emptied once opened again.
+		try {
+			openFolders(dir);
+			rmSync(dir, { recursive: true, force: true });
+		} catch {}
+	}
 };
 
 /** Removes the layers of Prism processes that ended without removing theirs (killed, crashed). */

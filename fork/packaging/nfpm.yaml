@@ -1,0 +1,49 @@
+# The deb and rpm packages of a Prism release.
+# Built by fork/scripts/package-linux.sh, which sets PRISM_PKG_VERSION and runs nFPM in a folder holding the
+# release's tree (tree/) and the markers (markers/): both formats repack the signed archive as is, so they hold
+# exactly what was tested. nFPM expands variables in the version, not in the paths below.
+name: prism
+arch: amd64
+platform: linux
+section: devel
+version: ${PRISM_PKG_VERSION}
+version_schema: none
+release: "1"
+maintainer: Prism <prism@odelserver.space>
+description: |-
+  A free and open source coding agent for Linux, for local or remote models.
+  Terminal and native window, sandboxed commands, permissions.
+vendor: Prism
+homepage: https://prism.odelserver.space
+license: GPL-3.0-or-later
+
+contents:
+  - src: ./tree
+    dst: /opt/prism
+    type: tree
+  - src: /opt/prism/prism
+    dst: /usr/bin/prism
+    type: symlink
+  # Tells Prism which package manager updates it, so it never updates itself (src/fork/self-update.ts).
+  - src: ./markers/apt
+    dst: /opt/prism/.prism-package
+    packager: deb
+  - src: ./markers/dnf
+    dst: /opt/prism/.prism-package
+    packager: rpm
+
+overrides:
+  deb:
+    depends:
+      - bubblewrap
+      # The window (prism --gui); the terminal works without it.
+      - libwebkit2gtk-4.1-0
+    recommends:
+      # The agent's own desktop (off by default).
+      - labwc
+  rpm:
+    depends:
+      - bubblewrap
+      - webkit2gtk4.1
+    recommends:
+      - labwc

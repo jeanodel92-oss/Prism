@@ -105,7 +105,29 @@ for store in firefox chromium; do
 	[[ "$(unzip -p "$rel/releases/$version/$package" manifest.json | node -p 'JSON.parse(require("fs").readFileSync(0)).version')" == "$extension_version" ]] ||
 		{ echo "FAIL: $package's manifest is not version $extension_version" >&2; exit 1; }
 done
+# The deb and rpm packages: in a stable release, signed; never in a canary. fork/tools/test-packages.sh
+# installs them.
+pkg_version="${version//-/+}"
+for package in "prism_${pkg_version}-1_amd64.deb" "prism-${pkg_version}-1.x86_64.rpm"; do
+	if [[ "$channel" == canary ]]; then
+		! grep -q '\.\(deb\|rpm\)$' "$rel/releases/$version/SHA256SUMS" ||
+			{ echo "FAIL: a canary carries a deb or rpm package" >&2; exit 1; }
+		continue
+	fi
+	grep -q " \*\{0,1\}$package\$" "$rel/releases/$version/SHA256SUMS" ||
+		{ echo "FAIL: $package is not in SHA256SUMS" >&2; exit 1; }
+done
+# The AppImage: the same rule.
+if [[ "$channel" == canary ]]; then
+	! grep -q '\.AppImage$' "$rel/releases/$version/SHA256SUMS" || { echo "FAIL: a canary carries an AppImage" >&2; exit 1; }
+else
+	grep -q " \*\{0,1\}prism-$version-x86_64\.AppImage\$" "$rel/releases/$version/SHA256SUMS" ||
+		{ echo "FAIL: the AppImage is not in SHA256SUMS" >&2; exit 1; }
+	[[ "$(APPIMAGE_EXTRACT_AND_RUN=1 "$rel/releases/$version/prism-$version-x86_64.AppImage" --version)" == "$version" ]] ||
+		{ echo "FAIL: the AppImage does not report version $version" >&2; exit 1; }
+fi
 (cd "$rel/releases/$version" && sha256sum -c --quiet SHA256SUMS) || { echo "FAIL: a file does not match SHA256SUMS" >&2; exit 1; }
+[[ "$channel" == canary ]] || echo "ok: the deb and rpm packages and the AppImage are signed in the release"
 [[ "$channel" == canary ]] && echo "ok: no extension packages in a canary" ||
 	echo "ok: the extension's store packages ($extension_version) are signed in the release"
 
@@ -320,6 +342,9 @@ printf '%s\n' "$out" | grep -q "needs libraries this system does not have: .*lib
 # and the one command for this distribution (Debian here); no terminal, so nothing is run.
 printf '%s\n' "$out" | grep -q "install WebKitGTK 4.1 with: sudo apt install libwebkit2gtk-4.1-0" ||
 	fail "install without WebKitGTK does not name the command: $out"
+# Nor bubblewrap, which the sandbox needs.
+printf '%s\n' "$out" | grep -q "the sandbox for the agent's commands needs bubblewrap: sudo apt install bubblewrap" ||
+	fail "install without bubblewrap does not name the command: $out"
 # nor labwc, which the agent's desktop needs; named on a first install only.
 printf '%s\n' "$out" | grep -q "the agent's desktop .* needs labwc: sudo apt install labwc" ||
 	fail "install without labwc does not name the command: $out"

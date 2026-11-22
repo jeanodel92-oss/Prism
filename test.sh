@@ -5,7 +5,7 @@ set -euo pipefail
 # swapping the whole machine to a halt. PI_TEST_MEMORY_MAX overrides the default;
 # without a systemd user session (CI), the suite runs as before.
 if [[ -z "${PI_TEST_SCOPED-}" ]] && command -v systemd-run >/dev/null && systemd-run --user --scope -q true 2>/dev/null; then
-	exec env PI_TEST_SCOPED=1 systemd-run --user --scope -q -p "MemoryMax=${PI_TEST_MEMORY_MAX:-6G}" \
+	exec env PI_TEST_SCOPED=1 systemd-run --user --scope -q -p "MemoryMax=${PI_TEST_MEMORY_MAX:-8G}" \
 		-p MemorySwapMax=0 -- "$0" "$@"
 fi
 

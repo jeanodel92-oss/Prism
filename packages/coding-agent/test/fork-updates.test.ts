@@ -4,9 +4,9 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ENV_AGENT_DIR, VERSION } from "../src/config.ts";
+import { APP_NAME, ENV_AGENT_DIR, VERSION } from "../src/config.ts";
 import type { ExtensionContext } from "../src/core/extensions/types.ts";
-import type { ReleaseInstall } from "../src/fork/self-update.ts";
+import { type ReleaseInstall, runPrismUpdate, systemPackageManager } from "../src/fork/self-update.ts";
 import { claimAutomaticCheck, startupUpdate, updateCommand } from "../src/fork/updates.ts";
 
 const NEWER = "99.0.0-fork.1";
@@ -169,5 +169,65 @@ describe("fork: /update", () => {
 		const elsewhere = context();
 		await updateCommand(elsewhere.ctx, undefined);
 		expect(elsewhere.notices[0]).toContain("cannot update itself");
+	});
+});
+
+// fork: a deb or rpm package leaves its updates to apt or dnf, so two updaters never fight.
+describe("fork: a Prism installed by a system package", () => {
+	/** A release laid out as a package installs it, with the package's marker at its root. */
+	function packagedRelease(marker?: string): string {
+		const release = join(dir, "opt", "prism");
+		const pkg = join(release, "node_modules", "@earendil-works", "pi-coding-agent");
+		mkdirSync(pkg, { recursive: true });
+		if (marker !== undefined) writeFileSync(join(release, ".prism-package"), marker);
+		return pkg;
+	}
+
+	it("names the package manager from the marker, and only a plain name", () => {
+		expect(systemPackageManager(packagedRelease("dnf\n"))).toBe("dnf");
+		rmSync(join(dir, "opt"), { recursive: true });
+		expect(systemPackageManager(packagedRelease())).toBeUndefined();
+		rmSync(join(dir, "opt"), { recursive: true });
+		expect(systemPackageManager(packagedRelease("apt; rm -rf ~\n"))).toBeUndefined();
+	});
+
+	it("/update sends to the package manager and never runs the installer", async () => {
+		const { ctx, notices, offered } = context({ select: (options) => options[0] });
+		await updateCommand(ctx, install, "apt");
+		expect(notices).toEqual([
+			`This ${APP_NAME} was installed by apt: update it with apt, which keeps it with the rest of the system.`,
+		]);
+		expect(offered).toEqual([]);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(calls()).toEqual([]);
+	});
+
+	it("/update sends an AppImage to the downloads page", async () => {
+		const { ctx, notices } = context({ select: (options) => options[0] });
+		await updateCommand(ctx, install, "appimage");
+		expect(notices).toEqual([
+			`This ${APP_NAME} is an AppImage: download the new one from https://prism.odelserver.space/downloads/ and replace this file with it.`,
+		]);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(calls()).toEqual([]);
+	});
+
+	it("auto mode installs nothing at start", async () => {
+		settings({ updateMode: "auto" });
+		const { ctx, notices } = context();
+		await startupUpdate(ctx, install, "dnf");
+		expect(fetch).not.toHaveBeenCalled();
+		expect(notices).toEqual([]);
+		expect(calls()).toEqual([]);
+	});
+
+	it("prism update refuses with the same message", () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		expect(runPrismUpdate("update", install, undefined, "dnf")).toBe(1);
+		expect(error).toHaveBeenCalledWith(
+			`This ${APP_NAME} was installed by dnf: update it with dnf, which keeps it with the rest of the system.`,
+		);
+		expect(calls()).toEqual([]);
+		error.mockRestore();
 	});
 });

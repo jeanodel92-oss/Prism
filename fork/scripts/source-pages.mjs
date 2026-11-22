@@ -294,12 +294,19 @@ ${top(lang, file, true)}    <section class="src-file" aria-label="${escape(file)
 		}
 	}
 
-	// The list of versions: this one added or replaced, newest first.
+	// The list of versions: this one added or replaced, newest first. A preview whose name is not a version number
+	// (dev-preview) comes after the releases: "latest" is always a release once there is one
+	// .
 	const listPath = join(site, "source/code/versions.json");
 	const list = existsSync(listPath) ? JSON.parse(readFileSync(listPath, "utf8")) : [];
 	const entry = { version, commit, date, files: files.length, archive: archiveName, bytes: archiveBytes, sha256: archiveSha };
+	const release = (v) => /^[0-9]/.test(v.version);
 	const versions = [entry, ...list.filter((v) => v.version !== version)].sort((a, b) =>
-		a.date === b.date ? b.version.localeCompare(a.version, "en", { numeric: true }) : b.date.localeCompare(a.date),
+		release(a) !== release(b)
+			? Number(release(b)) - Number(release(a))
+			: a.date === b.date
+				? b.version.localeCompare(a.version, "en", { numeric: true })
+				: b.date.localeCompare(a.date),
 	);
 	writeFileSync(listPath, `${JSON.stringify(versions, null, "\t")}\n`);
 	for (const lang of ["en", "fr"]) {

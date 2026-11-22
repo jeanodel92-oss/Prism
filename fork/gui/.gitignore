@@ -2,7 +2,9 @@ src-tauri/target/
 src-tauri/target-drive/
 src-tauri/target-package/
 src-tauri/gen/
-src-tauri/icons/
+src-tauri/icons/*
+# Versioned: scripts/prepare.sh says why and how to draw it again.
+!src-tauri/icons/icon.png
 ui/vendor/
 ui/site/
 experiments/*/target/

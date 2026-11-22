@@ -11,6 +11,18 @@ et refuse une version sans section.
 
 ## [Unreleased]
 
+## [1.0.0-fork.12.1] - 2026-11-21
+
+### Added
+- Paquets deb et rpm : chaque version stable est aussi publiée en `.deb` et `.rpm` (installés dans `/opt/prism`, commande `prism`, avec bubblewrap et WebKitGTK en dépendances), couverts par la signature de la version.
+- Paquets système : un Prism installé par un paquet deb ou rpm (marqueur `.prism-package`) ne se met plus à jour lui-même ; `/update` et `prism update` renvoient vers apt ou dnf.
+- Installation : l'installateur signale aussi l'absence de bubblewrap, dont le bac à sable des commandes a besoin, et propose la commande pour l'installer (à chaque installation et mise à jour, comme pour WebKitGTK).
+- AppImage : chaque version stable est aussi publiée en AppImage (`prism-<version>-x86_64.AppImage`, sans `libfuse2`). La fenêtre utilise le WebKitGTK du système ; sans lui, Prism s'ouvre dans le terminal. `/update` et `prism update` renvoient vers la page Téléchargements ; les gestionnaires d'AppImage comme Gear Lever la mettent à jour d'eux-mêmes.
+
+### Fixed
+- Bac à sable : la couche de cache d'une commande qui avait supprimé un dossier d'un cache de paquets (`~/.npm`…) n'était pas effacée à la fin et restait sur le disque, sous `sandbox/layers` du dossier de Prism.
+- Complétion `@` : avec fd 10.5, un fichier dont le nom commence par `-` était proposé avec un `./` devant (`@./--rapport.txt`).
+
 ## [1.0.0-fork.12] - 2026-11-19
 
 ### Added

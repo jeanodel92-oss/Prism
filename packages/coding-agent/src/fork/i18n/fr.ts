@@ -3867,6 +3867,10 @@ export const FR: Record<string, string> = {
 	"Installing Prism {0}…": "Installation de Prism {0}…",
 	"This {0} was not installed from {1}, so it cannot update itself. Install it from there with: curl -fsSL {1}/install.sh | sh":
 		"Ce {0} n’a pas été installé depuis {1}, il ne peut donc pas se mettre à jour lui-même. Installez-le depuis ce site avec : curl -fsSL {1}/install.sh | sh",
+	"This {0} was installed by {1}: update it with {1}, which keeps it with the rest of the system.":
+		"Ce {0} a été installé par {1} : mettez-le à jour avec {1}, qui le garde avec le reste du système.",
+	"This {0} is an AppImage: download the new one from {1}/downloads/ and replace this file with it.":
+		"Ce {0} est une AppImage : téléchargez la nouvelle depuis {1}/downloads/ et remplacez ce fichier par celle-ci.",
 	"Prism {0} is available.": "Prism {0} est disponible.",
 	"Prism is up to date.": "Prism est à jour.",
 	"{0} could not be reached.": "{0} est injoignable.",

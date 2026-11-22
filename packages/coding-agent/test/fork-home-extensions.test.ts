@@ -51,11 +51,22 @@ describe("fork: home extensions", () => {
 		process.env[ENV_AGENT_DIR] = agentDir;
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		for (const harness of harnesses.splice(0)) harness.cleanup();
 		if (savedAgentDir === undefined) delete process.env[ENV_AGENT_DIR];
 		else process.env[ENV_AGENT_DIR] = savedAgentDir;
-		rmSync(agentDir, { recursive: true, force: true });
+		// A background task's end notification is not waited for: the fake notify-send can still write in the folder
+		// while it is removed. Retried between event loop turns, which the
+		// notification's end needs.
+		for (let left = 50; ; left--) {
+			try {
+				rmSync(agentDir, { recursive: true, force: true });
+				break;
+			} catch (error) {
+				if (!left) throw error;
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+		}
 	});
 
 	async function start(name: string, factory: ExtensionFactory, ui: Parameters<typeof createTestUiContext>[0] = {}) {

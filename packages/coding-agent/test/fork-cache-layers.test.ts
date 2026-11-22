@@ -238,6 +238,16 @@ describe("fork: package caches through layers (AS-010)", () => {
 			expect(readdirSync(join(agentDir, "sandbox", "layers"))).toEqual([]);
 		});
 
+		it.skipIf(!overlaysHere)("removes a layer whose command deleted a folder of the real cache", () => {
+			// overlayfs leaves entries in its work/work folder, mode 000, after such a deletion.
+			mkdirSync(join(home, ".npm", "_cacache", "tmp"), { recursive: true });
+			writeFileSync(join(home, ".npm", "_cacache", "tmp", "entry"), "real\n");
+			const result = run(`rm -r "$HOME/.npm/_cacache"`, true);
+			expect(result.status, result.stderr).toBe(0);
+			expect(existsSync(join(home, ".npm", "_cacache", "tmp", "entry"))).toBe(true);
+			expect(readdirSync(join(agentDir, "sandbox", "layers"))).toEqual([]);
+		});
+
 		it("without overlays, a command writes the project's private cache, never the real one", () => {
 			writeFileSync(join(home, ".npm", "kept"), "real\n");
 			const first = run(`test ! -e "$HOME/.npm/kept"; echo private > "$HOME/.npm/added"`, false);
