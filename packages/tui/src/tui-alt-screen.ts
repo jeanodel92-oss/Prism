@@ -195,6 +195,11 @@ export interface TuiAltScreenOptions {
 	openUrl?: (url: string) => void;
 	/** Handle an unmodified secondary-button press for clipboard paste. Currently enabled on Windows only. */
 	onRightClickPaste?: () => void;
+	/**
+	 * fork: handle an unmodified middle-button press, to paste the primary selection as Linux terminals
+	 * do; full screen captures the mouse, so the terminal's own middle-click paste never happens.
+	 */
+	onMiddleClickPaste?: () => void;
 	/** Automatically copy selected text to the clipboard on mouse release (default: true). */
 	copyOnSelect?: boolean;
 	/**
@@ -268,6 +273,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly scrollToEndIndicator?: () => string;
 	private readonly openUrl?: (url: string) => void;
 	private readonly onRightClickPaste?: () => void;
+	private readonly onMiddleClickPaste?: () => void;
 	private copyOnSelect: boolean;
 	private readonly copySelection?: (text: string) => Promise<boolean | string>;
 	private readonly translateFlash: (message: string) => string; // fork
@@ -296,6 +302,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.scrollToEndIndicator = options.scrollToEndIndicator;
 		this.openUrl = options.openUrl;
 		this.onRightClickPaste = options.onRightClickPaste;
+		this.onMiddleClickPaste = options.onMiddleClickPaste;
 		this.copyOnSelect = options.copyOnSelect ?? true;
 		this.copySelection = options.copySelection;
 		this.translateFlash = options.translateFlash ?? ((message) => message); // fork
@@ -1021,6 +1028,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		}
 
 		if (this.handleRightClickPaste(raw)) return;
+		if (this.handleMiddleClickPaste(raw)) return;
 		this.handleSelectionMouseEvent(raw);
 	}
 
@@ -1090,6 +1098,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		}
 		try {
 			this.onRightClickPaste();
+		} catch {
+			// Clipboard paste is best-effort.
+		}
+		return true;
+	}
+
+	// fork: middle-button press (SGR button 1, no modifier, motion or wheel bit).
+	private handleMiddleClickPaste(event: SgrMouseEvent): boolean {
+		if (!this.onMiddleClickPaste || event.release || event.button !== 1) return false;
+		try {
+			this.onMiddleClickPaste();
 		} catch {
 			// Clipboard paste is best-effort.
 		}

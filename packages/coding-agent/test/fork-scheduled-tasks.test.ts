@@ -191,7 +191,7 @@ describe("fork: scheduled tasks", () => {
 			expect(() => installTask(task({ cwd: checkout }), systemd, undefined, fromCheckout)).toThrow("task's folder");
 			expect(systemd.calls).toEqual([]);
 		});
-		// Hardening review, point 2: anything sandboxed commands may write, not only the task's folder.
+		// review, point 2: anything sandboxed commands may write, not only the task's folder.
 		describe("a Prism in a folder sandboxed commands can write", () => {
 			let home: string;
 			const prismAt = (dir: string): PrismLauncher => {
@@ -285,7 +285,7 @@ describe("fork: scheduled tasks", () => {
 			expect(JSON.stringify(systemd.calls)).not.toMatch(/linger|--system/);
 		});
 
-		// Hardening review, point 5: a failed step leaves no task behind, and a removal never reports a false success.
+		// review, point 5: a failed step leaves no task behind, and a removal never reports a false success.
 		const failing = (step: string): SystemdUser & { calls: string[][] } => ({
 			...systemd,
 			systemctl: (args) => {

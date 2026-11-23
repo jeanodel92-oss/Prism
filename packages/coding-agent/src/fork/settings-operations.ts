@@ -75,6 +75,11 @@ export async function settingsOperations(
 				settings.getDefaultProvider() && settings.getDefaultModel()
 					? `${settings.getDefaultProvider()}/${settings.getDefaultModel()}`
 					: undefined,
+			savedDefault: () => {
+				const provider = settings.getDefaultProvider();
+				const id = settings.getDefaultModel();
+				return provider && id ? { provider, id } : undefined;
+			},
 			onDefaultModel: (model) => settings.setDefaultModelAndProvider(model.provider, model.id),
 			thinkingLevel: settings.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
 			thinkingLevels: THINKING_LEVEL_OPTIONS,

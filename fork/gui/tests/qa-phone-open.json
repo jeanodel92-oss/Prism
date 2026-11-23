@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of fork.11: a conversation a phone has open through the window's engines is listed under Open on the PC, asleep until shown; shown, it shares the phone's engine; it leaves the list when the phone lets it go, unless shown here." },
+	{ "do": "log", "text": "maintainer's QA of fork.11: a conversation a phone has open through the window's engines is listed under Open on the PC, asleep until shown; shown, it shares the phone's engine; it leaves the list when the phone lets it go, unless shown here." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "type", "text": "phone conversation" },
 	{ "do": "send" },

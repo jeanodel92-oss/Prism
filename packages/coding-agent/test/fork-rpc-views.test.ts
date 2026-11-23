@@ -359,7 +359,10 @@ describe("fork: extension views over RPC", () => {
 		await vi.waitFor(() => expect(notified("secret:given")).toBe(true));
 	});
 	test("keys: the client gets the resolved keybindings and runs extension shortcuts through the session", async () => {
-		writeFileSync(join(agentDir, "keybindings.json"), JSON.stringify({ "app.message.followUp": "ctrl+j" }));
+		writeFileSync(
+			join(agentDir, "keybindings.json"),
+			JSON.stringify({ "app.message.followUp": "ctrl+j", "tui.editor.undo": "alt+u" }),
+		);
 		cleanups.push(() => rmSync(join(agentDir, "keybindings.json"), { force: true }));
 		const shortcuts = (pi: ExtensionAPI) => {
 			pi.registerShortcut("alt+k", {
@@ -385,7 +388,8 @@ describe("fork: extension views over RPC", () => {
 			bindings: Record<string, { keys: string[]; description: string }>;
 			shortcuts: Array<{ key: string; description: string }>;
 		};
-		// keybindings.json applies, as in the terminal; of the terminal-only bindings (tui.*), only the transcript's.
+		// keybindings.json applies, as in the terminal; of the terminal-only bindings (tui.*), only the transcript's
+		// and the editor's undo and redo.
 		expect(keys.bindings["app.message.followUp"].keys).toEqual(["ctrl+j"]);
 		expect(keys.bindings["app.thinking.cycle"]).toMatchObject({ keys: ["shift+tab"] });
 		expect(keys.bindings["app.goal.menu"]).toMatchObject({ keys: ["alt+g"], command: "goal" });
@@ -400,7 +404,11 @@ describe("fork: extension views over RPC", () => {
 			"tui.altScreen.searchClose",
 			"tui.altScreen.searchNext",
 			"tui.altScreen.searchPrevious",
+			"tui.editor.redo",
+			"tui.editor.undo",
 		]);
+		expect(keys.bindings["tui.editor.undo"].keys).toEqual(["alt+u"]);
+		expect(keys.bindings["tui.editor.redo"].keys).toEqual(["ctrl+y", "ctrl+shift+z"]);
 		expect(keys.bindings["tui.altScreen.search"].keys).toEqual(["ctrl+f", "ctrl+shift+f"]);
 		expect(keys).toMatchObject({ doubleEscapeAction: "tree" });
 		expect(keys.shortcuts).toEqual(

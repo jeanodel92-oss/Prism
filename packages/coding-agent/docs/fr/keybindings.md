@@ -72,13 +72,29 @@ Les actions dédiées à l’historique parcourent les prompts quelle que soit l
 |---|---|---|
 | `tui.editor.deleteCharBackward` | `backspace` | Supprime le caractère précédent |
 | `tui.editor.deleteCharForward` | `delete`, `ctrl+d` | Supprime le caractère suivant |
-| `tui.editor.deleteWordBackward` | `ctrl+w`, `alt+backspace` | Supprime le mot précédent |
-| `tui.editor.deleteWordForward` | `alt+d`, `alt+delete` | Supprime le mot suivant |
+| `tui.editor.deleteWordBackward` | `ctrl+w`, `alt+backspace`, `ctrl+backspace` | Supprime le mot précédent |
+| `tui.editor.deleteWordForward` | `alt+d`, `alt+delete`, `ctrl+delete` | Supprime le mot suivant |
 | `tui.editor.deleteToLineStart` | `ctrl+u` | Supprime jusqu’au début de la ligne |
 | `tui.editor.deleteToLineEnd` | `ctrl+k` | Supprime jusqu’à la fin de la ligne |
-| `tui.editor.yank` | `ctrl+y` | Colle le texte supprimé le plus récemment |
+| `tui.editor.yank` | aucun | Colle le texte supprimé le plus récemment |
 | `tui.editor.yankPop` | `alt+y` | Parcourt les textes supprimés après le collage |
-| `tui.editor.undo` | `ctrl+-` (`ctrl+z` sous Windows ; `alt+z` dans WSL) | Annule la dernière modification |
+| `tui.editor.undo` | `ctrl+z`, `ctrl+-` (`ctrl+z` sous Windows ; `alt+z` dans WSL) | Annule la dernière modification |
+| `tui.editor.redo` | `ctrl+y`, `ctrl+shift+z` | Rétablit la dernière modification annulée |
+
+#### Sélection du texte
+
+| Identifiant de raccourci | Valeur par défaut | Description |
+|---|---|---|
+| `tui.editor.selectLeft` | `shift+left` | Sélectionne le caractère à gauche |
+| `tui.editor.selectRight` | `shift+right` | Sélectionne le caractère à droite |
+| `tui.editor.selectUp` | `shift+up` | Sélectionne jusqu’à la ligne du dessus (jusqu’au début de la ligne sur la première) |
+| `tui.editor.selectDown` | `shift+down` | Sélectionne jusqu’à la ligne du dessous (jusqu’à la fin de la ligne sur la dernière) |
+| `tui.editor.selectWordLeft` | `ctrl+shift+left`, `alt+shift+left` | Sélectionne le mot à gauche |
+| `tui.editor.selectWordRight` | `ctrl+shift+right`, `alt+shift+right` | Sélectionne le mot à droite |
+| `tui.editor.selectLineStart` | `shift+home` | Sélectionne jusqu’au début de la ligne |
+| `tui.editor.selectLineEnd` | `shift+end` | Sélectionne jusqu’à la fin de la ligne |
+
+La sélection s’affiche en vidéo inverse. Taper, coller ou passer à la ligne la remplace, et les touches de suppression l’effacent ; l’annulation la restitue. `left` et `right` placent le curseur au début ou à la fin de la sélection, les autres déplacements l’abandonnent. kitty utilise par défaut `ctrl+shift+left` et `ctrl+shift+right` pour ses onglets : y utiliser `alt+shift+left` et `alt+shift+right`. Il n’y a pas de touche « tout sélectionner » : `ctrl+a` va au début de la ligne. `ctrl+c` ne copie pas la sélection de la saisie ; il vide la saisie (l’annulation la restitue).
 
 #### Saisie et sélection
 
@@ -123,11 +139,11 @@ En plein écran, ces actions contrôlent la transcription et sont prioritaires s
 | `app.interrupt` | `escape` | Annule ou interrompt |
 | `app.clear` | `ctrl+c` | Vide l’éditeur (première pression) ou quitte (deuxième pression) |
 | `app.exit` | `ctrl+d` | Quitte si l’éditeur est vide |
-| `app.suspend` | `ctrl+z` (aucun sous Windows) | Suspend en arrière-plan |
+| `app.suspend` | aucun (`ctrl+z` dans WSL) | Suspend en arrière-plan |
 | `app.editor.external` | `ctrl+g` | Ouvre l’éditeur externe (`externalEditor`, `$VISUAL`, `$EDITOR`, Notepad sous Windows ou `nano` ailleurs) |
 | `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` sous Windows et WSL) | Colle depuis le presse-papiers des fichiers sous macOS, des images ou du texte |
 
-Sous Windows natif, `app.suspend` n’a pas de raccourci par défaut, car les terminaux Windows ne prennent pas en charge le contrôle des tâches Unix. Si vous lui en associez un, Prism affiche un message d’état au lieu de se suspendre. WSL utilise le comportement habituel de `ctrl+z` et `fg`.
+`app.suspend` n’a pas de raccourci par défaut hors de WSL : `ctrl+z` annule dans l’éditeur. Associez-lui une touche dans `keybindings.json` pour suspendre Prism et le reprendre avec `fg`. Sous Windows natif, les terminaux ne prennent pas en charge le contrôle des tâches Unix : si vous lui en associez un, Prism affiche un message d’état au lieu de se suspendre. WSL garde le comportement habituel de `ctrl+z` et `fg`.
 
 L’extension intégrée `files` ajoute `alt+e` pour ouvrir l’explorateur de fichiers du projet (`/files`).
 

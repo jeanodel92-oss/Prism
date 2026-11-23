@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of fork.11: the conversation's search has a magnifier in the top bar, and ctrl+f opens it as in the terminal." },
+	{ "do": "log", "text": "maintainer's QA of fork.11: the conversation's search has a magnifier in the top bar, and ctrl+f opens it as in the terminal." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "type", "text": "md" },
 	{ "do": "send" },

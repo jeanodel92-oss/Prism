@@ -1,4 +1,4 @@
-// fork: the mouse behaves the same everywhere. Owner's QA report on 1.0.0-fork.6: the
+// fork: the mouse behaves the same everywhere. maintainer's QA report on 1.0.0-fork.6: the
 // wheel skipped several files, a click outside the file browser left it open, and Goal, a finished
 // Plan and /perm opened with a click but then needed the keyboard. Measured in a real kitty: one
 // wheel notch is one event, so the steps below are per event.

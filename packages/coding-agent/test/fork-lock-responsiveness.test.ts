@@ -90,7 +90,9 @@ it("keeps ticking while another process holds the shared store lock for two seco
 	}
 });
 
-it("keeps ticking until the project lock's existing timeout without changing its refusal", async () => {
+// fork: same treatment as the Git publication test below; its bound was missed on the CI
+// on 2026-11-17 and 2026-11-23 (2,721 ms for 2,369) under the full suite.
+it("keeps ticking until the project lock's existing timeout without changing its refusal", { retry: 1 }, async () => {
 	const dir = directory();
 	const holder = await held(join(dir, "project-permissions.json.lock"));
 	try {

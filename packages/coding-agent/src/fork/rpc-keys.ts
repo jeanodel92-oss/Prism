@@ -19,7 +19,8 @@ import { planBridge } from "./prism/index.ts";
 import { GOAL_DONE_STATUSES, PLAN_ON_STATUSES } from "./prism/modes.ts";
 
 // The transcript keys of the terminal's alternate screen that a client's transcript has too: search and the
-// jumps between prompts. The other tui.* keys are the editor's and the selectors', which the client has its own.
+// jumps between prompts, and the editor's undo and redo, which the client's composer runs too
+// . The other tui.* keys are the editor's and the selectors', which the client has its own.
 const TRANSCRIPT_KEYS = [
 	"tui.altScreen.search",
 	"tui.altScreen.searchNext",
@@ -27,6 +28,8 @@ const TRANSCRIPT_KEYS = [
 	"tui.altScreen.searchClose",
 	"tui.altScreen.previousPrompt",
 	"tui.altScreen.nextPrompt",
+	"tui.editor.undo",
+	"tui.editor.redo",
 ] as const;
 
 export function handleKeysCommand(

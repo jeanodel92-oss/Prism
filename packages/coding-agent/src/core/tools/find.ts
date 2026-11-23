@@ -26,7 +26,8 @@ export function relativizeFindResultPath(
 
 const findSchema = Type.Object({
 	pattern: Type.String({
-		description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'",
+		description:
+			"Glob pattern relative to the search directory, e.g. 'src/**/*.ts'. Without '/', e.g. '*.ts', it matches file names at any depth",
 	}),
 	path: Type.Optional(Type.String({ description: "Directory to search in (default: current directory)" })),
 	limit: Type.Optional(Type.Number({ description: "Maximum number of results (default: 1000)" })),
@@ -203,13 +204,27 @@ export function createFindToolDefinition(
 						args.push("--max-results", String(effectiveLimit));
 
 						// fd --glob matches against the basename unless --full-path is set; in --full-path
-						// mode it matches against the absolute candidate path, so a path-containing
-						// pattern like 'src/**/*.spec.ts' needs a leading '**/' to match anything.
-						let effectivePattern = pattern;
-						if (pattern.includes("/")) {
+						// mode it matches against the absolute candidate path.
+						// fd's full paths never contain "/./", so "./src/*.ts" would find nothing; drop the "./"
+						// (upstream bbfc6c7ce, #12020).
+						let effectivePattern = pattern.replace(/^(?:\.\/)+/, "");
+						if (effectivePattern.includes("/")) {
 							args.push("--full-path");
-							if (!pattern.startsWith("/") && !pattern.startsWith("**/") && pattern !== "**") {
-								effectivePattern = `**/${pattern}`;
+							if (process.platform !== "win32" && !path.isAbsolute(effectivePattern)) {
+								// A relative path pattern is anchored at the search path, like grep's glob (upstream
+								// 282b01c80, #12066): 'src/*.ts' finds 'src/a.ts' but not 'pkg/src/b.ts'; '**/src/*.ts'
+								// finds both. The search path is glob-escaped, and smart case is decided by the
+								// user's pattern, not by the search path's letters.
+								const ignoreCase = effectivePattern === effectivePattern.toLowerCase();
+								const escapedRoot = searchPath.replace(/\/+$/, "").replace(/[\\*?[\]{}]/g, "\\$&");
+								effectivePattern = `${escapedRoot}/${effectivePattern}`;
+								if (ignoreCase) args.push("--ignore-case");
+							} else if (
+								!effectivePattern.startsWith("/") &&
+								!effectivePattern.startsWith("**/") &&
+								effectivePattern !== "**"
+							) {
+								effectivePattern = `**/${effectivePattern}`;
 							}
 							// fd matches full paths using native separators on Windows.
 							if (process.platform === "win32")

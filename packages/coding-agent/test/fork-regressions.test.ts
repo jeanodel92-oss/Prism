@@ -181,7 +181,7 @@ describe("fork regressions", () => {
 		initTheme("dark");
 		setKeybindings(new KeybindingsManager({}));
 		copyFileSync(
-			fileURLToPath(new URL("../../../fork/CHANGELOG.md", import.meta.url)),
+			fileURLToPath(new URL("../../../fork/RELEASE-NOTES.md", import.meta.url)),
 			getPrismChangelogPath(tempDir),
 		);
 		process.env.PI_PACKAGE_DIR = tempDir;
@@ -215,7 +215,7 @@ describe("fork regressions", () => {
 		const newest = /\[1\.0\.0-fork\.(\d+)(?:\.\d+)?\]/.exec(first)?.[1];
 		expect(newest).toBeDefined();
 		expect(Number(newest)).toBeGreaterThan(3);
-		for (const key of "prism update") reader!.handleInput!(key);
+		for (const key of "sandbox") reader!.handleInput!(key);
 		expect(reader!.render(120).join("\n")).toMatch(/match 1\/\d+/);
 		reader!.handleInput!("\x1b");
 		reader!.handleInput!("\x1b");
@@ -708,7 +708,7 @@ describe("fork: French safe-mode start and extension failure", () => {
 	});
 });
 
-// Hardening review, point 7: an unreadable settings.json (a typo, or a read while another session rewrites it) must
+// review, point 7: an unreadable settings.json (a typo, or a read while another session rewrites it) must
 // not silently drop the sandbox rules the user set.
 describe("fork: sandbox settings when settings.json cannot be read", () => {
 	let agentDir: string;
@@ -909,5 +909,24 @@ describe("fork: the system prompt's identity and the user's machine", () => {
 			(extension) => typeof extension !== "function" && extension.name === "machine-context",
 		);
 		expect(typeof entry !== "function" && entry?.builtin).toBe(true);
+	});
+});
+
+describe("fork: pi's leftovers are gone", () => {
+	const source = (path: string) => readFileSync(fileURLToPath(new URL(`../src/${path}`, import.meta.url)), "utf8");
+
+	it("has no logo click animation, /arminsayshi, /dementedelves or daxnuts easter egg", () => {
+		const interactive = source("modes/interactive/interactive-mode.ts");
+		for (const name of ["arminsayshi", "dementedelves", "Daxnuts", "playPiLogoAnimation", "onLogoClick"]) {
+			expect(interactive).not.toContain(name);
+		}
+	});
+
+	it("has no analytics setting and no first-time analytics prompt", () => {
+		const settings = SettingsManager.inMemory({});
+		expect("getEnableAnalytics" in settings).toBe(false);
+		expect(source("core/settings-manager.ts")).not.toContain("enableAnalytics");
+		expect(source("cli/startup-ui.ts")).not.toContain("FirstTimeSetup");
+		expect(source("main.ts")).not.toContain("showFirstTimeSetup");
 	});
 });

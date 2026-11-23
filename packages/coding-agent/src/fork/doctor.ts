@@ -375,18 +375,33 @@ export async function buildDoctorReport(ctx: ExtensionContext): Promise<DoctorRe
 					t(states.reasoning),
 				)
 			: "none recorded";
-		checks.push(
-			check(
-				"Current model",
-				"ok",
-				`A model is selected; credentials ${credentials}; stored capabilities: ${values}.`,
-				"Confirmed: model selection, credential presence, and stored capability values were read locally.",
-				"For unknown capabilities, consult the provider documentation or run capability detection separately.",
-				`credentials ${credentials}; ${values}`,
-			),
-		);
 		const url = serverUrl(getModelsPath(), provider) ?? (model as typeof model & { baseUrl?: string }).baseUrl;
 		const locality = isLocalUrl(url);
+		// fork (audit FIN-06): a model without a key is not "ok"; the header says "no model" at the same time. A server
+		// on this machine or the local network often needs no key, so it stays "ok".
+		if (credentials === "absent" && locality !== true) {
+			checks.push(
+				check(
+					"Current model",
+					"problem",
+					"No usable model: the selected model has no key or sign-in.",
+					"Confirmed: no credentials were found for the selected model's provider.",
+					"Connect a model with /login.",
+					`${model.provider}/${model.id}; credentials absent`,
+				),
+			);
+		} else {
+			checks.push(
+				check(
+					"Current model",
+					"ok",
+					`A model is selected; credentials ${credentials}; stored capabilities: ${values}.`,
+					"Confirmed: model selection, credential presence, and stored capability values were read locally.",
+					"For unknown capabilities, consult the provider documentation or run capability detection separately.",
+					`credentials ${credentials}; ${values}`,
+				),
+			);
+		}
 		checks.push(
 			check(
 				"Model server",
@@ -508,11 +523,23 @@ export function formatDoctorReport(report: DoctorReport, details: boolean, style
 				`${style.status(entry.status, MARKS[entry.status])} ${style.bold(sanitizeTerminalLabel(entry.component))}  ${style.status(entry.status, t(entry.status))}`,
 				field("Observed", entry.observed),
 				// A passing check has nothing to explain or do; the export keeps both fields.
-				...(entry.status === "ok" ? [] : [field("Cause", entry.cause), field("Action", entry.action)]),
+				...(entry.status === "ok" ? [] : [plainCause(entry.cause, field), field("Action", entry.action)]),
 				...(details ? [field("Technical detail", `${entry.detail} (${report.createdAt})`)] : []),
 			].join("\n"),
 		);
 	return [`${style.bold(t("Local diagnostic report"))} · ${summary}`, ...blocks].join("\n\n");
+}
+
+/**
+ * fork (audit FIN-06): the report said "Cause: Hypothesis: …" and "Cause: Confirmed: …". It now says "Cause: …"
+ * for what was checked and "Possible cause: …" for a guess; the JSON export keeps the original wording.
+ */
+function plainCause(cause: string, field: (label: string, value: string) => string): string {
+	const confirmed = /^(?:Confirmed|Cause confirmée|Confirmé)\s?:\s*/;
+	const hypothesis = /^(?:Hypothesis|Hypothèse)\s?:\s*/;
+	if (hypothesis.test(cause)) return field("Possible cause", cause.replace(hypothesis, ""));
+	const text = cause.replace(confirmed, "").replace(/\s(?:Hypothesis|Hypothèse)\s?:\s*/, ` ${t("Possibly:")} `);
+	return field("Cause", text);
 }
 
 export function renderDoctorLines(content: string, width: number): string[] {

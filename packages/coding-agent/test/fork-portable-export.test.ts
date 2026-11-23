@@ -246,7 +246,7 @@ describe("fork: /export-zip, the portable archive (CAP-02)", () => {
 			expect(built.entries.map((entry) => entry.name)).toEqual(["manifest.json", "IMPORT.md"]);
 		});
 
-		// Hardening review, point 6: the archive is built in memory, so the files it holds are bounded as a whole.
+		// review, point 6: the archive is built in memory, so the files it holds are bounded as a whole.
 		it("leaves out the files past the archive's total size limit", () => {
 			writeFileSync(join(cwd, "a.txt"), "x".repeat(6));
 			writeFileSync(join(cwd, "b.txt"), "y".repeat(6));

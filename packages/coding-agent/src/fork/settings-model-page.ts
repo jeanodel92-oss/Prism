@@ -34,7 +34,7 @@ import {
 	settingRows,
 } from "./model-settings.ts";
 import { modelKey } from "./settings-models.ts";
-import { paged, type SettingsPage, type SettingsPageFactory, withPage } from "./settings-pages.ts";
+import { pageComponent, paged, type SettingsPage, type SettingsPageFactory, withPage } from "./settings-pages.ts";
 import type { SectionContext, SettingsSection } from "./settings-sections.ts";
 
 /** What the page reads and changes; the extension passes the session's registry and files. */
@@ -109,6 +109,8 @@ const ROW_HELP: Record<RowKey, string> = {
 		"How many tokens the model reads at once; the conversation is compacted before it is full. The server keeps its own limit.",
 	maxTokens: "The longest answer the model may write, in tokens.",
 	vision: "Whether Prism sends images to this model.",
+	toolImages:
+		"Keeps the images a tool returns (a screenshot) in the tool's result, instead of a separate message the model may take for one from you. Recommended for the Qwen family. The server must accept it: llama.cpp does, OpenAI does not.",
 	reasoning: "Whether the model can think before it answers. Off, Prism refuses a thinking level for it.",
 	thinkingBudget: "Tokens the model may spend thinking, at every level, when the server reads a budget.",
 	tools: "Whether Prism gives this model its tools. Off for a model that cannot call them.",
@@ -141,9 +143,64 @@ function fitCell(text: string, width: number): string {
 	return `${cut}${" ".repeat(Math.max(0, width - visibleWidth(cut)))}`;
 }
 
+/**
+ * fork: removing the saved default model, or its server, left settings.json naming a
+ * model that no longer exists, and every start opened on another one without a word. The removal now says so and
+ * offers another default among the models left; Esc leaves it (the start then says which model it uses).
+ */
+type DefaultModelAccess = NonNullable<SectionContext["defaultModel"]>;
+
+/** Whether `model` (with `server`, its whole server) is, or holds, the saved default model. */
+function holdsDefault(access: DefaultModelAccess | undefined, model: Model<Api>, server: boolean): boolean {
+	const saved = access?.get();
+	if (!saved || saved.provider !== model.provider) return false;
+	return server || saved.id === model.id;
+}
+
+/** The models left to choose from once `model` (with `server`, its whole server) is removed. */
+function modelsLeft(deps: ModelPageDeps, model: Model<Api>, server: boolean): Model<Api>[] {
+	return deps
+		.models()
+		.filter((other) => (server ? other.provider !== model.provider : modelKey(other) !== modelKey(model)));
+}
+
+const DEFAULT_REMOVED = "It was the default model for new conversations.";
+const NO_DEFAULT_LEFT = "It was the default model for new conversations; no other model is available to replace it.";
+
+/** The choice of another default model, as the Models domain's "Default model" page; `done` gets what to tell. */
+function defaultChoicePage(
+	models: Model<Api>[],
+	intro: string,
+	access: DefaultModelAccess,
+	done: (message: string | undefined) => void,
+): SettingsPage {
+	return {
+		kind: "select",
+		title: t("Choose another default model"),
+		description: [intro, t("Enter makes the chosen model the default; Esc leaves the default as it is.")]
+			.filter(Boolean)
+			.join(" "),
+		options: models.map((model) => ({
+			value: modelKey(model),
+			label: `${model.id} ${theme.fg("muted", `[${model.provider}]`)}`,
+		})),
+		current: "",
+		onSelect: (value) => {
+			const chosen = models.find((model) => modelKey(model) === value);
+			if (!chosen) return done(undefined);
+			access.set(chosen);
+			done(`${fill("Default model: {0}/{1}", chosen.provider, chosen.id)}.`);
+		},
+		onCancel: () => done(undefined),
+		selectOptions: { searchable: true },
+	};
+}
+
 export interface ModelPageOptions {
 	/** The row to focus first. */
 	focus?: RowKey;
+	/** fork: the saved default model, to offer another one when this page removes it. */
+	defaultModel?: DefaultModelAccess;
 	advanced(): boolean;
 	requestRender(): void;
 	/** Closes the page; `value` is the row's new summary when something changed. */
@@ -163,6 +220,8 @@ export class ModelPage implements Component {
 	private busy = false;
 	private changed = false;
 	private message: { text: string; kind: "warning" | "error" } | undefined;
+	/** fork: the choice of another default model, shown in place of the page after its removal. */
+	private chooser: Component | undefined;
 	/** Page line → row index (rows.length and above are the actions), for the mouse. */
 	private lineRows = new Map<number, number>();
 
@@ -208,6 +267,7 @@ export class ModelPage implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
+		if (this.chooser) return this.chooser.render(width).map((line) => fitCell(line, width));
 		const out: string[] = [];
 		const add = (text: string) => out.push(fitCell(text, width));
 		const wrap = (text: string) => {
@@ -267,6 +327,10 @@ export class ModelPage implements Component {
 	}
 
 	handleInput(data: string): void {
+		if (this.chooser) {
+			this.chooser.handleInput?.(data);
+			return;
+		}
 		if (this.busy) return;
 		if (this.editing) {
 			this.editing.handleInput(data);
@@ -288,7 +352,8 @@ export class ModelPage implements Component {
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		if (event.type !== "click" || event.button !== "left" || this.busy || this.editing) return { handled: true };
+		if (event.type !== "click" || event.button !== "left" || this.busy || this.editing || this.chooser)
+			return { handled: true };
 		const index = this.lineRows.get(event.y);
 		if (index === undefined) return { handled: true };
 		this.confirming = undefined;
@@ -375,13 +440,31 @@ export class ModelPage implements Component {
 		this.options.requestRender();
 	}
 
-	/** Removes the model, or its whole server, then closes the page: the domain no longer lists it. */
+	/**
+	 * Removes the model, or its whole server, then closes the page: the domain no longer lists it. When it held the
+	 * default model, the choice of another one comes first.
+	 */
 	private async remove(server: boolean): Promise<void> {
 		this.busy = true;
 		try {
+			const access = this.options.defaultModel;
+			const held = holdsDefault(access, this.model, server);
 			const message = await this.deps.remove!(this.model, server);
 			this.busy = false;
-			this.options.done(message);
+			const left = held ? modelsLeft(this.deps, this.model, server) : [];
+			if (access && left.length > 0) {
+				const intro = `${message} ${t(DEFAULT_REMOVED)}`;
+				this.chooser = pageComponent(
+					defaultChoicePage(left, intro, access, (chosen) => {
+						this.chooser = undefined;
+						this.options.done(chosen ? `${message} ${chosen}` : message);
+						this.options.requestRender();
+					}),
+				);
+				this.options.requestRender();
+				return;
+			}
+			this.options.done(held ? `${message} ${t(NO_DEFAULT_LEFT)}` : message);
 			this.options.requestRender();
 		} catch (error) {
 			this.busy = false;
@@ -431,6 +514,8 @@ function modelSettingsPage(deps: ModelPageDeps, model: Model<Api>, context: Sect
 		let message: string | undefined;
 		// once the model or its server is removed, the page says so and offers nothing more.
 		let removed = false;
+		// fork: the models to choose another default from, when the removal took the default.
+		let defaultChoices: Model<Api>[] = [];
 		const read = () =>
 			settingRows(
 				current,
@@ -564,8 +649,13 @@ function modelSettingsPage(deps: ModelPageDeps, model: Model<Api>, context: Sect
 				onSelect: async (value) => {
 					if (value === "remove") {
 						try {
-							message = await deps.remove!(current, id === "remove-server");
+							const server = id === "remove-server";
+							const held = holdsDefault(context.defaultModel, current, server);
+							message = await deps.remove!(current, server);
 							removed = true;
+							defaultChoices = held && context.defaultModel ? modelsLeft(deps, current, server) : [];
+							if (defaultChoices.length > 0) message = `${message} ${t(DEFAULT_REMOVED)}`;
+							else if (held) message = `${message} ${t(NO_DEFAULT_LEFT)}`;
 						} catch (error) {
 							message = error instanceof Error ? error.message : String(error);
 						}
@@ -577,11 +667,31 @@ function modelSettingsPage(deps: ModelPageDeps, model: Model<Api>, context: Sect
 				onCancel: () => close(),
 			})),
 		});
+		/** fork: after removing the default, the one row left chooses another default. */
+		const chooseDefault = (access: DefaultModelAccess): SettingItem => ({
+			id: "choose-default-model",
+			label: t("Choose another default model"),
+			description: "",
+			currentValue: "",
+			...paged((_current, close) =>
+				defaultChoicePage(defaultChoices, "", access, (chosen) => {
+					if (chosen) {
+						message = `${message ?? ""} ${chosen}`.trim();
+						defaultChoices = [];
+					}
+					refresh();
+					context.requestRender();
+					close();
+				}),
+			),
+		});
 		// The window draws `items` and `description` again at each change: they are replaced in place.
 		const refresh = () => {
 			if (removed) {
 				page.description = message ?? "";
+				const access = context.defaultModel;
 				page.items.splice(0, page.items.length);
+				if (access && defaultChoices.length > 0) page.items.push(chooseDefault(access));
 				return;
 			}
 			const rows = read();
@@ -637,6 +747,7 @@ export function modelPagesSection(deps: ModelPageDeps): SettingsSection {
 		return (_value, done) =>
 			new ModelPage(deps, model, {
 				focus,
+				defaultModel: context.defaultModel,
 				advanced: context.advanced,
 				requestRender: context.requestRender,
 				done: (value) => done(value),

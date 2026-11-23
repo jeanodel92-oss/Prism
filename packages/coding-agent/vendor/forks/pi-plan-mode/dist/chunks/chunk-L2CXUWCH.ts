@@ -1640,7 +1640,7 @@ function isSafeStructuredCommand(command, args, safeSubcommands, workingDirector
   }
   if (command === "npm") {
     if (subcommand === "audit" && subcommandArgs.includes("fix")) return false;
-    // prism-fork: npm's own options before `--` set its configuration, `--script-shell=PROG` for one (AS-019).
+    // prism-fork: npm's own options before `--` set its configuration, `--script-shell=PROG` for one.
     if ((subcommand === "test" || subcommand === "run") && !hasOnlyOptions(args, PRISM_NPM_SCRIPT_OPTIONS)) return false;
     if (["list", "ls", "view", "info", "search", "outdated", "audit", "test"].includes(subcommand ?? "")) {
       return true;

@@ -29,6 +29,54 @@
 	letter-spacing: -0.01em;
 }
 
+/* The brand at the top of the pairing screen: the mark, the name and what the app is. */
+.pair-brand {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.pair-mark {
+	width: 2.5rem;
+	height: 2.5rem;
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+
+.pair-brand-name {
+	font-size: 1.6rem;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+}
+
+.pair-tagline {
+	margin: 0.5rem 0 1.75rem;
+	color: var(--ink-2);
+	font-size: 0.95rem;
+}
+
+/* A link error in words, the system's own wording one tap away. */
+.pair-details {
+	margin-top: 0.3rem;
+	color: var(--ink-2);
+	font-size: 0.8rem;
+}
+
+.pair-details summary {
+	cursor: pointer;
+}
+
+.pair-details code {
+	display: block;
+	margin-top: 0.25rem;
+	font-family: var(--mono);
+	overflow-wrap: anywhere;
+}
+
 .pair-panel {
 	display: grid;
 	gap: 0.85rem;

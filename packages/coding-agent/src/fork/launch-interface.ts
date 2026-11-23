@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { APP_NAME, getAgentDir, getPackageDir } from "../config.ts";
+import { APP_NAME, getAgentDir, getPackageDir, VERSION } from "../config.ts";
 import { readBoundedSync } from "./bounded-read.ts";
 import { APP_DISPLAY_NAME } from "./brand.ts";
 import { fill, t } from "./i18n/index.ts";
@@ -89,7 +89,13 @@ export function openWindow(
 				cwd,
 				detached: true,
 				stdio: ["ignore", "pipe", fd],
-				env: { ...env, PRISM_GUI_ENGINE: engine[0], PRISM_GUI_ENGINE_ARGS: JSON.stringify(engine.slice(1)) },
+				env: {
+					...env,
+					PRISM_GUI_ENGINE: engine[0],
+					PRISM_GUI_ENGINE_ARGS: JSON.stringify(engine.slice(1)),
+					// Settings › Window shows the product's version, not the window shell's (audit FIN-29).
+					PRISM_GUI_PRODUCT_VERSION: VERSION,
+				},
 			});
 		} finally {
 			closeSync(fd);
@@ -223,6 +229,15 @@ export async function startInterface(options: StartOptions): Promise<OpenIn | "f
 	if (failure === undefined) {
 		if (options.terminal) options.say(t("Prism opened in its window."));
 		return "window";
+	}
+	// fork (audit REL-06): the window is built against glibc 2.39; an older system gets that, not the linker's text.
+	if (/GLIBC_2\.\d+' not found/.test(failure)) {
+		options.say(
+			t(
+				"The window needs glibc 2.39 or newer (Debian 13, Ubuntu 24.04, Fedora 40 or newer), which this system does not have: Prism opens in the terminal.",
+			),
+		);
+		return options.terminal ? "terminal" : "failed";
 	}
 	options.say(fill("The window could not open ({0}): Prism opens in the terminal.", failure));
 	// the one command that installs WebKitGTK on this distribution.

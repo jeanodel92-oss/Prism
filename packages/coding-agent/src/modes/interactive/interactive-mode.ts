@@ -42,8 +42,6 @@ import {
 	type TUI,
 	TuiAltScreen,
 	TuiMainScreen,
-	type TuiMouseEvent,
-	type TuiMouseEventResult,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import chalk from "chalk";
@@ -164,7 +162,7 @@ import {
 import { THINKING_UNSUPPORTED } from "../../fork/model-settings.ts"; // fork
 import { NoticeText } from "../../fork/notice-text.ts";
 import { withReloginNote } from "../../fork/oauth-relogin.ts";
-import { setOnboardingHost } from "../../fork/onboarding.ts";
+import { setOnboardingHost, shouldOpenAtStartup } from "../../fork/onboarding.ts";
 import { closeMenusOnOutsidePress } from "../../fork/outside-press.ts";
 import { pasteTargets } from "../../fork/paste-hint.ts";
 import { BUG_REPORTS_ENABLED } from "../../fork/policy.ts";
@@ -177,6 +175,7 @@ import { settingsOperations } from "../../fork/settings-operations.ts";
 import { setSettingsHost } from "../../fork/settings-sections.ts";
 import { MAX_WIDTH as SETTINGS_MAX_WIDTH } from "../../fork/settings-view.ts";
 import { unfoldOnScreen } from "../../fork/unfold-on-screen.ts";
+import { unknownCommandWarning } from "../../fork/unknown-command.ts"; // fork
 import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
 import { copyToClipboard, readClipboardFilePaths, readClipboardText } from "../../utils/clipboard.ts";
 import { readClipboardImage } from "../../utils/clipboard-image.ts";
@@ -189,7 +188,6 @@ import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
 import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
 import { reportBug } from "./bug-report.ts";
 import { createChatViewport } from "./chat-viewport.ts";
-import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
 import { BranchSummaryMessageComponent } from "./components/branch-summary-message.ts";
@@ -197,9 +195,7 @@ import { CompactionSummaryMessageComponent } from "./components/compaction-summa
 import { CustomEditor } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
 import { CustomMessageComponent } from "./components/custom-message.ts";
-import { DaxnutsComponent } from "./components/daxnuts.ts";
 import { DynamicBorder } from "./components/dynamic-border.ts";
-import { EarendilAnnouncementComponent } from "./components/earendil-announcement.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
@@ -215,7 +211,6 @@ import {
 	OAuthSelectorComponent,
 } from "./components/oauth-selector.ts";
 import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts";
-import { playPiLogoAnimation } from "./components/pi-logo-animation.lazy.ts";
 import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
@@ -293,17 +288,6 @@ class ExpandableText extends ThemedText implements Expandable {
 	setExpanded(expanded: boolean): void {
 		this.state.expanded = expanded;
 		this.invalidate();
-	}
-}
-
-/** The built-in header. Clicking its logo (the first two lines, after one column of padding) plays an easter egg. */
-class BuiltInHeader extends ExpandableText {
-	onLogoClick: ((column: number, row: number) => void) | undefined;
-
-	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		if (event.type !== "click" || event.y > 1 || event.x < 1 || event.x > 4 || !this.onLogoClick) return undefined;
-		this.onLogoClick(event.screenX - event.x + 1, event.screenY - event.y);
-		return { handled: true };
 	}
 }
 
@@ -401,6 +385,9 @@ type LoginProviderCompletionOption = {
 };
 
 // fork: a branded build does not present itself as made by Earendil Works.
+/** fork: commands the editor handles without listing them. */
+const HIDDEN_EDITOR_COMMANDS: readonly string[] = ["debug", "bug"];
+
 const RADIUS_LOGIN_INTRO = IS_BRANDED_BUILD
 	? BRANDED_RADIUS_LOGIN_INTRO
 	: "Radius is a service crafted for Pi by the builders of Pi, Earendil Works";
@@ -967,7 +954,8 @@ export class InteractiveMode {
 					hint("app.clear", "to clear"),
 					rawKeyHint(fill("{0} twice", keyText("app.clear")), "to exit"), // fork: translated
 					hint("app.exit", "to exit (empty)"),
-					hint("app.suspend", "to suspend"),
+					// fork: suspending has no default key; no hint without one.
+					...(keyText("app.suspend") ? [hint("app.suspend", "to suspend")] : []),
 					keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
 					hint("app.thinking.cycle", "to change thinking level"),
 					rawKeyHint(
@@ -1023,14 +1011,13 @@ export class InteractiveMode {
 						`${APP_DISPLAY_NAME} can explain its own features and look up its docs. Ask it how to use or extend ${APP_DISPLAY_NAME}.`,
 					),
 				);
-			const header = new BuiltInHeader(
+			const header = new ExpandableText(
 				() => `${withLogo(compactInstructions())}\n${compactOnboarding()}\n\n${onboarding()}`,
 				() => `${withLogo(expandedInstructions())}\n\n${onboarding()}`,
 				this.getStartupExpansionState(),
 				1,
 				0,
 			);
-			if (showLogo) header.onLogoClick = (column, row) => playPiLogoAnimation(this.renderer, column, row);
 			this.builtInHeader = header;
 
 			// Setup UI layout
@@ -1181,7 +1168,12 @@ export class InteractiveMode {
 			this.showError(fill("Could not load model settings from models.json: {0}", modelsJsonError));
 		}
 
-		if (modelFallbackMessage) {
+		// fork (audit FIN-06): the welcome wizard that opens for a newcomer with no model is the "connect a model" step;
+		// a "No models available" warning above it said the same thing first.
+		if (
+			modelFallbackMessage &&
+			!shouldOpenAtStartup(getAgentDir(), this.session.modelRuntime.getAvailableSnapshot().length)
+		) {
 			this.showWarning(modelFallbackMessage);
 		}
 
@@ -3313,6 +3305,26 @@ export class InteractiveMode {
 						return;
 					}
 				}
+				// fork: a mistyped command stays in the editor instead of going to the model.
+				const unknown = unknownCommandWarning(
+					text,
+					(command) =>
+						this.session.extensionRunner.getCommand(command) !== undefined ||
+						BUILTIN_SLASH_COMMANDS.some((builtin) => builtin.name === command) ||
+						this.session.promptTemplates.some((template) => template.name === command) ||
+						HIDDEN_EDITOR_COMMANDS.includes(command) ||
+						(command.startsWith("skill:") &&
+							this.session.resourceLoader.getSkills().skills.some((skill) => `skill:${skill.name}` === command)),
+					[
+						...BUILTIN_SLASH_COMMANDS.map((builtin) => builtin.name),
+						...this.session.extensionRunner.getRegisteredCommands().map((command) => command.invocationName),
+						...this.session.promptTemplates.map((template) => template.name),
+					],
+				);
+				if (unknown) {
+					this.showWarning(unknown);
+					return;
+				}
 			}
 
 			// Handle commands
@@ -3446,16 +3458,7 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/arminsayshi") {
-				this.handleArminSaysHi();
-				this.editor.setText("");
-				return;
-			}
-			if (text === "/dementedelves") {
-				this.handleDementedDelves();
-				this.editor.setText("");
-				return;
-			}
+			// fork (audit FIN-16): upstream's easter eggs show pi's brand; not in a branded build.
 			if (text === "/resume") {
 				this.showSessionSelector();
 				this.editor.setText("");
@@ -5410,7 +5413,6 @@ export class InteractiveMode {
 				this.updateEditorBorderColor();
 				this.showStatus(`Model: ${model.id}`);
 				void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
-				this.checkDaxnutsEasterEgg(model);
 			} catch (error) {
 				this.showError(error instanceof Error ? error.message : String(error));
 			}
@@ -5575,7 +5577,6 @@ export class InteractiveMode {
 						persist ? fill("Default model: {0}/{1}", model.provider, model.id) : `Model: ${model.id}`,
 					);
 					void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
-					this.checkDaxnutsEasterEgg(model);
 				} catch (error) {
 					done();
 					this.showError(error instanceof Error ? error.message : String(error));
@@ -6190,7 +6191,6 @@ export class InteractiveMode {
 					fill("{0}. Selected {1}. Credentials saved to {2}", actionLabel, selectedModel.id, getAuthPath()),
 				);
 				void this.maybeWarnAboutAnthropicSubscriptionAuth(selectedModel);
-				this.checkDaxnutsEasterEgg(selectedModel);
 			} else {
 				this.showStatus(fill("{0}. Credentials saved to {1}", actionLabel, getAuthPath()));
 				if (selectionError) {
@@ -6222,7 +6222,7 @@ export class InteractiveMode {
 	}
 
 	/** fork: choose which of the provider's models /model offers; see fork/login-models.ts. */
-	private offerLoginModels(providerId: string, providerName: string): void {
+	private offerLoginModels(providerId: string, providerName: string, added?: readonly string[]): void {
 		// Another dialog (one opened after the login, or by the user meanwhile) keeps the screen.
 		if (this.editorContainer.children[0] !== this.editor) return;
 		offerLoginModels({
@@ -6231,6 +6231,7 @@ export class InteractiveMode {
 			available: this.session.modelRuntime.getAvailableSnapshot(),
 			patterns: this.settingsManager.getEnabledModels(),
 			keep: loginModelsKeep(this.session, providerId),
+			added,
 			show: (create) =>
 				this.showSelector((done) => {
 					const component = create(done);
@@ -6279,7 +6280,7 @@ export class InteractiveMode {
 			this.footer.invalidate();
 			this.updateEditorBorderColor();
 			this.showStatus(message);
-			this.offerLoginModels(server.providerId, server.providerId); // fork: same scope as a login
+			this.offerLoginModels(server.providerId, server.providerId, server.added); // fork: same scope as a login
 		} catch (error: unknown) {
 			restoreEditor();
 			const failure = compatibleServerFailure(error);
@@ -6774,8 +6775,10 @@ export class InteractiveMode {
 			await this.ui.copyActiveSelectionToClipboard();
 			return;
 		}
+		// fork: text selected with the keyboard in the prompt.
+		const editorSelection = options.preferSelection ? this.defaultEditor.getSelectedText() : undefined;
 
-		const text = this.session.getLastAssistantText();
+		const text = editorSelection ?? this.session.getLastAssistantText();
 		if (!text) {
 			this.showError("No agent messages to copy yet.");
 			return;
@@ -6785,6 +6788,8 @@ export class InteractiveMode {
 			await copyToClipboard(text);
 			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
 				this.ui.flash(t("Copied!"));
+			} else if (editorSelection !== undefined) {
+				this.showStatus(t("Copied!"));
 			} else {
 				this.showStatus("Copied last agent message to clipboard");
 			}
@@ -7012,30 +7017,6 @@ export class InteractiveMode {
 			new ThemedText(() => `${theme.fg("accent", "✓ Debug log written")}\n${theme.fg("muted", debugLogPath)}`, 1, 1),
 		);
 		this.ui.requestRender();
-	}
-
-	private handleArminSaysHi(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new ArminComponent(this.ui));
-		this.ui.requestRender();
-	}
-
-	private handleDementedDelves(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new EarendilAnnouncementComponent());
-		this.ui.requestRender();
-	}
-
-	private handleDaxnuts(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DaxnutsComponent(this.ui));
-		this.ui.requestRender();
-	}
-
-	private checkDaxnutsEasterEgg(model: { provider: string; id: string }): void {
-		if (model.provider === "opencode" && model.id.toLowerCase().includes("kimi-k2.5")) {
-			this.handleDaxnuts();
-		}
 	}
 
 	private async handleBashCommand(command: string, excludeFromContext = false): Promise<void> {

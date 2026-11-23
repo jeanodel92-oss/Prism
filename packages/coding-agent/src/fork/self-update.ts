@@ -141,9 +141,15 @@ export function runPrismUpdate(
 	const args = [install.installer, `--${mode}`, ...(channel ? ["--channel", channel] : [])];
 	// fork: `sh` and the programs the installer runs by name, never from where
 	// the sandbox writes.
+	// fork (audit FIN-14): `prism update --check` answers as `prism update`, not as "prism-install:".
 	const result = spawnSync(hostCommand("sh"), args, {
 		stdio: "inherit",
-		env: { ...process.env, PATH: hostPath(), PRISM_INSTALL_DIR: install.installDir },
+		env: {
+			...process.env,
+			PATH: hostPath(),
+			PRISM_INSTALL_DIR: install.installDir,
+			PRISM_SAY_PREFIX: `${APP_NAME} update: `,
+		},
 	});
 	return result.status ?? 1;
 }

@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Audit 2026-11-23, FIN-08: the foreground is the prism alone (no tile of its own, which made a tile inside the
+     launcher's tile); the background is the tile's gradient; the monochrome layer is the themed icon. Sources and
+     renderer in fork/android/android/icon. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-  <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
   <background android:drawable="@mipmap/ic_launcher_background"/>
+  <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+  <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>
 </adaptive-icon>

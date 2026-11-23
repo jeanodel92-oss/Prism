@@ -29,6 +29,16 @@ export interface Keybindings {
 	"tui.editor.yank": true;
 	"tui.editor.yankPop": true;
 	"tui.editor.undo": true;
+	"tui.editor.redo": true;
+	// fork: keyboard text selection in the editor.
+	"tui.editor.selectLeft": true;
+	"tui.editor.selectRight": true;
+	"tui.editor.selectUp": true;
+	"tui.editor.selectDown": true;
+	"tui.editor.selectWordLeft": true;
+	"tui.editor.selectWordRight": true;
+	"tui.editor.selectLineStart": true;
+	"tui.editor.selectLineEnd": true;
 	// Generic input actions
 	"tui.input.newLine": true;
 	"tui.input.submit": true;
@@ -122,11 +132,12 @@ export const TUI_KEYBINDINGS = {
 		description: "Delete character forward",
 	},
 	"tui.editor.deleteWordBackward": {
-		defaultKeys: ["ctrl+w", "alt+backspace"],
+		// fork: ctrl+backspace and ctrl+delete delete a word, as in most editors.
+		defaultKeys: ["ctrl+w", "alt+backspace", "ctrl+backspace"],
 		description: "Delete word backward",
 	},
 	"tui.editor.deleteWordForward": {
-		defaultKeys: ["alt+d", "alt+delete"],
+		defaultKeys: ["alt+d", "alt+delete", "ctrl+delete"],
 		description: "Delete word forward",
 	},
 	"tui.editor.deleteToLineStart": {
@@ -140,6 +151,23 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.yank": { defaultKeys: "ctrl+y", description: "Yank" },
 	"tui.editor.yankPop": { defaultKeys: "alt+y", description: "Yank pop" },
 	"tui.editor.undo": { defaultKeys: "ctrl+-", description: "Undo" },
+	"tui.editor.redo": { defaultKeys: "ctrl+shift+z", description: "Redo" },
+	// fork: shift extends a selection, as in ordinary text fields. kitty takes ctrl+shift+left/right
+	// for its tabs, hence alt+shift too.
+	"tui.editor.selectLeft": { defaultKeys: "shift+left", description: "Select character left" },
+	"tui.editor.selectRight": { defaultKeys: "shift+right", description: "Select character right" },
+	"tui.editor.selectUp": { defaultKeys: "shift+up", description: "Select line up" },
+	"tui.editor.selectDown": { defaultKeys: "shift+down", description: "Select line down" },
+	"tui.editor.selectWordLeft": {
+		defaultKeys: ["ctrl+shift+left", "alt+shift+left"],
+		description: "Select word left",
+	},
+	"tui.editor.selectWordRight": {
+		defaultKeys: ["ctrl+shift+right", "alt+shift+right"],
+		description: "Select word right",
+	},
+	"tui.editor.selectLineStart": { defaultKeys: "shift+home", description: "Select to line start" },
+	"tui.editor.selectLineEnd": { defaultKeys: "shift+end", description: "Select to line end" },
 	"tui.input.newLine": { defaultKeys: ["shift+enter", "ctrl+j"], description: "Insert newline" },
 	"tui.input.submit": { defaultKeys: "enter", description: "Submit input" },
 	"tui.input.tab": { defaultKeys: "tab", description: "Tab / autocomplete" },

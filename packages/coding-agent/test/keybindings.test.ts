@@ -37,9 +37,14 @@ describe("Windows keybinding defaults", () => {
 		);
 		expect(KEYBINDINGS["app.message.followUp"].defaultKeys).toBe(windowsKeybindings ? "ctrl+q" : "alt+enter");
 		expect(KEYBINDINGS["app.model.cycleBackward"].defaultKeys).toBe(windowsKeybindings ? "alt+p" : "shift+ctrl+p");
-		expect(KEYBINDINGS["tui.editor.undo"].defaultKeys).toBe(
-			nativeWindows ? "ctrl+z" : windowsKeybindings ? "alt+z" : "ctrl+-",
+		// fork: ctrl+z undoes outside Windows and WSL; suspending has no key there.
+		expect(KEYBINDINGS["tui.editor.undo"].defaultKeys).toEqual(
+			nativeWindows ? "ctrl+z" : windowsKeybindings ? "alt+z" : ["ctrl+z", "ctrl+-"],
 		);
+		expect(KEYBINDINGS["app.suspend"].defaultKeys).toEqual(windowsKeybindings && !nativeWindows ? "ctrl+z" : []);
+		// fork: ctrl+y redoes; pasting the deleted text has no default key.
+		expect(KEYBINDINGS["tui.editor.redo"].defaultKeys).toEqual(["ctrl+y", "ctrl+shift+z"]);
+		expect(KEYBINDINGS["tui.editor.yank"].defaultKeys).toEqual([]);
 		expect(KEYBINDINGS["tui.altScreen.previousPrompt"].defaultKeys).toEqual(
 			windowsKeybindings ? "ctrl+up" : ["ctrl+shift+up", "ctrl+up"],
 		);

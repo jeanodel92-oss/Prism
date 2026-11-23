@@ -1,4 +1,4 @@
-// Codex review of 2026-11-09, CR-288 (window variant): t() passed each value to replaceAll as a replacement string, so a
+// review of 2026-11-09, CR-288 (window variant): t() passed each value to replaceAll as a replacement string, so a
 // path with "$&" or "$$" was garbled, and a "{1}" inside the first value was filled by the second.
 // Run by hand: node --test fork/gui/tests/i18n-literal.test.mjs
 import assert from "node:assert/strict";

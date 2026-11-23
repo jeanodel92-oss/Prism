@@ -92,7 +92,7 @@ describe("fork: /docs", () => {
 		expect(selectedPaths[0]).toBe(expected);
 	});
 
-	// Owner's QA, 2026-11-05: the search says where the words are, in the list and in the page it opens.
+	// maintainer's QA, 2026-11-05: the search says where the words are, in the list and in the page it opens.
 	it("opens a page found by typing searched for the typed words", async () => {
 		const { screens } = await runDocsCommand("", "firstKeptEntryId");
 		expect(screens[0]).toContain("Search: firstKeptEntryId · match 1/");

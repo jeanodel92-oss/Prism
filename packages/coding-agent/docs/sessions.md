@@ -55,12 +55,10 @@ Use `--session` when you already know the session path or ID. Use `--fork` to cr
 
 ## Export or share a session
 
-Use `/export` to write the current session as HTML or JSONL. Use `/share` to upload it and get a viewer link. Prism uses a Radius artifact when Radius authentication is configured; otherwise, it uses a private GitHub gist.
+Use `/export` to write the current session as HTML or JSONL, and `/export-zip` to put chosen sessions and files in a portable archive. Use `/share` to upload the session as a secret GitHub gist and get a link to Prism's session viewer (`https://prism.odelserver.space/session/#<gist id>`). `/share` needs the GitHub CLI (`gh`), signed in with `gh auth login`. A secret gist is not listed, but anyone with its link can read it.
 
 Review exported or shared sessions first. They can contain prompts, model responses, tool arguments, command output, file contents, and extension messages.
 
-## Report a bug
+## Report a problem
 
-Run `/bug [description]` to prepare a private report for the Prism developers. You can include the session transcript, omit it, or ask the current model to summarize the problem. Review any transcript or generated summary because it can contain sensitive conversation data.
-
-The report includes environment and provider configuration without credential values, plus recorded error diagnostics. Upload it through `radius.pi.dev` or export the same report as a zip to inspect and share yourself. Uploads do not require a login; Radius authentication attributes the report to your account so the developers can follow up. If an upload fails, Prism offers to export the zip.
+See [Report a problem](doctor.md#report-a-problem): open an issue in Prism's repository with the output of `prism --version` and, when it helps, a report from `prism doctor export <file>`.

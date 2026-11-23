@@ -79,6 +79,7 @@ for name in "${names[@]}"; do
 	at="${size:-1280x800}"
 	case "$name" in
 	narrow | switches-narrow) at=560x800 ;;
+	qa-window-audit-narrow) at=640x800 ;;
 	# Room for a pinned command: at 560 px it stays in more… (footer-narrow).
 	footer) at=1280x800 ;;
 	footer-narrow)
@@ -248,10 +249,8 @@ for name in "${names[@]}"; do
 		echo '{"theme":"prism"}' >"$profile/demo/agent/settings.json"
 		;;
 	esac
-	# The scenarios were written for the "ask" permission mode, Prism's default until 2026-11-18 (now "broad"): a
-	# profile starts in it unless its scenario seeds its own permissions above.
-	agent_dir="$profile/${mode[0]}/agent"
-	[[ -f "$agent_dir/permissions.json" ]] || { mkdir -p "$agent_dir" && echo '{"mode":"ask"}' >"$agent_dir/permissions.json"; }
+	# A profile starts in the "ask" permission mode unless its scenario seeds its own permissions above: run.sh seeds it
+	# for every scripted run, so a scenario played alone with drive.sh starts the same way (TESTS-17).
 	log="$out/$name.log"
 	status=0
 	extra=()

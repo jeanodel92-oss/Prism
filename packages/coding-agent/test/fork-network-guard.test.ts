@@ -87,7 +87,7 @@ describe("fork: Prism's requests reach only the checked destinations", () => {
 		const local = await counting();
 		const pins = new PinnedLookup(new DnsGuard(rebinding()));
 		const url = new URL(`http://registry.test:${local.port}/pkg`);
-		// fork (AS-023): the name leads to a private address, allowed too.
+		// fork: the name leads to a private address, allowed too.
 		const allowed = ["registry.test", "registry.test@127.0.0.2"];
 		expect(await checkDestination(url, async (name) => allowed.includes(name), pins.resolve)).toBeUndefined();
 		const registry = guardedFetch(pins.lookup);

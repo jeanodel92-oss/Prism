@@ -10,6 +10,7 @@ type Context = {
 			getCommand: (name: string) => unknown;
 			getExtensionPaths: () => string[];
 			getAllRegisteredTools: () => unknown[];
+			getRegisteredCommands: () => Array<{ invocationName: string }>;
 		};
 		promptTemplates: unknown[];
 		model: undefined;
@@ -65,6 +66,7 @@ function context(extensionCommands: string[] = []): Context {
 				getCommand: (name) => (extensionCommands.includes(name) ? { name } : undefined),
 				getExtensionPaths: () => [],
 				getAllRegisteredTools: () => [],
+				getRegisteredCommands: () => extensionCommands.map((name) => ({ invocationName: name })),
 			},
 			promptTemplates: [],
 			model: undefined,

@@ -11,7 +11,7 @@ import { clear, h, show, stripAnsi } from "./dom.js";
 import { runDrive } from "./drive.js";
 import { shellQuote } from "./shell-quote.js";
 import { formatCost, formatNumber, setLanguage, t } from "./i18n.js";
-import { boundAction, COMPOSER_KEYS, KEYS, keyText, matches } from "./keys.js";
+import { boundAction, COMPOSER_KEYS, KEYS, keyText, matches, windowKeys } from "./keys.js";
 import { canSleep, criticalMemory, isBlank, lifecycle, lowMemory, memoryInfo } from "./lifecycle.js";
 import { Inbox, inboxDot } from "./inbox.js";
 import { sessionStateBody } from "./inspector-screen.js";
@@ -38,13 +38,29 @@ const PHONE_SESSIONS_POLL_MS = 3000;
 const { invoke, Channel } = window.__TAURI__.core;
 const $ = (id) => document.getElementById(id);
 const PREFS_KEY = "prism.gui.prefs";
+/** The page's zoom levels (Settings › Window › Text size, and the zoom keys), as a browser steps them. */
+const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 function loadPrefs() {
+	const defaults = { theme: "system", language: "system", animations: "system", zoom: 1 };
 	try {
-		return { theme: "system", language: "system", animations: "system", ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") };
+		return { ...defaults, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") };
 	} catch {
-		return { theme: "system", language: "system", animations: "system" };
+		return defaults;
 	}
+}
+
+/** The zoom level one step from `zoom` in `direction` (1 larger, -1 smaller), within ZOOMS. */
+function zoomStep(zoom, direction) {
+	const index = ZOOMS.reduce((best, level, i) => (Math.abs(level - zoom) < Math.abs(ZOOMS[best] - zoom) ? i : best), 0);
+	return ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, index + direction))];
+}
+
+/** A digit key on a layout that types another character there (AZERTY: "à" on the 0 key), as its digit. */
+function digitKey(event) {
+	if (!/^(Digit|Numpad)\d$/.test(event.code ?? "") || /^\d$/.test(event.key)) return event;
+	const { ctrlKey, altKey, metaKey, shiftKey } = event;
+	return { key: event.code.slice(-1), ctrlKey, altKey, metaKey, shiftKey };
 }
 
 function savePrefs(prefs) {
@@ -76,6 +92,8 @@ class App {
 		this.renderTimes = [];
 		this.markdownOptions = { onLink: (url) => this.confirmLink(url) };
 		this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+		// Audit of 2026-11-23, UX-01: the composer takes the keyboard once it can, when the window opens.
+		this.focusPending = true;
 	}
 
 	async init() {
@@ -103,6 +121,7 @@ class App {
 			if (document.visibilityState === "visible") this.refreshHistory();
 		}, HISTORY_POLL_MS);
 		this.#applyPrefs();
+		this.#applyZoom();
 		this.#bind();
 		// The first frames drawn: `prism --gui` knows the window started (a window that stops at its first draw is reported, not announced as open)
 		// .
@@ -191,7 +210,7 @@ class App {
 	/**
 	 * An engine that could not start. On the phone, when the PC cannot be reached (its window closed, the network
 	 * gone), the conversation waits for the link instead, as one cut by the link does: no failure of its own, the line
-	 * under the topbar says why, and it starts once the PC is back (phone/link-watch.js). Owner's QA of the fork.11
+	 * under the topbar says why, and it starts once the PC is back (phone/link-watch.js). maintainer's QA of the fork.11
 	 * candidate, 2026-11-15: each conversation opened failed on its own with "Connection refused".
 	 */
 	async #startFailed(view, error) {
@@ -587,8 +606,9 @@ class App {
 					},
 				}),
 			);
-		if (sticky) el.append(h("button", { type: "button", class: "ghost icon toast-close", "aria-label": t("close"), text: "×", onclick: remove }));
-		else setTimeout(remove, kind === "error" ? 10000 : 6000);
+		// Audit of 2026-11-23, FIN-19: every notice can be closed, not only those that stay.
+		el.append(h("button", { type: "button", class: "ghost icon toast-close", "aria-label": t("close"), title: t("close"), text: "×", onclick: remove }));
+		if (!sticky) setTimeout(remove, kind === "error" ? 10000 : 6000);
 		$("toasts").append(el);
 		this.fitToasts();
 	}
@@ -597,7 +617,8 @@ class App {
 	 * Toasts stay in the band between the top bar (or the open search) and what is open above the composer (a
 	 * panel, else the composer), at its bottom: they never cover an interaction. The newest is at the bottom; the
 	 * older ones that do not fit wait, hidden, until a panel closes and leaves room (a sticky path or link is not
-	 * lost).
+	 * lost). Audit of 2026-11-23 (FIN-19): over a conversation, its end scrolls clear of them (--toasts-room), so the
+	 * last lines are never left under a notice.
 	 */
 	fitToasts() {
 		const box = $("toasts");
@@ -616,6 +637,23 @@ class App {
 			el.hidden = full;
 			if (!full) used += height + 6;
 		}
+		// Over the transcript's end only (not over an open panel, which they sit above), and not on the welcome, which
+		// is read from its top.
+		const room = surface.classList.contains("open") || !$("welcome").hidden ? 0 : used;
+		const scroller = $("scroller");
+		if (scroller.style.getPropertyValue("--toasts-room") !== `${room}px`) {
+			scroller.style.setProperty("--toasts-room", `${room}px`);
+			if (room) this.followTranscript();
+		}
+	}
+
+	/** Audit of 2026-11-23, UX-13: the next control after `from` in the page's order, as Tab reaches it. */
+	focusNext(from) {
+		if (document.activeElement !== from) return;
+		const controls = [...document.querySelectorAll("button, a[href], input, select, textarea, [tabindex]")].filter(
+			(el) => el.tabIndex >= 0 && !el.disabled && !el.closest("[hidden], dialog:not([open])") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden",
+		);
+		controls[controls.indexOf(from) + 1]?.focus();
 	}
 
 	closeWindow() {
@@ -1191,6 +1229,7 @@ class App {
 		// through a blank or "starting" screen. A reopened session waits for its transcript.
 		const showWelcome = empty && (view?.ready ? hasModel : starting && !view.initialPath);
 		$("welcome").hidden = !showWelcome;
+		if (view && !empty) view.showHeldNotices();
 		// A saved conversation that is opening says so, under its own name: it is never shown as a new one.
 		$("loading").hidden = !(starting && view.initialPath && empty);
 		$("empty-model").hidden = !(view?.ready && !hasModel);
@@ -1213,6 +1252,16 @@ class App {
 		// While the engine starts, the composer already accepts text; sending waits for the engine.
 		const canType = ready && hasModel;
 		input.disabled = !canType && !starting;
+		// Audit of 2026-11-23, UX-01: the window opened with the keyboard nowhere; the composer takes it once it can,
+		// unless the user put it somewhere meanwhile.
+		if (this.focusPending && view) {
+			const nowhere = !document.activeElement || document.activeElement === document.body;
+			if (!nowhere) this.focusPending = false;
+			else if (!input.disabled && !document.querySelector("dialog[open]")) {
+				this.focusAfterInteraction(view);
+				this.focusPending = document.activeElement === document.body;
+			}
+		}
 		$("hint").textContent = starting ? t("engineStarting") : "";
 		send.title = t("sendHelp");
 		$("composer").dataset.starting = starting ? "true" : "false";
@@ -1366,8 +1415,39 @@ class App {
 		$("pref-language").value = this.prefs.language;
 		$("pref-animations").value = this.prefs.animations;
 		$("info-folder").textContent = this.info?.cwd ?? "";
-		$("info-version").textContent = this.info?.version ?? "";
+		// Audit of 2026-11-23, FIN-29: the version of Prism, as `prism --version` says it, when the launcher gives it;
+		// else the window's own, named as such.
+		const product = this.info?.productVersion;
+		$("info-version-label").textContent = t(product ? "productVersion" : "version");
+		$("info-version").textContent = product ?? this.info?.version ?? "";
 		this.render();
+	}
+
+	/** The page's zoom (Settings › Window › Text size and the zoom keys), kept with the window's preferences. */
+	#applyZoom() {
+		const zoom = ZOOMS.includes(Number(this.prefs.zoom)) ? Number(this.prefs.zoom) : 1;
+		this.prefs.zoom = zoom;
+		$("pref-zoom").value = String(zoom);
+		invoke("set_zoom", { scale: zoom }).catch(() => {});
+	}
+
+	#zoom(zoom) {
+		if (zoom === this.prefs.zoom) return;
+		this.prefs.zoom = zoom;
+		savePrefs(this.prefs);
+		this.#applyZoom();
+	}
+
+	/** The window's zoom keys (keys.js, WINDOW_KEYS); true when the event was one. */
+	#zoomKey(event) {
+		if (document.documentElement.dataset.device === "phone") return false;
+		const keys = this.active?.keys;
+		const pressed = (id) => windowKeys(keys, id).some((key) => matches(event, key) || matches(digitKey(event), key));
+		if (pressed("window.zoom.in")) this.#zoom(zoomStep(this.prefs.zoom, 1));
+		else if (pressed("window.zoom.out")) this.#zoom(zoomStep(this.prefs.zoom, -1));
+		else if (pressed("window.zoom.reset")) this.#zoom(1);
+		else return false;
+		return true;
 	}
 
 	async #languageChanged() {
@@ -1585,6 +1665,21 @@ class App {
 				event.stopPropagation();
 				return;
 			}
+			// maintainer's QA, 2026-11-23: the terminal's undo key (Ctrl+Z, keybindings.json included) undid nothing here.
+			// The web view keeps the composer's edits; the key asks it to take the last one back.
+			const undo = this.active?.keys?.bindings?.["tui.editor.undo"]?.keys ?? ["ctrl+z"];
+			if (undo.some((key) => matches(event, key))) {
+				event.preventDefault();
+				document.execCommand("undo");
+				return;
+			}
+			// maintainer's QA, 2026-11-23: and its redo key (Ctrl+Y, Ctrl+Shift+Z) puts back what undo took.
+			const redo = this.active?.keys?.bindings?.["tui.editor.redo"]?.keys ?? ["ctrl+y", "ctrl+shift+z"];
+			if (redo.some((key) => matches(event, key))) {
+				event.preventDefault();
+				document.execCommand("redo");
+				return;
+			}
 			// Enter with a modifier is a key of the terminal (Alt+Enter: follow-up), handled with the others.
 			const modified = event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
 			if (event.key === "Enter" && !modified && !event.isComposing) {
@@ -1639,6 +1734,20 @@ class App {
 				this.#reconfigureViews({ now: true });
 			});
 		}
+		$("pref-zoom").addEventListener("change", (event) => this.#zoom(Number(event.target.value)));
+		// Audit of 2026-11-23, UX-01: a dialog closed by its button left the keyboard nowhere; it goes back where it
+		// was in the conversation.
+		for (const dialog of document.querySelectorAll("dialog"))
+			dialog.addEventListener("close", () => {
+				const at = document.activeElement;
+				if (this.active && (!at || at === document.body || dialog.contains(at))) this.focusAfterInteraction(this.active);
+			});
+		// Audit of 2026-11-23, UX-14: a control reached with Tab shows its focus ring; WebKitGTK did not always match
+		// focus-visible there (style.css, data-keyboard).
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Tab") document.documentElement.dataset.keyboard = "true";
+		}, true);
+		document.addEventListener("pointerdown", () => delete document.documentElement.dataset.keyboard, true);
 		this.reducedMotion.addEventListener("change", () => this.#applyPrefs());
 		window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
 			this.render();
@@ -1655,7 +1764,23 @@ class App {
 		toasts.observe($("surface"));
 		toasts.observe($("composer"));
 		document.addEventListener("keydown", (event) => {
-			if (document.querySelector("dialog[open]") || event.defaultPrevented || event.isComposing) return;
+			if (event.defaultPrevented || event.isComposing) return;
+			if (this.#zoomKey(event)) {
+				event.preventDefault();
+				return;
+			}
+			const dialog = document.querySelector("dialog[open]");
+			if (dialog) {
+				// Audit of 2026-11-23, UX-12: Escape did not close a dialog while the keyboard was in none of its controls
+				// (just opened): WebKitGTK cancels it only from a control. The window closes it from anywhere; a field with
+				// text keeps its Escape, which empties it (the settings search).
+				const field = event.target instanceof HTMLInputElement && event.target.value !== "";
+				if (event.key === "Escape" && !field) {
+					event.preventDefault();
+					dialog.close();
+				}
+				return;
+			}
 			if (this.#terminalKey(event)) {
 				event.preventDefault();
 				return;

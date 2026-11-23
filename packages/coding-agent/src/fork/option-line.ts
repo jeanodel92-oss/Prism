@@ -17,7 +17,7 @@ export class OptionLine implements Component {
 
 	constructor(prefix: string, text: string, paddingX = 1) {
 		this.prefix = prefix;
-		// fork.12 security audit (AS-016): like the text component, only styling reaches the terminal. The callers
+		// fork.12 security audit: like the text component, only styling reaches the terminal. The callers
 		// that put a tool call's target in an option show its controls first (visible-text.ts).
 		this.text = sanitizeTerminalText(text);
 		this.paddingX = paddingX;

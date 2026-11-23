@@ -3,11 +3,11 @@
 This reference describes automatic compaction, branch summarization, persisted entries, and extension hooks. For the user workflow, see [Sessions and Context](sessions.md#manage-conversation-context).
 
 **Source files** ([pi](https://github.com/earendil-works/pi)):
-- [`packages/coding-agent/src/core/compaction/compaction.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) - Auto-compaction logic
-- [`packages/coding-agent/src/core/compaction/branch-summarization.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) - Branch summarization
-- [`packages/coding-agent/src/core/compaction/utils.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/utils.ts) - Shared utilities (file tracking, serialization)
-- [`packages/coding-agent/src/core/session-manager.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts) - Entry types (`CompactionEntry`, `BranchSummaryEntry`)
-- [`packages/coding-agent/src/core/extensions/types.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/extensions/types.ts) - Extension event types
+- [`packages/coding-agent/src/core/compaction/compaction.ts`](../src/core/compaction/compaction.ts) - Auto-compaction logic
+- [`packages/coding-agent/src/core/compaction/branch-summarization.ts`](../src/core/compaction/branch-summarization.ts) - Branch summarization
+- [`packages/coding-agent/src/core/compaction/utils.ts`](../src/core/compaction/utils.ts) - Shared utilities (file tracking, serialization)
+- [`packages/coding-agent/src/core/session-manager.ts`](../src/core/session-manager.ts) - Entry types (`CompactionEntry`, `BranchSummaryEntry`)
+- [`packages/coding-agent/src/core/extensions/types.ts`](../src/core/extensions/types.ts) - Extension event types
 
 For TypeScript definitions in your project, inspect `node_modules/@earendil-works/pi-coding-agent/dist/`.
 
@@ -149,7 +149,7 @@ Preparation advances the kept boundary into a context-invisible suffix only when
 
 ### CompactionEntry Structure
 
-Defined in [`session-manager.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts):
+Defined in [`session-manager.ts`](../src/core/session-manager.ts):
 
 ```typescript
 interface CompactionEntry<T = unknown> {
@@ -174,7 +174,7 @@ interface CompactionDetails {
 
 Extensions can store any JSON-serializable data in `details`. The default compaction tracks file operations, but custom extension implementations can use their own structure. Generated and extension-provided summaries store their LLM `usage` when available so session totals include summarization work.
 
-See [`prepareCompaction()`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) and [`compact()`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) for the implementation. For direct programmatic summarization, `generateSummary()` returns the summary text and `generateSummaryWithUsage()` returns `{ text, usage }`.
+See [`prepareCompaction()`](../src/core/compaction/compaction.ts) and [`compact()`](../src/core/compaction/compaction.ts) for the implementation. For direct programmatic summarization, `generateSummary()` returns the summary text and `generateSummaryWithUsage()` returns `{ text, usage }`.
 
 ## Branch Summarization
 
@@ -215,7 +215,7 @@ File tracking therefore accumulates across default compactions and nested defaul
 
 ### BranchSummaryEntry Structure
 
-Defined in [`session-manager.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts):
+Defined in [`session-manager.ts`](../src/core/session-manager.ts):
 
 ```typescript
 interface BranchSummaryEntry<T = unknown> {
@@ -239,7 +239,7 @@ interface BranchSummaryDetails {
 
 Same as compaction, extensions can store custom data in `details`.
 
-See [`collectEntriesForBranchSummary()`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), [`prepareBranchEntries()`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), and [`generateBranchSummary()`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) for the implementation.
+See [`collectEntriesForBranchSummary()`](../src/core/compaction/branch-summarization.ts), [`prepareBranchEntries()`](../src/core/compaction/branch-summarization.ts), and [`generateBranchSummary()`](../src/core/compaction/branch-summarization.ts) for the implementation.
 
 ## Summary Format
 
@@ -285,7 +285,7 @@ path/to/changed.ts
 
 ### Message Serialization
 
-Before summarization, messages are serialized to text via [`serializeConversation()`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/utils.ts):
+Before summarization, messages are serialized to text via [`serializeConversation()`](../src/core/compaction/utils.ts):
 
 ```
 [User]: What they said
@@ -301,7 +301,7 @@ Tool results are truncated to 2000 characters during serialization. Content beyo
 
 ## Custom Summarization via Extensions
 
-Extensions can intercept and customize both compaction and branch summarization. See [`extensions/types.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/extensions/types.ts) for event type definitions.
+Extensions can intercept and customize both compaction and branch summarization. See [`extensions/types.ts`](../src/core/extensions/types.ts) for event type definitions.
 
 ### session_before_compact
 

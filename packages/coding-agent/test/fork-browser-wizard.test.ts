@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	browserCommand,
+	extensionStorePage,
 	type FoundBrowser,
 	firefoxManifest,
 	isInstalledBrowser,
@@ -27,6 +28,8 @@ import { groupSettingsByDomain } from "../src/fork/settings-domains.ts";
 const CHROMIUM: FoundBrowser = { name: "Chromium", family: "chromium", hostsDir: "/h/chromium" };
 const FIREFOX: FoundBrowser = { name: "Firefox", family: "firefox", hostsDir: "/h/mozilla" };
 const ZEN_FLATPAK: FoundBrowser = { name: "Zen (Flatpak)", family: "firefox", hostsDir: "/h/zen", flatpak: "app.zen" };
+const CHROME_STORE = "https://chromewebstore.google.com/detail/prism/oinfdnajckegicaemkaobancehobeghe";
+const FIREFOX_STORE = "https://addons.mozilla.org/addon/prism-browser/";
 
 /** A user who answers each screen with the next scripted action, and the screens shown. */
 function scriptedUi(answers: Array<string | undefined>) {
@@ -71,19 +74,20 @@ const linkedAs = (name: string, extra: Partial<LinkedBrowser> = {}): LinkedBrows
 });
 
 describe("browser guided setup", () => {
-	it("guides Chromium step by step, checks it end to end and makes it the agent's browser", async () => {
+	// The extension is in both stores (accepted 2026-11): the store comes first, the folder stays as a fallback.
+	it("guides Chromium through its store, checks it end to end and makes it the agent's browser", async () => {
 		let added = false;
-		const opened: string[] = [];
+		const opened: Array<[string, string | undefined]> = [];
 		const setup = deps(
 			{
-				openBrowser: (browser) => {
-					opened.push(browser.name);
+				openBrowser: (browser, url) => {
+					opened.push([browser.name, url]);
 					return undefined;
 				},
 			},
 			() => (added ? [linkedAs("Chromium")] : []),
 		);
-		const { ui, screens } = scriptedUi(["0", "open", "copy-page", "copy", "check", "done"]);
+		const { ui, screens } = scriptedUi(["0", "open-store", "copy-store", "check", "done"]);
 		const copy = setup.copy as ReturnType<typeof vi.fn>;
 		copy.mockImplementation(async () => {
 			added = true;
@@ -94,21 +98,20 @@ describe("browser guided setup", () => {
 			"extension",
 			"extension",
 			"extension",
-			"extension",
 			"waiting",
 			"linked",
 		]);
-		expect(screens[1]!.lines.join("\n")).toContain("chrome://extensions");
-		expect(screens[1]!.lines.join("\n")).toContain("/ext/chromium");
-		expect(opened).toEqual(["Chromium"]);
+		expect(extensionStorePage("chromium")).toBe(CHROME_STORE);
+		const steps = screens[1]!.lines.join("\n");
+		expect(steps).toContain(`1. Open the Prism extension's page in Chromium: ${CHROME_STORE}`);
+		expect(steps).toContain("2. Choose Add to Chrome, then Add extension.");
+		expect(steps).not.toContain("Developer mode");
+		expect(screens[1]!.actions.map((action) => action.id)).toEqual(["open-store", "copy-store", "check", "folder"]);
+		expect(opened).toEqual([["Chromium", CHROME_STORE]]);
 		expect(screens[2]!.lines).toContain("Chromium opened.");
-		expect(copy).toHaveBeenCalledWith("chrome://extensions");
-		expect(screens[3]!.lines.join("\n")).toContain(
-			"chrome://extensions copied: paste it in the address bar of Chromium",
-		);
-		expect(copy).toHaveBeenCalledWith("/ext/chromium");
-		expect(screens[4]!.lines).toContain("Folder path copied.");
-		expect(screens[6]!.lines.join("\n")).toContain("Checked: Prism opened, read and closed a tab");
+		expect(copy).toHaveBeenCalledWith(CHROME_STORE);
+		expect(screens[3]!.lines.join("\n")).toContain(`${CHROME_STORE} copied: paste it in the address bar of Chromium`);
+		expect(screens[5]!.lines.join("\n")).toContain("Checked: Prism opened, read and closed a tab");
 		expect(setup.choose).toHaveBeenCalledWith("Chromium");
 	});
 
@@ -126,10 +129,14 @@ describe("browser guided setup", () => {
 		const diagnostics = screens.find((screen) => screen.id === "diagnostics")!;
 		expect(diagnostics.errors).toEqual(["The extension did not connect from Firefox."]);
 		expect(diagnostics.lines.join("\n")).toContain("Host declared for Firefox: /h/mozilla/prism.json");
-		expect(diagnostics.lines.join("\n")).toContain("about:debugging");
+		// Installed from the store: the hint names about:addons, not the temporary add-on page.
+		expect(diagnostics.lines.join("\n")).toContain("Is the Prism extension in about:addons");
+		expect(diagnostics.lines.join("\n")).not.toContain("about:debugging");
 		expect(diagnostics.actions.map((action) => action.id)).toEqual(["retry", "steps", "other"]);
-		// Firefox: the temporary add-on steps, and the way to real clicks once linked by script.
-		expect(screens.find((screen) => screen.id === "extension")!.lines.join("\n")).toContain("Load Temporary Add-on");
+		// Firefox: the AMO steps, and the way to real clicks once linked by script.
+		const steps = screens.find((screen) => screen.id === "extension")!.lines.join("\n");
+		expect(steps).toContain(FIREFOX_STORE);
+		expect(steps).toContain("Choose Add to Firefox, then Add.");
 		expect(screens.at(-1)!.lines.join("\n")).toContain("/browser firefox");
 	});
 
@@ -204,19 +211,66 @@ describe("browser guided setup", () => {
 		const { ui, screens } = scriptedUi(["0", "allow", undefined, undefined]);
 		await runBrowserSetup(ui, setup);
 		const consent = screens[1]!.lines.join("\n");
-		expect(consent).toContain("flatpak override --user --filesystem=/home/u/Prism app.zen");
 		expect(consent).toContain("flatpak override --user --persist=.mozilla app.zen");
 		expect(consent).not.toContain("--talk-name");
-		expect(setup.grantFlatpak).toHaveBeenCalledWith("app.zen", extra);
-		expect(screens[2]!.lines.join("\n")).toContain("widget.use-xdg-desktop-portal.native-messaging to 0");
-		// the pref and the new grants apply at the next start, which removes a temporary add-on:
-		// restart first, add the extension after.
+		// The store needs no folder: the folder grant waits for the folder path.
+		expect(consent).not.toContain("--filesystem");
+		expect(setup.grantFlatpak).toHaveBeenCalledWith("app.zen", ["--persist=.mozilla"]);
 		const lines = screens[2]!.lines;
 		const at = (text: string) => lines.findIndex((line) => line.includes(text));
 		expect(at("1. In Zen (Flatpak), open about:config")).toBeGreaterThan(0);
+		expect(at("widget.use-xdg-desktop-portal.native-messaging to 0")).toBeGreaterThan(0);
 		expect(at("2. Close Zen (Flatpak) completely")).toBeGreaterThan(at("about:config"));
-		expect(at("3. In the address bar")).toBeGreaterThan(at("Close Zen"));
-		expect(at("4. Choose Load Temporary Add-on")).toBeGreaterThan(at("3. In the address bar"));
+		// A store install survives the restart: no "before adding the extension" here.
+		expect(lines.join("\n")).not.toContain("which a restart removes");
+		expect(at("3. Open the Prism extension's page in Zen (Flatpak)")).toBeGreaterThan(at("Close Zen"));
+		expect(at("4. Choose Add to Firefox")).toBeGreaterThan(at("3. Open"));
+
+		// The folder path asks for the folder, then restart first, add the extension after.
+		const folder = scriptedUi(["0", "allow", "folder", "allow", undefined, undefined, undefined]);
+		await runBrowserSetup(folder.ui, setup);
+		expect(folder.screens.map((screen) => screen.id)).toEqual([
+			"choose",
+			"flatpak",
+			"extension",
+			"flatpak-folder",
+			"extension-folder",
+			"extension",
+			"choose",
+		]);
+		expect(folder.screens[3]!.lines.join("\n")).toContain(
+			"flatpak override --user --filesystem=/home/u/Prism app.zen",
+		);
+		expect(setup.grantFlatpak).toHaveBeenLastCalledWith("app.zen", ["--filesystem=/home/u/Prism"]);
+		const folderLines = folder.screens[4]!.lines;
+		const atFolder = (text: string) => folderLines.findIndex((line) => line.includes(text));
+		expect(atFolder("1. In Zen (Flatpak), open about:config")).toBeGreaterThan(0);
+		expect(atFolder("2. Close Zen (Flatpak) completely")).toBeGreaterThan(atFolder("about:config"));
+		expect(atFolder("which a restart removes")).toBe(atFolder("2. Close Zen"));
+		expect(atFolder("3. In the address bar")).toBeGreaterThan(atFolder("Close Zen"));
+		expect(atFolder("4. Choose Load Temporary Add-on")).toBeGreaterThan(atFolder("3. In the address bar"));
+	});
+
+	it("asks a Flatpak Firefox for the folder only when the folder is chosen, and returns to the store on refusal", async () => {
+		const setup = deps({
+			browsers: () => [ZEN_FLATPAK],
+			declare: (browser) => ({
+				path: `${browser.hostsDir}/prism.json`,
+				flatpak: { app: "app.zen", hostAccess: true, extra: ["--filesystem=/home/u/Prism"] },
+			}),
+		});
+		const { ui, screens } = scriptedUi(["0", "folder", "store", undefined, undefined]);
+		await runBrowserSetup(ui, setup);
+		expect(screens.map((screen) => screen.id)).toEqual([
+			"choose",
+			"extension",
+			"flatpak-folder",
+			"extension",
+			"choose",
+		]);
+		expect(setup.grantFlatpak).not.toHaveBeenCalled();
+		// Nothing was changed: no restart before the store.
+		expect(screens[1]!.lines.join("\n")).not.toContain("Close Zen");
 	});
 
 	it("tells a Flatpak browser just granted access to restart before adding the extension", async () => {
@@ -235,27 +289,91 @@ describe("browser guided setup", () => {
 		const plain = scriptedUi(["0", undefined, undefined]);
 		await runBrowserSetup(plain.ui, deps());
 		expect(plain.screens[1]!.lines.join("\n")).not.toContain("Close Chromium");
-		expect(plain.screens[1]!.lines.join("\n")).toContain("1. In the address bar of Chromium");
+		expect(plain.screens[1]!.lines.join("\n")).toContain("1. Open the Prism extension's page in Chromium");
 	});
 
-	// "Open the extensions page" opened Chromium on its New Tab page; and Zen on
-	// another page. Every browser opens plainly; the address has a button of its own.
-	it("opens the browser plainly and copies the extensions page's address with its own button", async () => {
-		for (const [index, page] of [
-			["0", "chrome://extensions"],
-			["1", "about:debugging#/runtime/this-firefox"],
+	// The folder stays for a browser without the store, and for development. "Open the extensions
+	// page" opened Chromium on its New Tab page; and Zen on another page. Every browser opens plainly; the
+	// address has a button of its own.
+	it("keeps the folder as a fallback: opens the browser plainly, copies the extensions page, back to the store", async () => {
+		for (const [index, page, load, folder] of [
+			["0", "chrome://extensions", "Choose Load unpacked and select this folder: /ext/chromium", "/ext/chromium"],
+			[
+				"1",
+				"about:debugging#/runtime/this-firefox",
+				"Choose Load Temporary Add-on and select manifest.json in this folder: /ext/firefox",
+				"/ext/firefox",
+			],
 		] as const) {
-			const setup = deps();
-			const { ui, screens } = scriptedUi([index, "copy-page", undefined, undefined]);
+			const opened: Array<string | undefined> = [];
+			const setup = deps({
+				openBrowser: (_browser, url) => {
+					opened.push(url);
+					return undefined;
+				},
+			});
+			const { ui, screens } = scriptedUi([
+				index,
+				"folder",
+				"open",
+				"copy-page",
+				"copy",
+				"store",
+				undefined,
+				undefined,
+			]);
 			await runBrowserSetup(ui, setup);
-			expect(screens[1]!.lines.join("\n")).toContain(`paste ${page}`);
-			expect(screens[1]!.actions.map((action) => action.id)).toEqual(["open", "copy-page", "copy", "check"]);
+			expect(screens.map((screen) => screen.id)).toEqual([
+				"choose",
+				"extension",
+				"extension-folder",
+				"extension-folder",
+				"extension-folder",
+				"extension-folder",
+				"extension",
+				"choose",
+			]);
+			const steps = screens[2]!.lines.join("\n");
+			expect(steps).toContain(`paste ${page}`);
+			expect(steps).toContain(load);
+			expect(screens[2]!.actions.map((action) => action.id)).toEqual([
+				"open",
+				"copy-page",
+				"copy",
+				"check",
+				"store",
+			]);
+			expect(opened).toEqual([undefined]);
 			expect(setup.copy).toHaveBeenCalledWith(page);
+			expect(setup.copy).toHaveBeenCalledWith(folder);
+			expect(screens[5]!.lines).toContain("Folder path copied.");
 		}
+		// Escape on the folder steps goes back to the store, not to the list.
+		const back = scriptedUi(["0", "folder", undefined, undefined, undefined]);
+		await runBrowserSetup(back.ui, deps());
+		expect(back.screens.map((screen) => screen.id)).toEqual([
+			"choose",
+			"extension",
+			"extension-folder",
+			"extension",
+			"choose",
+		]);
 		const onPath = () => true;
 		expect(browserCommand(FIREFOX, onPath)).toEqual(["firefox"]);
 		expect(browserCommand(CHROMIUM, onPath)).toEqual(["chromium-browser"]);
 		expect(browserCommand(ZEN_FLATPAK, onPath)).toEqual(["flatpak", "run", "app.zen"]);
+	});
+
+	it("names the temporary add-on page when a Firefox loaded from the folder does not connect, and keeps its steps", async () => {
+		const { ui, screens } = scriptedUi(["1", "folder", "check", "steps", undefined, undefined, undefined]);
+		await runBrowserSetup(ui, deps());
+		const diagnostics = screens.find((screen) => screen.id === "diagnostics")!;
+		expect(diagnostics.lines.join("\n")).toContain("Is the extension in about:debugging?");
+		expect(screens[screens.indexOf(diagnostics) + 1]!.id).toBe("extension-folder");
+		const folder = screens.find((screen) => screen.id === "extension-folder")!;
+		expect(folder.lines.join("\n")).toContain(
+			"add it again after a restart, or install the extension from the store",
+		);
 	});
 
 	// the list offered browsers whose folders stayed after they were removed.
@@ -285,7 +403,7 @@ describe("browser guided setup", () => {
 		const failing = deps({
 			openBrowser: () => "Prism did not find Chromium's program: open it yourself.",
 		});
-		const { ui, screens } = scriptedUi(["0", "open", undefined, undefined]);
+		const { ui, screens } = scriptedUi(["0", "open-store", undefined, undefined]);
 		await runBrowserSetup(ui, failing);
 		expect(screens[2]!.errors).toEqual(["Prism did not find Chromium's program: open it yourself."]);
 

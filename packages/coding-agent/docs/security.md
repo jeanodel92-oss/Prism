@@ -1,26 +1,55 @@
 # Run Prism safely
 
-Treat model-generated commands and code as untrusted. Prism can read, change, and execute files with the permissions of the account that started it. In the default `broad` [permission mode](permissions.md#modes), it works in the project without asking and asks before reaching outside it, before `sudo`, and before calls it detects as dangerous. Extensions, package installers, language servers, and other child processes run with those same permissions unless an operating-system or virtualization boundary restricts them.
+Treat model-generated commands and code as untrusted. Prism reads, changes and runs files for the account that started it. Two protections limit what a generated action can do:
 
-Files, comments, instructions, command output, and model responses can steer the model through prompt injection. Project trust controls which project resources load at startup, but it does not make that content or the resulting actions safe.
+- The [permission gate](permissions.md) decides whether each tool call runs. In the default `broad` [mode](permissions.md#modes), the agent works in the project without asking, and asks before reaching outside it, before `sudo`, and before calls it detects as dangerous.
+- The [sandbox](sandbox.md) confines the agent's shell commands in the `safe`, `ask` and `broad` modes: they can change only the project, cannot see Prism's credentials or your keys, and reach only the network hosts you allow.
 
-Safety comes from limiting the files, credentials, processes, and network services Prism can access and affect if a generated action is wrong or hostile. Watching the transcript, using project trust, and reviewing changes do not create a security boundary.
+Files, comments, instructions, command output, web pages and model responses can steer the model through prompt injection. Prism's [injection warning](permissions.md#prompt-injection-warning) pauses the agent on suspicious tool results; it reduces the risk without removing it. Project trust controls which project resources load at startup, but it does not make that content or the resulting actions safe.
+
+## What the protections do not cover
+
+- **Prism's own process.** Extensions, MCP servers, language servers and the file tools run with your account's permissions, outside the sandbox. The permission gate's path rules are pattern checks, not isolation.
+- **`unrestricted` mode.** It asks nothing, and its commands run outside the sandbox unless you turn the sandbox on for it.
+- **What you allow.** A command you exclude from the sandbox, the `sudo` tool, a host you allow, or an action you approve does what it does.
 
 ## Choose how to run Prism
 
-Different ways of running Prism place different limits on what generated commands can access:
-
 | How Prism runs | What remains protected |
 |---|---|
-| Directly, with the permissions of its operating-system user | Anything that user cannot access. A dedicated user account can narrow those permissions, but Prism still shares the operating system and network with other users. |
-| Entirely inside a container, virtual machine, or sandbox | Host files and processes that you do not expose to the environment. Credentials and network services remain accessible if you make them available inside it. This is usually the strongest practical option. |
-| Outside the isolated environment, with only its built-in tools running inside | Host resources are protected from actions performed through those tools. Prism itself and other extensions remain outside the boundary, so this is a narrower form of isolation. |
+| Directly, with the sandbox on (default in `safe`, `ask` and `broad`) | The agent's shell commands cannot change files outside the project and its caches, cannot read the hidden paths, and reach only allowed hosts. Prism itself, its extensions and the file tools still run with your account's permissions. |
+| Directly, without the sandbox | Only what your operating-system user cannot access. A dedicated user account can narrow those permissions. |
+| Entirely inside a container or virtual machine | Host files and processes that you do not expose to the environment. Credentials and network services remain accessible if you make them available inside it. This also confines Prism's own process and its extensions. |
 
-The working folder controls resource discovery and the default location for tools, but it does not prevent commands from accessing other paths available to the Prism process.
+The working folder controls resource discovery and the default location for tools. Without the sandbox, it does not prevent commands from reaching other paths available to the Prism process.
 
-Whichever option you choose, only provide the files and services required for the task. Keep credentials outside the environment where possible, or use narrowly scoped, short-lived credentials. Restrict network access when commands do not need it.
+Whichever option you choose, only provide the files and services required for the task, prefer narrowly scoped, short-lived credentials, and allow only the network hosts a task needs. For containers and virtual machines, see [Isolate Prism](containerization.md).
 
-For setup instructions and the limitations of each isolation method, see [Run Prism in an isolated environment](containerization.md).
+<a id="secrets"></a>
+
+## Secrets
+
+- **Where credentials are kept.** A credential you add with `/login` goes to your system keyring (Secret Service, through libsecret's `secret-tool`) when one works; `auth.json` then keeps only a marker. Without a keyring, it goes to `~/.prism/agent/auth.json` (mode `0600`), with a warning, and `/doctor` reports it. A locked keyring is not treated as missing: nothing is written, and Prism asks you to unlock it. `PRISM_SECRET_SERVICE=off` turns the keyring off. Keys already in clear in `auth.json` stay there until you move them with **Move credentials to the keyring** in `/settings`.
+- **What the agent's commands see.** Environment variables that look like keys, tokens or passwords, identity-agent sockets such as `SSH_AUTH_SOCK`, and any variable holding a key Prism stores are removed from the agent's commands, in the sandbox or not; their values are never shown. Your own `!` commands keep your environment. To pass a variable to one command, add a rule in **Variables hidden from commands** in `/settings` (`"secrets": { "passEnv": { "GITHUB_TOKEN": ["bash(gh *)"] } }` in the global `settings.json`). The `secrets.envAllowlist` setting goes further: commands then get only known, harmless variables and the ones you list in `secrets.allowEnv`.
+- **What leaves Prism.** Keys Prism stores are masked as `[secret hidden: …]` in what it sends to the model, in sessions, exports, shares, traces and `/doctor export`.
+- **What the sandbox hides.** Commands in the sandbox cannot read `~/.prism` (credentials, permissions, trust) nor the usual credential locations; see [Sandbox](sandbox.md#what-a-sandboxed-command-can-do).
+
+The model can never change the permission mode, permission rules, trust decisions, the `sandbox` and `secrets` settings, or stored credentials, in any mode.
+
+<a id="privacy"></a>
+
+## Privacy
+
+Prism sends no telemetry: no install, update or usage report, and no analytics. It connects on its own only to:
+
+- the model providers and servers you configure, for each request;
+- `https://pi.dev`, to refresh the cloud model catalog of the providers you signed in to, at most every 4 hours (turn it off with **Update the model catalog** in `/settings`, or `"modelCatalogRefresh": false`);
+- `https://prism.odelserver.space`, only when you run `/update` or `prism update`, or when the `updateMode` setting asks it to check at startup (off by default);
+- GitHub, to download `fd` or `rg` the first time a tool needs one that is not installed.
+
+Other connections follow an action of yours: `/login`, web tools, MCP servers, package installs, `/share`, the phone link. `--offline` (or `PI_OFFLINE=1`) turns off the automatic ones.
+
+**Sign in with ChatGPT** sends OpenAI a random identifier of this installation (`deviceId`, a UUID kept in the global `settings.json` and created at the first such sign-in), as the `ext_agent_host_id` parameter of the authorization address. It links the ChatGPT sign-ins made from the same installation. It is not sent with model requests or token refreshes. Deleting `deviceId` from `settings.json` makes the next sign-in create a new one.
 
 <a id="project-trust"></a>
 
@@ -94,6 +123,8 @@ These practices do not replace isolation, but they reduce exposure or make recov
 
 ## Report a security issue
 
-Follow the repository [Security Policy](https://github.com/earendil-works/pi/blob/main/SECURITY.md). Do not open a public issue for a security-sensitive report.
+Report a vulnerability privately, through the **Report a vulnerability** button in the Security tab of Prism's repository, as its [security policy](../../../SECURITY.md) (`SECURITY.md` at the root of the repository) says. The [Source code](https://prism.odelserver.space/source/) page of Prism's site links to the repository. Do not open a public issue for a security-sensitive report.
 
-Expected local-agent behavior, prompt injection from untrusted content, lack of a built-in sandbox, and behavior from user-installed extensions or skills are generally outside the security boundary unless the report demonstrates a privilege-boundary bypass or access that the local user did not already have.
+The policy lists what Prism guarantees (sandbox, permissions, secrets, network rules, rendering, folder trust, phone link, browser extension and desktop, signed updates) and what is out of scope: `unrestricted` mode and actions you approved, prompt injection that stays within what the current mode allows, extensions and packages you install, and the behavior of model providers.
+
+For other defects, see [Report a problem](doctor.md#report-a-problem).

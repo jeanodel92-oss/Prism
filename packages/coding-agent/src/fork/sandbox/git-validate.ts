@@ -63,7 +63,7 @@ export interface ValidationInput {
 	askHooksPath?: boolean;
 	/** fork: the changes of `ConfigChange` are returned in `configChanges` for the user. */
 	askConfigChanges?: boolean;
-	/** fork (AS-022): `core.sparseCheckout` was on before the command: Git sets "skip worktree" itself there. */
+	/** fork: `core.sparseCheckout` was on before the command: Git sets "skip worktree" itself there. */
 	sparseCheckout?: boolean;
 	/**
 	 * fork: repositories the command made whose hooks or configuration run
@@ -105,7 +105,7 @@ export interface Validation {
 	hooksPath?: HooksPathChange;
 	/** fork (H4): the command's changes to remotes and identity, which may be published only once the user allows them. */
 	configChanges?: ConfigChange[];
-	/** fork (AS-022): files of an index whose "assume unchanged" or "skip worktree" flag the command set, cleared. */
+	/** fork: files of an index whose "assume unchanged" or "skip worktree" flag the command set, cleared. */
 	clearedIndexFlags?: string[];
 }
 
@@ -934,7 +934,7 @@ export async function validateGitChanges(input: ValidationInput): Promise<Valida
 	const objects: Array<{ change: GitChange; oid: string }> = [];
 	const packFiles = new Set<string>();
 	const oid = new RegExp(`^[0-9a-f]{${hex}}$`);
-	// fork (AS-026): the main worktree's root is the Git folder's parent; a linked worktree's is unknown here.
+	// fork: the main worktree's root is the Git folder's parent; a linked worktree's is unknown here.
 	const worktreeRoot = input.gitDir && basename(input.gitDir) === ".git" ? dirname(input.gitDir) : undefined;
 	let risky: string[] | undefined;
 	const riskyRepositories = () => {
@@ -1088,7 +1088,7 @@ export async function validateGitChanges(input: ValidationInput): Promise<Valida
 					sparse: input.sparseCheckout === true,
 				});
 				if (index.reason !== undefined) return index.reason;
-				// fork (AS-018): the main worktree's root is the Git folder's parent; a linked worktree's, unknown here,
+				// fork: the main worktree's root is the Git folder's parent; a linked worktree's, unknown here,
 				// is matched by the end of the path.
 				const root = input.gitDir && basename(input.gitDir) === ".git" ? dirname(input.gitDir) : undefined;
 				const made = index.gitlinks.find((link) =>

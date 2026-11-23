@@ -138,7 +138,9 @@ const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as co
  * fork: thinking controls a Jinja chat template reads. `enable_thinking` turns thinking on
  * and off (Qwen); `reasoning_effort` picks an effort among the values the template compares it
  * with. Nothing is assumed: a template that names neither, or names `reasoning_effort` without
- * listing values, gives undefined.
+ * listing values, gives undefined. The value an `in [...] else 'x'` falls back to counts too: GLM's
+ * `reasoning_effort if reasoning_effort in ['low', 'high'] else 'max'` gives max to any other value, so sending
+ * `max` reaches it (max was missing).
  */
 export function templateThinking(template: string | undefined): TemplateThinking | undefined {
 	if (!template) return undefined;
@@ -147,12 +149,15 @@ export function templateThinking(template: string | undefined): TemplateThinking
 	for (const match of template.matchAll(/reasoning_effort\s*[!=]=\s*["']([\w-]+)["']/g)) values.add(match[1]!);
 	// the list is cut at the next `]` or `)` by hand; `[^\])]*` rescanned the rest of the template for
 	// every unclosed `reasoning_effort in [`, quadratic on a hostile template.
-	for (const match of template.matchAll(/reasoning_effort\s+(?:not\s+)?in\s+[[(]/g)) {
+	for (const match of template.matchAll(/reasoning_effort\s+(not\s+)?in\s+[[(]/g)) {
 		const start = match.index + match[0].length;
 		const ends = [template.indexOf("]", start), template.indexOf(")", start)].filter((end) => end >= 0);
 		if (ends.length === 0) break;
-		for (const quoted of template.slice(start, Math.min(...ends)).matchAll(/["']([\w-]+)["']/g))
-			values.add(quoted[1]!);
+		const end = Math.min(...ends);
+		for (const quoted of template.slice(start, end).matchAll(/["']([\w-]+)["']/g)) values.add(quoted[1]!);
+		// Read from the closing bracket only, with a bounded pattern: no rescan of the template.
+		const fallback = match[1] ? undefined : /^[\])]\s*else\s+["']([\w-]+)["']/.exec(template.slice(end, end + 64));
+		if (fallback) values.add(fallback[1]!);
 	}
 	const efforts = EFFORT_LEVELS.filter((level) => values.has(level));
 	if (!toggles && efforts.length === 0) return undefined;
@@ -168,6 +173,22 @@ export function templateThinking(template: string | undefined): TemplateThinking
 	if (values.has("none")) levels.off = "none";
 	else if (!toggles) levels.off = null;
 	return { kwargs, levels };
+}
+
+/**
+ * Maya (github.com/mw00/project-maya) answers llama.cpp's /props, plus its own `ablate` entry (refusal ablation).
+ * It turns thinking off on `enable_thinking: false` whatever the template says: GLM 5.3 Flash's template does not
+ * name the switch and always opens <think>, and Maya closes it (`serve/server.py`, v1.1.74). So off is offered there
+ * too. A template's own `none` stays the way to turn it off.
+ */
+function isMaya(props: Json): boolean {
+	return typeof record(props.ablate)?.available === "boolean";
+}
+
+function withThinkingSwitch(thinking: TemplateThinking): TemplateThinking {
+	if (thinking.kwargs.enable_thinking || thinking.levels.off !== null) return thinking;
+	const { off: _off, ...levels } = thinking.levels;
+	return { kwargs: { enable_thinking: { $var: "thinking.enabled" }, ...thinking.kwargs }, levels };
 }
 
 function unknownModel(id: string): DetectedModel {
@@ -188,7 +209,8 @@ function llamaCppModel(
 	const params = record(defaults?.params) ?? defaults;
 	const maxOutput = outputLimit(params?.n_predict);
 	const sampling = samplingDefaults((key) => params?.[key]);
-	const thinking = templateThinking(typeof props.chat_template === "string" ? props.chat_template : undefined);
+	const fromTemplate = templateThinking(typeof props.chat_template === "string" ? props.chat_template : undefined);
+	const thinking = fromTemplate && isMaya(props) ? withThinkingSwitch(fromTemplate) : fromTemplate;
 	const inputs = record(entry?.architecture)?.input_modalities;
 	return {
 		id,

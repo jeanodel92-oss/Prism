@@ -274,7 +274,7 @@ describe("fork: MCP results and tool changes (SEC-03)", () => {
 		expect(stored.tools.mcp__docs__lookup.names).toEqual(["sendTo", "word"]);
 	});
 
-	// Hardening review, point 3: the registry is shared by every Prism process of the user.
+	// review, point 3: the registry is shared by every Prism process of the user.
 	it("keeps every fingerprint when several Prism processes record at once", async () => {
 		const writer = resolve(__dirname, "fixtures/mcp-trust-writer.ts");
 		const run = promisify(execFile);

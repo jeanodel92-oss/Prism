@@ -39,6 +39,7 @@ import type {
 	ToolResultMessage,
 } from "../types.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
+import { withCauseDetail } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair, parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
@@ -96,7 +97,7 @@ function getCacheControl(
 }
 
 // Stealth mode: Mimic Claude Code's tool naming exactly
-const claudeCodeVersion = "2.1.280";
+const claudeCodeVersion = "2.1.322";
 
 // Claude Code 2.x tool names (canonical casing)
 // Source: https://cchistory.mariozechner.at/data/prompts-2.1.11.md
@@ -862,7 +863,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				delete (block as { partialJson?: string }).partialJson;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			output.errorMessage = error instanceof Error ? withCauseDetail(error) : JSON.stringify(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -1562,11 +1563,23 @@ function convertTools(
 	return tools.map((tool, index) => {
 		const strict = resolveJsonSchemaStrictSampling(tool, supportsStrictTools, isAnthropicStrictUnsupportedKeyword);
 		const parameters = getJsonSchemaToolParameters(tool, strict);
-		const schema = parameters as { properties?: unknown; required?: string[] };
+		const schema = parameters as {
+			properties?: unknown;
+			required?: string[];
+			additionalProperties?: unknown;
+			$defs?: unknown;
+			definitions?: unknown;
+		};
+		// Keep shared definitions so property $refs still resolve, and additionalProperties so the
+		// model knows whether extra arguments are allowed. Other root keywords stay out:
+		// Anthropic rejects root anyOf/oneOf/allOf with a 400.
 		const legacyInputSchema = {
 			type: "object" as const,
 			properties: schema.properties ?? {},
 			required: schema.required ?? [],
+			...(schema.additionalProperties === undefined ? {} : { additionalProperties: schema.additionalProperties }),
+			...(schema.$defs === undefined ? {} : { $defs: schema.$defs }),
+			...(schema.definitions === undefined ? {} : { definitions: schema.definitions }),
 		};
 		const inputSchema =
 			strict === true

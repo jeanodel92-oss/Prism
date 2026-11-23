@@ -582,7 +582,7 @@ describe("fork: the site's art direction", () => {
 	const fgOf = (s: string, glyph: string) => new RegExp(`\\x1b\\[38;2;([\\d;]+)m${glyph}`).exec(s)?.[1];
 
 	it("keeps the large prism symmetric around its apex", () => {
-		// The owner's reference: both edges equally far from the apex on every row, glass between.
+		// The maintainer's reference: both edges equally far from the apex on every row, glass between.
 		const apex = LOGO_LARGE[0]!.indexOf("*");
 		for (const [y, row] of LOGO_LARGE.entries()) {
 			if (y === 0) continue;

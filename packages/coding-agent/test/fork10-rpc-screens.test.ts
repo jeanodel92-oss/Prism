@@ -596,7 +596,7 @@ describe("fork.10: the window's screens", () => {
 			const packageDir = join(agentDir, "packages", "coding-agent");
 			mkdirSync(packageDir, { recursive: true });
 			mkdirSync(join(agentDir, "fork"));
-			const source = join(agentDir, "fork", "CHANGELOG.md");
+			const source = join(agentDir, "fork", "RELEASE-NOTES.md");
 			writeFileSync(source, "fork notes");
 			expect(getPrismChangelogPath(packageDir)).toBe(source);
 			const bundled = join(packageDir, "PRISM-CHANGELOG.md");

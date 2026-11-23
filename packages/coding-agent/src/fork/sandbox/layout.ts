@@ -37,6 +37,10 @@ import { isReadable, readableSet } from "./read-limit.ts";
 import { REBUILT_SETTINGS, relocated } from "./tool-settings.ts";
 
 /** The `sandbox` object of the global settings.json; a project cannot change it. */
+/** fork (audit FIN-15): the failure when Prism opens in the home folder (or above) with reading limited. */
+export const HOME_FOLDER_BLOCKED =
+	"Reading is limited to the project, and Prism was opened in the home folder or above it: open Prism in a project folder, or let commands read everything (sandbox.read.limit in Prism's settings).";
+
 export interface SandboxSettings {
 	/**
 	 * Modes in which shell commands run in the sandbox. Default: all but unrestricted;
@@ -422,11 +426,11 @@ export interface SandboxLayout {
 	/** fork: the repositories found below the project and `allowWrite`, checked after the command. */
 	repositories?: RepositorySearch;
 	/**
-	 * fork (AS-010): the package caches among `writable`, shown to each command through `cacheLayers`
+	 * fork: the package caches among `writable`, shown to each command through `cacheLayers`
 	 * (`cache-layers.ts`), never bound as they are: what a command writes there never reaches the real caches.
 	 */
 	caches?: string[];
-	/** fork (AS-010): one command's view of `caches`; a cache without one is read-only. */
+	/** fork: one command's view of `caches`; a cache without one is read-only. */
 	cacheLayers?: CacheLayer[];
 }
 
@@ -598,7 +602,7 @@ export function buildLayout(input: LayoutInput): SandboxLayout {
 	const caches = present(limit ? limit.write : DEFAULT_WRITABLE_HOME_PATHS.map((path) => join(home, path)));
 	const allowWrite = input.settings.allowWrite.map((path) => resolve(cwd, expandHome(path, home)));
 	const writable = present([cwd, ...caches, ...allowWrite]);
-	// fork (AS-010): a cache the user made writable, or one that holds the project or is in it, is bound as it is.
+	// fork: a cache the user made writable, or one that holds the project or is in it, is bound as it is.
 	const allowed = present(allowWrite);
 	const layered = caches.filter((path) => !allowed.includes(path) && !within(cwd, path) && !within(path, cwd));
 	const readOnly = new Set<string>();
@@ -729,7 +733,7 @@ export function buildLayout(input: LayoutInput): SandboxLayout {
 		const projects = new Map<string, { gitdir: string; common: string; git?: string[]; root?: string }>();
 		// fork: a hook that links to a writable file would run its new content.
 		const hookFolders = new Set<string>();
-		// fork.12 (AS-025): the browser extension's copies in ~/Prism, the window's folder when it opens in the home
+		// the browser extension's copies in ~/Prism, the window's folder when it opens in the home
 		// folder. The browser loads them again at each start, outside the sandbox: read-only for commands, in every mode.
 		for (const copy of extensionCopies(home)) {
 			if (!exists(copy)) continue;
@@ -1130,8 +1134,7 @@ export function buildLayout(input: LayoutInput): SandboxLayout {
 	if (limit) {
 		// Q-L10: the "project" would be the whole home folder.
 		if (!limit.project) {
-			blocked ??=
-				"Reading is limited to the project, and Prism was opened in the home folder or above it: open Prism in a project folder, or let commands read everything (sandbox.read.limit in Prism's settings).";
+			blocked ??= HOME_FOLDER_BLOCKED;
 		}
 		const shown = [...limit.read.map(({ path }) => path), ...writable, join(home, ".cache")];
 		// Q-L2: what the home folder does not show is not mounted there, not even as an unreadable stand-in.
@@ -1216,8 +1219,8 @@ export function pinnedFolders(
 
 /**
  * bubblewrap's arguments, up to and excluding `--`. Later mounts cover earlier ones, so the order is:
- * the whole system read-only, the private /tmp, the limited home folder, writable paths (a project under
- * /tmp stays reachable; the package caches through their layers, AS-010), the private copies of Git folders, the
+ * the whole system read-only, the private /tmp, the limited home folder, writable paths
+ * , the private copies of Git folders, the
  * folders that hold read-only paths, the private layers of hooks folders, read-only again inside them, copies, hidden
  * paths;
  * last, the limited home folder becomes read-only, once every mount point in it is made.
@@ -1256,7 +1259,7 @@ export function bwrapArgs(
 			args.push("--bind", path, path);
 			continue;
 		}
-		// fork (AS-010): a cache through its layer for this command; read-only without one.
+		// fork: a cache through its layer for this command; read-only without one.
 		const layer = layout.cacheLayers?.find((entry) => entry.path === path);
 		if (!layer) args.push("--ro-bind", path, path);
 		else if ("source" in layer) args.push("--bind", layer.source, path);

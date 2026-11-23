@@ -616,7 +616,7 @@ describe("desktop tool on the user's desktop", () => {
 		}
 	});
 
-	// The owner's decision of 2026-11-13: once they gave their desktop, a launch there asks nothing more.
+	// The maintainer's decision of 2026-11-13: once they gave their desktop, a launch there asks nothing more.
 	it("launches a program on the user's desktop without asking, and opens it there", async () => {
 		const { harness, asked, selected, call } = await session(true);
 		const marker = (n: number) => join(dir, `launched-${n}`);

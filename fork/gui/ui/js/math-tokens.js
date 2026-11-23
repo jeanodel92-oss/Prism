@@ -1,8 +1,8 @@
 // What is math in a Markdown text: the terminal's rules (packages/tui/src/components/markdown.ts, tokenizeInlineLatex
 // and tokenizeBlockLatex), ported unchanged so the window and the terminal agree on it.
-// - inline: $…$, $$…$$, \(…\), \[…\] on one line; "$" is not math when a space follows the opening "$" or precedes
-//   the closing one, a digit follows the closing one ("$5 and $10"), the text is a shell-like name followed by a word
-//   ("$HOME/$USER"), or it holds a backquote;
+// - inline: $…$, $$…$$, \(…\), \[…\] on one line, or over two lines of one paragraph (a single soft line break);
+//   "$" is not math when a space follows the opening "$" or precedes the closing one, a digit follows the closing
+//   one ("$5 and $10"), the text is a shell-like name followed by a word ("$HOME/$USER"), or it holds a backquote;
 // - block: $$…$$ or \[…\] starting a line, over several lines;
 // - pending (a reply still streaming): an opening delimiter without its closing one, kept as text with `pending`;
 //   an opening "$" counts only when what follows looks like math.
@@ -70,7 +70,8 @@ export function tokenizeInlineLatex(source) {
 	}
 
 	const text = source.slice(opening.length, closingIndex);
-	if (!text || text.includes("\n")) return undefined;
+	// A formula may wrap once inside its paragraph ("$E =\nmc^2$"): a model's soft wrap left it raw.
+	if (!text || text.split("\n").length > 2) return undefined;
 
 	const raw = source.slice(0, closingIndex + closing.length);
 	return { type: "latex", raw, text };

@@ -337,7 +337,7 @@ describe("fork: produced files", () => {
 		expect(openRefusal(at("app.desktop", "[Desktop Entry]"))).toContain("Scripts");
 		expect(openRefusal(at("setup.sh", "echo"))).toContain("Scripts");
 		expect(openRefusal(at("readme", "#!/bin/sh\necho"))).toContain("Scripts");
-		// Review L9, owner's decision 2026-11-05: by content when the name says nothing; web pages show as code.
+		// Review L9, maintainer's decision 2026-11-05: by content when the name says nothing; web pages show as code.
 		expect(openRefusal(at("launcher", "\n[Desktop Entry]\nExec=sh -c x"))).toContain("Scripts");
 		expect(openRefusal(at("page.html", "<p>hi</p>"))).toContain("Prism shows their code");
 		expect(openRefusal(at("Page.SVG", "<svg/>"))).toContain("Prism shows their code");

@@ -386,7 +386,7 @@ const parameters = Type.Object(
 export function sudoQuestion(command: ResolvedCommand, cwd: string): string {
 	return [
 		t("Run as root, outside the sandbox?"),
-		// fork.12 security audit (AS-016, AS-017): the arguments show their terminal controls and line breaks.
+		// fork.12 security audit: the arguments show their terminal controls and line breaks.
 		visibleText(showCommand(command.argv)),
 		`${t("Folder:")} ${cwd}`,
 		command.changeable.length > 0

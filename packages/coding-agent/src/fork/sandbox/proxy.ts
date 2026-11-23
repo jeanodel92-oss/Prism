@@ -365,7 +365,7 @@ export class CommandNetwork {
 			this.policy.allowedFor(host, this.command)
 		)
 			return true;
-		// fork (AS-023): a name's private address is asked about, questions on or off.
+		// fork: a name's private address is asked about, questions on or off.
 		if (privateAddressOf(host) !== undefined) return this.refused.get(host);
 		const unasked = !explicitOnly(host) ? true : localPortOf(host) === undefined ? "ssh" : "port";
 		return this.refused.get(host) ?? (settings.askNewHosts ? undefined : unasked);
@@ -624,7 +624,7 @@ export function serveProxyStream(stream: Duplex, network: CommandNetwork): void 
 			names.push(port);
 			if (!(await network.allows(port))) return refused(port);
 		}
-		// fork (AS-023): a name that leads to a private network needs that address allowed too.
+		// fork: a name that leads to a private network needs that address allowed too.
 		const lan = privateAddressName(destination.host, addresses);
 		if (lan !== undefined) {
 			names.push(lan);

@@ -1,7 +1,7 @@
 [
 	{ "do": "log", "text": "fork.11: /desktop shows the agent's desktop live, with its pointer; stop from the panel." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
-	{ "do": "click", "selector": ".rail-button[data-command='desktop']:not([hidden])", "why": "owner's QA, 2026-11-13: /desktop is an icon of the side menu while its module is on" },
+	{ "do": "click", "selector": ".rail-button[data-command='desktop']:not([hidden])", "why": "maintainer's QA, 2026-11-13: /desktop is an icon of the side menu while its module is on" },
 	{ "do": "wait", "selector": "#surface .panel.desktop .panel-text", "text": "not running", "why": "not running: the panel says so and never starts it" },
 	{ "do": "shot", "name": "d1-not-running" },
 	{ "do": "type", "text": "call desktop {\"action\":\"move\",\"x\":640,\"y\":360}" },

@@ -103,7 +103,7 @@ test("the chord of a square", () => {
 	assert.equal(chord([[0, 0], [1, 0], [1, 1], [0, 1]], 2), undefined);
 });
 
-// The owner's QA of the fork.11 candidate: the band of light that swept the glass was too much; it is
+// The maintainer's QA of the fork.11 candidate: the band of light that swept the glass was too much; it is
 // gone, with its uniforms. Only a slab at work moves (its light breathes).
 test("no band of light sweeps the glass", () => {
 	const source = readFileSync(new URL("../ui/phone/facets.js", import.meta.url), "utf8");

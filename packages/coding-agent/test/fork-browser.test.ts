@@ -161,6 +161,11 @@ describe("browser setup", () => {
 		});
 		const firefox = JSON.parse(readFileSync(result.written[1].path, "utf8"));
 		expect(firefox.allowed_extensions).toEqual([FIREFOX_EXTENSION_ID]);
+		// Without the store, each family loads its own copy: Firefox's manifest differs.
+		expect(result.firefoxExtensionDir).not.toBe(result.extensionDir);
+		const firefoxManifest = JSON.parse(readFileSync(join(result.firefoxExtensionDir, "manifest.json"), "utf8"));
+		expect(firefoxManifest.background).toEqual({ scripts: ["background.js"] });
+		expect(firefoxManifest.key).toBeUndefined();
 		expect(statSync(result.launcher).mode & 0o111).not.toBe(0);
 		expect(readFileSync(result.launcher, "utf8")).toBe(hostLauncherScript(["/opt/prism it's/prism"]));
 		expect(hostLauncherScript(["/opt/prism it's/prism"])).toContain(

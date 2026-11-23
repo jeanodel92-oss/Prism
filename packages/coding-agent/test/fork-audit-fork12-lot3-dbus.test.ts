@@ -16,7 +16,7 @@ const busCall = (member: string, serial: number) =>
 		[3, "s", member],
 	]);
 
-describe("fork: Prism's connections to the system bus for the sandbox are bounded (AS-030)", () => {
+describe("fork: Prism's connections to the system bus for the sandbox are bounded", () => {
 	let server: Server;
 	let busPath: string;
 	let open: Set<Socket>;

@@ -547,7 +547,10 @@ export function expandTildePath(path: string): string {
 	return normalizePath(path);
 }
 
-const DEFAULT_SHARE_VIEWER_URL = "https://pi.dev/session/";
+// fork (FIN-05): a branded build shares to its own site's viewer, never to pi.dev
+// (same URL as BRANDED_SHARE_VIEWER_URL in fork/branded-cli.ts, which imports this module).
+const DEFAULT_SHARE_VIEWER_URL =
+	APP_NAME === "pi" ? "https://pi.dev/session/" : "https://prism.odelserver.space/session/";
 
 /** Get the share viewer URL for a gist ID. */
 export function getShareViewerUrl(gistId: string): string {

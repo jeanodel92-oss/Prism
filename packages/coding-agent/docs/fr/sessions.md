@@ -55,12 +55,10 @@ Utilisez `--session` si vous connaissez déjà le chemin ou l’identifiant de l
 
 ## Exporter ou partager une session
 
-Utilisez `/export` pour enregistrer la session actuelle au format HTML ou JSONL. Utilisez `/share` pour la téléverser et obtenir un lien de consultation. Prism utilise un élément Radius si l’authentification Radius est configurée ; sinon, il utilise un gist GitHub privé.
+Utilisez `/export` pour enregistrer la session actuelle au format HTML ou JSONL, et `/export-zip` pour placer des sessions et fichiers choisis dans une archive portable. Utilisez `/share` pour envoyer la session dans un gist GitHub secret et obtenir un lien vers le lecteur de sessions de Prism (`https://prism.odelserver.space/session/#<id du gist>`). `/share` a besoin de l’outil GitHub en ligne de commande (`gh`), connecté avec `gh auth login`. Un gist secret n’est pas listé, mais toute personne qui a son lien peut le lire.
 
 Examinez les sessions exportées ou partagées. Elles peuvent contenir des prompts, des réponses de modèles, des arguments d’outils, des sorties de commandes, le contenu de fichiers et des messages d’extensions.
 
-## Signaler un bogue
+## Signaler un problème
 
-Exécutez `/bug [description]` pour préparer un signalement privé à l’équipe Prism. Vous pouvez inclure la transcription de la session, l’omettre ou demander au modèle actuel de résumer le problème. Examinez la transcription ou le résumé généré : il peut contenir des informations sensibles de la conversation.
-
-Le signalement contient des informations sur l’environnement et la configuration du fournisseur, mais pas les valeurs des identifiants, ainsi que les diagnostics d’erreur enregistrés. Téléversez-le avec `radius.pi.dev` ou exportez le même rapport dans une archive zip pour l’examiner et le partager vous-même. Aucun compte n’est nécessaire pour le téléversement ; l’authentification Radius associe le rapport à votre compte pour que l’équipe puisse vous répondre. Si le téléversement échoue, Prism propose d’exporter l’archive zip.
+Consultez [Signaler un problème](doctor.md#signaler-un-problème) : ouvrez une issue dans le dépôt de Prism avec la sortie de `prism --version` et, si cela aide, un rapport de `prism doctor export <fichier>`.

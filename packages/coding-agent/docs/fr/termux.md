@@ -1,6 +1,8 @@
-# Exécuter Pi sur Android avec Termux
+# Exécuter pi sur Android avec Termux
 
-> Prism publie uniquement des versions pour Linux x64 et n’est pas testé sous Android. Cette page décrit pi upstream, installé avec npm, dans Termux.
+> **Pour utiliser Prism depuis un téléphone Android, utilisez l’[app Prism](phone.md) :** elle suit et pilote le Prism de votre ordinateur. Prism lui-même ne publie des versions que pour Linux x64 et ne fonctionne pas dans Termux.
+>
+> Cette page décrit **pi**, l’agent sur lequel Prism est construit, installé avec npm dans Termux. pi garde sa configuration dans `~/.pi`, pas dans le `~/.prism` de Prism.
 
 Pi fonctionne sur Android grâce à [Termux](https://termux.dev/), un émulateur de terminal et un environnement Linux. La saisie de texte, les outils de fichiers et les commandes shell sont pris en charge. Pi peut copier et coller du texte avec le presse-papiers Android au moyen de Termux:API. Le collage d’images du presse-papiers n’est pas pris en charge.
 

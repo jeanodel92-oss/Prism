@@ -68,6 +68,7 @@ prism --perm-mode broad -p "Update the project files"
 
 Dangerous actions still require confirmation and remain blocked without an
 interactive UI. A targeted rule in the agent's `permissions.json` can grant a
-specific action, for example `{"allow":["write(src/**)"]}`. Rules are guardrails,
-not a sandbox: allowed shell commands have the same access as the Prism process.
+specific action, for example `{"allow":["write(src/**)"]}`. In the `safe`, `ask` and
+`broad` modes, allowed shell commands still run in the [sandbox](sandbox.md): they write
+only to the project, and a host never allowed is refused, since no one can answer.
 See [Permissions](permissions.md) for modes, rule matching, and protected paths.

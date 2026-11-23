@@ -16,7 +16,6 @@
   "Configure Shell Commands": "Configurer les commandes du shell",
   "Run Prism in tmux": "Exécuter Prism dans tmux",
   "Run Prism on Windows": "Exécuter Prism sous Windows",
-  "Run Prism on Android": "Exécuter Prism sur Android",
   "Customize Prism": "Personnaliser Prism",
   "Configure Prism": "Configurer Prism",
   "Create Prompt Templates": "Créer des modèles de prompt",
@@ -45,5 +44,14 @@
   "RPC Protocol": "Protocole RPC",
   "RPC Commands": "Commandes RPC",
   "RPC Extension UI": "Interface des extensions RPC",
-  "Message Types": "Types de message"
+  "Message Types": "Types de message",
+  "Use Prism's Window": "Utiliser la fenêtre de Prism",
+  "Use Prism from Your Phone": "Utiliser Prism depuis votre téléphone",
+  "Sandbox": "La sandbox",
+  "Let the Agent Use Your Browser": "Laisser l’agent utiliser votre navigateur",
+  "Schedule Tasks": "Planifier des tâches",
+  "Update Prism": "Mettre Prism à jour",
+  "Diagnose Problems": "Diagnostiquer un problème",
+  "Run pi on Android (Termux)": "Exécuter pi sur Android (Termux)",
+  "Automate Prism": "Automatiser Prism"
 }

@@ -284,7 +284,7 @@ fn bounds_the_connections_that_have_not_said_who_they_are() {
     }
 }
 
-// Security audit of fork.12 (follow-up of AS-001): a phone that stops reading does not hold the PC's writes forever.
+// Security audit of fork.12: a phone that stops reading does not hold the PC's writes forever.
 #[test]
 fn bounds_how_long_a_write_waits_for_a_phone() {
     let (pc_dir, phone_dir) = (temp("write-pc"), temp("write-phone"));

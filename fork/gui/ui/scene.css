@@ -74,12 +74,14 @@
 	--ps-speck: transparent;
 	--ps-dust: 255 253 244;
 	--ps-band: 0.86;
-	--ps-red: #dc7c70;
-	--ps-orange: #e3a463;
-	--ps-yellow: #d6c35c;
-	--ps-green: #75b98a;
-	--ps-blue: #6f93d6;
-	--ps-violet: #9c7bcb;
+	/* As restrained as on the dark page: each colour keeps its
+	   lightness and about a third of its saturation. */
+	--ps-red: #af8e8a;
+	--ps-orange: #c1ab95;
+	--ps-yellow: #c6bf9b;
+	--ps-green: #91a898;
+	--ps-blue: #8491a8;
+	--ps-violet: #9387a3;
 }
 
 .scene.vector[data-art="prism"] .prism-scene,

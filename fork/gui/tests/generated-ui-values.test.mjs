@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chartScale, formValues } from "../ui/js/generated-ui.js";
 
-// Codex review of 2026-11-09, 327: a field named like an Object member keeps its answer in the payload.
+// review of 2026-11-09, 327: a field named like an Object member keeps its answer in the payload.
 test("form answers keep fields named like Object members", () => {
 	const inputs = ["__proto__", "constructor", "toString"].map((name, index) => ({
 		name,

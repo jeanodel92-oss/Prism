@@ -1,0 +1,17 @@
+[
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "edit", "text": "hello world", "why": "typed through the web view's own editing, which keeps the undo history" },
+	{ "do": "wait", "selector": "#input", "text": "hello world" },
+	{ "do": "key", "selector": "#input", "key": "z", "mods": { "ctrlKey": true }, "why": "tui.editor.undo (ctrl+z), maintainer's QA 2026-11-23" },
+	{ "do": "absent", "selector": "#input", "text": "hello world" },
+	{ "do": "log", "text": "undo: the last edit was taken back" },
+	{ "do": "key", "selector": "#input", "key": "y", "mods": { "ctrlKey": true }, "why": "tui.editor.redo (ctrl+y), maintainer's QA 2026-11-23" },
+	{ "do": "wait", "selector": "#input", "text": "hello world" },
+	{ "do": "log", "text": "redo: ctrl+y put it back" },
+	{ "do": "key", "selector": "#input", "key": "z", "mods": { "ctrlKey": true } },
+	{ "do": "absent", "selector": "#input", "text": "hello world" },
+	{ "do": "key", "selector": "#input", "key": "Z", "mods": { "ctrlKey": true, "shiftKey": true }, "why": "tui.editor.redo (ctrl+shift+z)" },
+	{ "do": "wait", "selector": "#input", "text": "hello world" },
+	{ "do": "log", "text": "redo: ctrl+shift+z put it back" },
+	{ "do": "quit" }
+]

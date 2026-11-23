@@ -66,7 +66,7 @@ const PRIVATE = [
 	["ula.attacker.example", "fd12:3456:789a::1"],
 ] as const;
 
-describe("fork (AS-023): a name that leads to a private address", () => {
+describe("fork: a name that leads to a private address", () => {
 	/** The check of one URL; the user allows the names in `yes` and nothing else. */
 	const check = async (url: string, yes: (asked: string) => boolean, guard = new DnsGuard(resolver())) => {
 		const questions: string[] = [];

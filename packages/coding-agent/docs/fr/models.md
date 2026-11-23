@@ -18,7 +18,7 @@ Consultez le [catalogue de modèles](https://pi.dev/models) pour voir les fourni
 
 Exécutez `/login` et choisissez un fournisseur. Prism enregistre les identifiants dans [`auth.json`](configuration.md#dossier-agent). Exécutez `/logout` pour supprimer les identifiants enregistrés d’un fournisseur.
 
-Vous pouvez aussi fournir une clé API avec la variable d’environnement du fournisseur. Cette méthode convient à l’intégration continue et aux environnements où Prism ne doit pas écrire d’identifiants. La page [Fournisseurs](../providers.md) indique les variables et les réglages propres à chaque fournisseur.
+Vous pouvez aussi fournir une clé API avec la variable d’environnement du fournisseur. Cette méthode convient à l’intégration continue et aux environnements où Prism ne doit pas écrire d’identifiants. La page [Fournisseurs](providers.md) indique les variables et les réglages propres à chaque fournisseur.
 
 Si plusieurs sources d’identifiants sont configurées, Prism utilise d’abord la clé d’exécution `--api-key`, puis un identifiant enregistré dans `auth.json`, une valeur `apiKey` dans `models.json`, puis les variables d’environnement du fournisseur ou les identifiants cloud présents dans l’environnement. Les extensions de fournisseur peuvent définir leur propre méthode d’authentification.
 
@@ -116,7 +116,7 @@ Les modèles de classification ne dialoguent pas. Ils répondent à des question
 
 Les modèles de dialogue du [routeur llama.cpp](llama-cpp.md#classification) figurent aussi parmi les modèles de classification.
 
-Les modèles de classification ne figurent pas dans `/model`. Le modèle les utilise par l’intermédiaire de l’outil [`codemode`](../cli.md#enable-codemode), désactivé sauf si un serveur MCP l’a activé. Activez-le avec `"defaultTools": ["+codemode"]` dans les [réglages](settings.md#outils). Les scripts listent ensuite les modèles de classification avec `models.getAvailableOfType("classifier")` et appellent `models.classify(model, { state, questions })` :
+Les modèles de classification ne figurent pas dans `/model`. Le modèle les utilise par l’intermédiaire de l’outil [`codemode`](cli.md#activer-codemode), désactivé sauf si un serveur MCP l’a activé. Activez-le avec `"defaultTools": ["+codemode"]` dans les [réglages](settings.md#outils). Les scripts listent ensuite les modèles de classification avec `models.getAvailableOfType("classifier")` et appellent `models.classify(model, { state, questions })` :
 
 ```js
 const jev = await models.getModelOfType("classifier", "typesafe", "jev-latest");
@@ -143,7 +143,7 @@ Les extensions appellent les modèles de classification avec `ctx.modelRegistry.
 
 Les modèles d’image génèrent des images à partir d’un prompt et, en option, d’images d’entrée. Prism répertorie les modèles d’image d’OpenRouter, comme `google/gemini-2.5-flash-image` et `black-forest-labs/flux.2-pro`, sous le fournisseur `openrouter`. Ils utilisent les mêmes identifiants `OPENROUTER_API_KEY` ou `/login` que ses modèles de dialogue.
 
-Comme les modèles de classification, les modèles d’image ne figurent pas dans `/model` ; le modèle les utilise par l’intermédiaire de l’outil [`codemode`](../cli.md#enable-codemode). Les scripts les listent avec `models.getAvailableOfType("image")` et appellent `models.generateImages(model, { input })`. La propriété `output` du résultat contient des blocs d’image en base64 ; `image()` les ajoute au résultat de `codemode` pour que le modèle les voie :
+Comme les modèles de classification, les modèles d’image ne figurent pas dans `/model` ; le modèle les utilise par l’intermédiaire de l’outil [`codemode`](cli.md#activer-codemode). Les scripts les listent avec `models.getAvailableOfType("image")` et appellent `models.generateImages(model, { input })`. La propriété `output` du résultat contient des blocs d’image en base64 ; `image()` les ajoute au résultat de `codemode` pour que le modèle les voie :
 
 ```js
 const painter = await models.getModelOfType("image", "openrouter", "google/gemini-2.5-flash-image");
@@ -174,7 +174,7 @@ Vérifiez si la clé vient d’une variable d’environnement plutôt que de `au
 
 ### La connexion ouvre un navigateur sur une machine distante
 
-Si elle est disponible, terminez la procédure d’authentification sans interface graphique du fournisseur. Certains fournisseurs permettent de coller l’URL de redirection finale ou le code d’autorisation dans Prism. Consultez [S’authentifier en mode interactif](../providers.md#authenticate-interactively).
+Si elle est disponible, terminez la procédure d’authentification sans interface graphique du fournisseur. Certains fournisseurs permettent de coller l’URL de redirection finale ou le code d’autorisation dans Prism. Consultez [S’authentifier en mode interactif](providers.md#sauthentifier-de-façon-interactive).
 
 ### Un point de terminaison compatible refuse les demandes
 

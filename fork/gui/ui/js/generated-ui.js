@@ -205,7 +205,7 @@ function choices(block, answer) {
 	);
 }
 
-// Codex review of 2026-11-09, 327: no prototype, so a field named `__proto__` is stored as data instead of
+// review of 2026-11-09, 327: no prototype, so a field named `__proto__` is stored as data instead of
 // going through the inherited setter.
 export function formValues(inputs) {
 	const values = Object.create(null);

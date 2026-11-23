@@ -154,7 +154,7 @@ if [[ "$runtime" == bun ]]; then
 	# the Prism browser extension, which /browser setup points to.
 	cp -a "$ROOT/packages/coding-agent/browser-extension" "$staging/"
 	# fork: /changelog shows Prism's release notes.
-	cp "$ROOT/fork/CHANGELOG.md" "$staging/PRISM-CHANGELOG.md"
+	cp "$ROOT/fork/RELEASE-NOTES.md" "$staging/PRISM-CHANGELOG.md"
 	package_json="$INSTALL_DIR/package.json"
 else
 	if [[ "$skip_build" != true ]]; then
@@ -176,7 +176,7 @@ else
 	# the Prism browser extension, which /browser setup points to.
 	cp -a "$ROOT/packages/coding-agent/browser-extension" "$package_dir/"
 	# fork: /changelog shows Prism's release notes.
-	cp "$ROOT/fork/CHANGELOG.md" "$package_dir/PRISM-CHANGELOG.md"
+	cp "$ROOT/fork/RELEASE-NOTES.md" "$package_dir/PRISM-CHANGELOG.md"
 	# one file per plugin whose import resolution is slow (see the script).
 	node "$ROOT/fork/scripts/prebundle-vendored.mjs" "$package_dir/vendor/node_modules" "$package_dir/vendor/prebundled"
 	# Same identity as brand-binary.sh: command, config dir and version.

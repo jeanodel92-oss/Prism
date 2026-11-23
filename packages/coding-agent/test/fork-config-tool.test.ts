@@ -401,7 +401,7 @@ describe("fork: configure_prism", () => {
 		expect(questions).toHaveLength(0);
 		expect(JSON.parse(readFileSync(settingsFile(), "utf8")).extensions).toBeUndefined();
 	});
-	// Owner's decision, 2026-11-05.
+	// maintainer's decision, 2026-11-05.
 	it("sets the extensions list to built-in modules only, refusing packages and files without a question", async () => {
 		const { harness, questions } = await start();
 		for (const value of [["npm:some-package"], ["./x.ts"], ["+builtin:memory", "/tmp/x.ts"], ["builtin:secrets"]]) {

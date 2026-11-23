@@ -14,7 +14,7 @@ prism install git:github.com/example/pi-tools@v1
 prism install ./local-package
 ```
 
-`prism list` affiche les packages configurés. Utilisez `prism remove <source>` pour en supprimer un et `prism update --extensions` pour mettre les installations de packages en conformité. Consultez [Ligne de commande](../cli.md#package-commands) pour toutes les commandes et options de packages.
+`prism list` affiche les packages configurés. Utilisez `prism remove <source>` pour en supprimer un et `prism update --extensions` pour mettre les installations de packages en conformité. Consultez [Ligne de commande](cli.md#commandes-de-packages) pour toutes les commandes et options de packages.
 
 Les installations personnelles sont déclarées dans `~/.prism/agent/settings.json`. Ajoutez `--local` ou `-l` pour déclarer le package dans `.prism/settings.json`. Prism ne lit ce fichier qu’après l’approbation du projet.
 

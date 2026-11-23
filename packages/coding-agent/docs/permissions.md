@@ -5,10 +5,14 @@ Prism puts a confirmation gate in front of tool calls. It is always loaded:
 change it, with `/perm` or `--perm-mode`. An extension you install that registers
 `/perm`, `--perm-mode` or `--perm-yolo` replaces it. `alt+m` cycles the mode.
 
-**This is not a sandbox.** The rules match patterns in commands and paths; they are
-not a security boundary. A shell command you allow can do anything your user account
-can do, including reading `auth.json` and your other files: secrets are not isolated
-from the agent. For real isolation, see [Isolate Prism](containerization.md).
+The gate decides whether a call runs; the [sandbox](sandbox.md) limits what a shell
+command can do once it runs. In the `safe`, `ask` and `broad` modes, the agent's
+commands run in the sandbox by default: they can change only the project, cannot read
+Prism's credentials or your keys, and reach only the hosts you allow. The rules on this
+page match patterns in commands and paths; on their own, they are not a security
+boundary. Outside the sandbox (`unrestricted` mode, commands you exclude from it, the
+`sudo` tool), an allowed command can do anything your user account can do. For a
+boundary around the whole Prism process, see [Isolate Prism](containerization.md).
 
 ## What gets gated in `ask` mode
 
@@ -112,9 +116,9 @@ Each call still feeds the password through a fresh, single-use `SUDO_ASKPASS` FI
 `sudo -k -A` and the final `sudo -k` keep sudo's credential cache disabled. The
 password never goes to the model, session, logs, traces, environment variables or
 stored files; output masks it as `***`. A JavaScript string cannot be wiped, only
-dereferenced. This opt-in window and session approval are the owner's D11 decision
-(2026-11-05): same-user access to Prism's memory is no easier than before, but a
-compromised Prism process now holds the remembered password for up to five minutes.
+dereferenced. The trade-off of this opt-in window and of session approval: same-user
+access to Prism's memory is no easier than before, but a compromised Prism process
+holds the remembered password for up to five minutes.
 An in-flight command also retains its local reference until it returns.
 
 ## Task scope
@@ -152,8 +156,9 @@ connections.
 dangerous calls and writes outside the project included. You enable it once, in a
 warning dialog (the choice is saved in the global `permissions.json` as
 `"unrestrictedAccepted": true`), or explicitly on the command line
-(`--perm-mode unrestricted`). A project's `permissions.json` cannot select it. It is still not a
-sandbox: the agent can do anything your user account can.
+(`--perm-mode unrestricted`). A project's `permissions.json` cannot select it. Its commands
+run outside the sandbox unless you turn the sandbox on for it in `/settings` › Permissions
+& sandbox; outside the sandbox, the agent can do anything your user account can.
 
 Or for one run: `--perm-mode safe`, `--perm-mode broad` (`--perm-yolo`). The mode
 chosen with `/perm mode` or `alt+m` is saved in the session and comes back when you

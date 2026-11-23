@@ -63,7 +63,11 @@ describe("fork: the extension's build", () => {
 	// A store install is compared by its version only: any change to the extension must come with a new version, which
 	// the stores then publish. When this fails, raise "version" in browser-extension/manifest.json and pin its build.
 	it("has a new manifest version for each change to the extension", () => {
-		const builds: Record<string, string> = { "0.1.1": "376631929278ef5e", "0.1.2": "2489e35faaa9812c" };
+		const builds: Record<string, string> = {
+			"0.1.1": "376631929278ef5e",
+			"0.1.2": "2489e35faaa9812c",
+			"0.1.3": "ec20b9fb90cb9abc",
+		};
 		expect({ version: shippedExtensionVersion(), build: extensionBuild() }).toEqual({
 			version: shippedExtensionVersion(),
 			build: builds[shippedExtensionVersion()],

@@ -72,6 +72,20 @@ describe("fork: /doctor", () => {
 		expect(report.checks.filter((entry) => entry.status === "problem")).toEqual([]);
 	});
 
+	// Public release audit 2026-11-23 (FIN-06): a cloud model without a key was "ok" while the header said "no model".
+	it("reports a cloud model without a key as a problem, and a local server without one as ok", async () => {
+		const cloud = await buildDoctorReport(
+			context({ provider: "openai", id: "gpt-test", baseUrl: "https://api.openai.com/v1" }),
+		);
+		const remote = cloud.checks.find((entry) => entry.component === "Current model");
+		expect(remote?.status).toBe("problem");
+		expect(remote?.action).toContain("/login");
+		const local = await buildDoctorReport(
+			context({ provider: "llama", id: "qwen", baseUrl: "http://127.0.0.1:8080/v1" }),
+		);
+		expect(local.checks.find((entry) => entry.component === "Current model")?.status).toBe("ok");
+	});
+
 	it("reports a failed extension with a confirmed cause and a safe-mode action", async () => {
 		setExtensionLoadDiagnostics([{ path: join(root, "broken.ts"), error: "SyntaxError" }]);
 		const report = await buildDoctorReport(context());
@@ -332,7 +346,7 @@ describe("fork: /doctor", () => {
 				[
 					"✗ Global settings  problem",
 					"   Observed: File could not be parsed.",
-					"   Cause: Confirmed: JSON parsing failed.",
+					"   Cause: JSON parsing failed.",
 					"   Action: Fix the JSON syntax, then run /doctor again.",
 				].join("\n"),
 			);

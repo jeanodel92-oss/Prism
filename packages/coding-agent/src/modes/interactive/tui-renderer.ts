@@ -1,6 +1,7 @@
 import type { Terminal, WheelScrollLines } from "@earendil-works/pi-tui";
 import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
 import { t } from "../../fork/i18n/index.ts"; // fork: display text only
+import { pastePrimarySelection, writePrimarySelection } from "../../fork/primary-selection.ts"; // fork
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { keyDisplayText } from "./components/keybinding-hints.ts";
@@ -25,7 +26,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 	const terminal = options.terminal ?? new ProcessTerminal();
 	if (options.tuiMode === "fullscreen") {
 		const styleSearchMatch = (text: string) => theme.bg("searchMatchBg", theme.fg("searchMatchText", text));
-		return new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, {
+		const screen: TuiAltScreen = new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, {
 			searchMatchStyle: (text) => theme.underline(styleSearchMatch(text)),
 			searchCurrentMatchStyle: (text) => theme.bold(theme.inverse(styleSearchMatch(text))),
 			searchNavigationButtonStyle: (text, hovered) => (hovered ? theme.underline(text) : text),
@@ -36,11 +37,13 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			},
 			openUrl: openBrowser,
 			onRightClickPaste: options.onRightClickPaste,
+			onMiddleClickPaste: () => void pastePrimarySelection(screen),
 			copyOnSelect: options.fullscreenCopyOnSelect,
 			wheelScrollLines: options.fullscreenWheelScrollLines ?? "auto",
 			copySelection: async (text) => {
 				try {
 					await copyToClipboard(text);
+					void writePrimarySelection(text); // fork: middle click pastes it, as in a terminal
 					return true;
 				} catch (error) {
 					return error instanceof Error ? error.message : String(error);
@@ -48,6 +51,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			},
 			translateFlash: t, // fork: "Copied!" in the interface language
 		});
+		return screen;
 	}
 	return new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);
 }

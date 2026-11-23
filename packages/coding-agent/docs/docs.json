@@ -28,6 +28,14 @@
               "path": "usage.md"
             },
             {
+              "title": "Use Prism's Window",
+              "path": "window.md"
+            },
+            {
+              "title": "Use Prism from Your Phone",
+              "path": "phone.md"
+            },
+            {
               "title": "Choose a Model",
               "path": "models.md"
             },
@@ -42,6 +50,26 @@
             {
               "title": "Permissions",
               "path": "permissions.md"
+            },
+            {
+              "title": "Sandbox",
+              "path": "sandbox.md"
+            },
+            {
+              "title": "Let the Agent Use Your Browser",
+              "path": "browser.md"
+            },
+            {
+              "title": "Schedule Tasks",
+              "path": "scheduled-tasks.md"
+            },
+            {
+              "title": "Update Prism",
+              "path": "updates.md"
+            },
+            {
+              "title": "Diagnose Problems",
+              "path": "doctor.md"
             },
             {
               "title": "Isolate Prism",
@@ -68,7 +96,7 @@
               "path": "windows.md"
             },
             {
-              "title": "Run Prism on Android",
+              "title": "Run pi on Android (Termux)",
               "path": "termux.md"
             }
           ]
@@ -105,6 +133,10 @@
         {
           "title": "Build on Prism",
           "items": [
+            {
+              "title": "Automate Prism",
+              "path": "automation.md"
+            },
             {
               "title": "Build Extensions",
               "path": "extensions.md"

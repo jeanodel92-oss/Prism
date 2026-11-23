@@ -456,6 +456,18 @@ export const FR: Record<string, string> = {
 	"Unsupported setting or invalid value. See docs/permissions.md.":
 		"Réglage non pris en charge ou valeur invalide. Consultez docs/fr/permissions.md.",
 	"Unknown optional module.": "Module facultatif inconnu.",
+	// fork (audit DOC-25): the last texts of the terminal without a French entry.
+	'"mode" must be one of {0}': "« mode » doit valoir l'une de ces valeurs : {0}",
+	"it cannot be read ({0})": "il ne peut pas être lu ({0})",
+	"it is not valid JSON ({0})": "ce n'est pas du JSON valide ({0})",
+	"{0}. Until it is fixed, every tool call is refused, so that the rules refused for projects cannot be lost. Fix the file, or remove it to drop the rules given for projects.":
+		"{0}. Tant qu'il n'est pas corrigé, tout appel d'outil est refusé, pour que les règles refusées aux projets ne se perdent pas. Corrigez le fichier, ou supprimez-le pour abandonner les règles données aux projets.",
+	"/settings opens in the terminal or the Prism window.":
+		"/settings s'ouvre dans le terminal ou dans la fenêtre de Prism.",
+	cache: "cache",
+	"Run {0} --help to see the options.": "Lancez {0} --help pour voir les options.",
+	"Error: The current working directory no longer exists. Change to an existing directory and try again.":
+		"Erreur : le dossier de travail n'existe plus. Placez-vous dans un dossier existant et réessayez.",
 	"Configuration links are refused. Change the file directly as the user.":
 		"Les liens de configuration sont refusés. Modifiez le fichier vous-même.",
 	"Invalid configuration file.": "Fichier de configuration invalide.",
@@ -659,6 +671,12 @@ export const FR: Record<string, string> = {
 	"Session directory": "Dossier de session",
 	Crashes: "Plantages",
 	"The check itself failed.": "La vérification elle-même a échoué.",
+	"Possible cause:": "Cause possible :",
+	"Possibly:": "Peut-être :",
+	"No usable model: the selected model has no key or sign-in.":
+		"Aucun modèle utilisable : le modèle choisi n'a ni clé ni connexion.",
+	"Confirmed: no credentials were found for the selected model's provider.":
+		"Confirmé : aucun identifiant n'a été trouvé pour le fournisseur du modèle choisi.",
 	"Confirmed: reading this item threw an error.": "Cause confirmée : la lecture de cet élément a levé une erreur.",
 	"Inspect the technical detail.": "Consultez le détail technique.",
 	"No crash recorded in the last 7 days.": "Aucun plantage enregistré ces 7 derniers jours.",
@@ -1260,6 +1278,8 @@ export const FR: Record<string, string> = {
 	"Complete a path or a command": "Compléter un chemin ou une commande",
 	"Previous messages": "Messages précédents",
 	"in an empty editor": "dans une saisie vide",
+	"Select text in the message": "Sélectionner du texte dans le message",
+	"typing replaces it": "la frappe la remplace",
 	"Choose the model": "Choisir le modèle",
 	"Change the thinking level": "Changer le niveau de réflexion",
 	"or click the level under the editor": "ou cliquez sur le niveau sous la saisie",
@@ -1323,6 +1343,7 @@ export const FR: Record<string, string> = {
 	"Delete to the start of the line": "Effacer jusqu'au début de la ligne",
 	"Delete to the end of the line": "Effacer jusqu'à la fin de la ligne",
 	"Undo in the editor": "Annuler dans la saisie",
+	"Redo in the editor": "Rétablir dans la saisie",
 	"Paste the last deleted text": "Coller le dernier texte effacé",
 	"Cycle through deleted text after pasting": "Parcourir les textes effacés après un collage",
 	"Jump forward to a character": "Sauter en avant jusqu'à un caractère",
@@ -1373,6 +1394,7 @@ export const FR: Record<string, string> = {
 	Fork: "Nouvelle branche",
 	Login: "Connexion",
 	Images: "Images",
+	"Images from tools": "Images des outils",
 	Select: "Choisir",
 	Input: "Saisie",
 	Edit: "Modifier",
@@ -2210,6 +2232,21 @@ export const FR: Record<string, string> = {
 	"The server's model list has not changed.": "La liste des modèles du serveur n'a pas changé.",
 	"Added: {0}.": "Ajoutés : {0}.",
 	"Removed: {0}.": "Retirés : {0}.",
+	"Updated from the server: {0}.": "Mis à jour depuis le serveur : {0}.",
+	// fork: a server's model list read again at start or when the model is not found.
+	"{0}: added {1}; removed {2}.": "{0} : ajouté {1} ; retiré {2}.",
+	"{0}: added {1}.": "{0} : ajouté {1}.",
+	"{0}: removed {1}.": "{0} : retiré {1}.",
+	// fork: what the server says about a model it still serves, read again.
+	"{0}: {1} updated from the server (thinking levels, context, images).":
+		"{0} : {1} mis à jour depuis le serveur (niveaux de raisonnement, contexte, images).",
+	"{0} updated from the server (thinking levels, context, images).":
+		"{0} mis à jour depuis le serveur (niveaux de raisonnement, contexte, images).",
+	"{0}, the current model, is no longer on the server: choose another with /model.":
+		"{0}, le modèle en cours, n’est plus sur le serveur : choisissez-en un autre avec /model.",
+	"{0}, the default model, is no longer on the server.": "{0}, le modèle par défaut, n’est plus sur le serveur.",
+	"{0}, the current and default model, is no longer on the server: choose another with /model.":
+		"{0}, le modèle en cours et par défaut, n’est plus sur le serveur : choisissez-en un autre avec /model.",
 	"{0} is not a server added to models.json.": "{0} n'est pas un serveur ajouté à models.json.",
 	"Enter again removes this model from Prism, Esc keeps it":
 		"Entrée à nouveau retire ce modèle de Prism, Échap le garde",
@@ -2221,6 +2258,18 @@ export const FR: Record<string, string> = {
 		"{0} retiré ; c'était le dernier modèle du serveur, {1} est retiré aussi.",
 	"This conversation keeps it until you choose another model.":
 		"Cette conversation le garde jusqu'à ce que vous choisissiez un autre modèle.",
+	// fork: the removed model was the default (settings-model-page.ts), and the start's notice
+	// (default-model-fallback.ts).
+	"It was the default model for new conversations.": "C'était le modèle par défaut des nouvelles conversations.",
+	"It was the default model for new conversations; no other model is available to replace it.":
+		"C'était le modèle par défaut des nouvelles conversations ; aucun autre modèle n'est disponible pour le remplacer.",
+	"Choose another default model": "Choisir un autre modèle par défaut",
+	"Enter makes the chosen model the default; Esc leaves the default as it is.":
+		"Entrée en fait le modèle par défaut ; Échap laisse le modèle par défaut tel quel.",
+	"Default model {0} not found; using {1}. Choose another in /settings › Models.":
+		"Modèle par défaut {0} introuvable ; j'utilise {1}. Choisissez-en un autre dans /settings › Modèles.",
+	"No key for the default model {0}; using {1}. Sign in with /login, or choose another default in /settings › Models.":
+		"Aucune clé pour le modèle par défaut {0} ; j'utilise {1}. Connectez-vous avec /login, ou choisissez un autre modèle par défaut dans /settings › Modèles.",
 	"Enter again removes your changes, Esc keeps them": "Entrée à nouveau les retire, Échap les garde",
 	"✎ = your value.": "✎ = votre valeur.",
 	"The name Prism shows for this model.": "Le nom que Prism affiche pour ce modèle.",
@@ -2229,6 +2278,8 @@ export const FR: Record<string, string> = {
 	"The longest answer the model may write, in tokens.":
 		"La réponse la plus longue que le modèle peut écrire, en tokens.",
 	"Whether Prism sends images to this model.": "Si Prism envoie des images à ce modèle.",
+	"Keeps the images a tool returns (a screenshot) in the tool's result, instead of a separate message the model may take for one from you. Recommended for the Qwen family. The server must accept it: llama.cpp does, OpenAI does not.":
+		"Garde les images qu'un outil renvoie (une capture d'écran) dans le résultat de l'outil, au lieu d'un message à part que le modèle peut prendre pour un message de vous. Recommandé pour la famille Qwen. Le serveur doit l'accepter : llama.cpp oui, OpenAI non.",
 	"Whether the model can think before it answers. Off, Prism refuses a thinking level for it.":
 		"Si le modèle peut réfléchir avant de répondre. Désactivé, Prism refuse un niveau de réflexion pour lui.",
 	"Tokens the model may spend thinking, at every level, when the server reads a budget.":
@@ -2685,6 +2736,8 @@ export const FR: Record<string, string> = {
 		"Clé d'API (clé d'accès du serveur ; laissez vide s'il n'en demande pas)",
 	"Listing the server's models...": "Lecture de la liste des modèles du serveur…",
 	"Name for this server (default {0})": "Nom de ce serveur (par défaut {0})",
+	"This server is already added as {0}: Enter updates it, or type another name":
+		"Ce serveur est déjà ajouté sous le nom {0} : Entrée le met à jour, ou tapez un autre nom",
 	"Reading what the server says about its models...": "Lecture des capacités indiquées par le serveur…",
 	"{0}, {1} slots": "{0}, {1} emplacements",
 	"{0}: {1}{2}, vision {3}, tools {4}, reasoning {5}{6}": "{0} : {1}{2}, vision {3}, outils {4}, réflexion {5}{6}",
@@ -3079,7 +3132,7 @@ export const FR: Record<string, string> = {
 		"Met en pause après des passages automatiques répétés ou vides, sans outil.",
 	"Managed run RPC": "Pilotage RPC des passages",
 	"Allow trusted installed extensions to start and cancel Goal runs; this is not an extension sandbox.":
-		"Autorise les extensions installées de confiance à lancer et annuler les passages de l'objectif ; ce n'est pas un bac à sable d'extensions.",
+		"Autorise les extensions installées de confiance à lancer et annuler les passages de l'objectif ; ce n'est pas une sandbox d'extensions.",
 	"No response-count cap. Completion, manual pause, blockers, provider limits, and other configured guards still apply.":
 		"Pas de plafond de réponses. La fin de l'objectif, la pause manuelle, les blocages, les limites du fournisseur et les autres garde-fous réglés s'appliquent toujours.",
 	"Set response limit…": "Fixer la limite de réponses…",
@@ -3513,6 +3566,10 @@ export const FR: Record<string, string> = {
 		"son Prism s’est arrêté avant la fin de cette tâche en arrière-plan, donc ses changements Git n’ont pas été vérifiés",
 	"its Prism ended (stopped, killed or crashed) before this command did, so its Git changes were not checked":
 		"son Prism s’est arrêté (interruption, arrêt forcé ou plantage) avant la fin de cette commande, donc ses changements Git n’ont pas été vérifiés",
+	"Prism was opened in your home folder: shell commands stay blocked here.":
+		"Prism a été ouvert dans votre dossier personnel : les commandes du terminal y restent bloquées.",
+	"Open Prism in a project folder (cd into it first). Details: /docs sandbox.":
+		"Ouvrez Prism dans un dossier de projet (placez-vous d'abord dedans avec cd). Détails : /docs sandbox.",
 	"Shell commands stay blocked until it works; nothing runs outside it.":
 		"Les commandes shell restent bloquées tant qu’elle ne fonctionne pas ; rien ne s’exécute en dehors.",
 	"Once it is fixed, choose Check the sandbox again in /sandbox. To go without it in this mode, turn it off there, under In modes.":
@@ -3656,6 +3713,8 @@ export const FR: Record<string, string> = {
 	"the window stopped ({0})": "la fenêtre s'est arrêtée ({0})",
 	"exit code {0}": "code de sortie {0}",
 	"{0}; whole log: {1}": "{0} ; journal complet : {1}",
+	"The window needs glibc 2.39 or newer (Debian 13, Ubuntu 24.04, Fedora 40 or newer), which this system does not have: Prism opens in the terminal.":
+		"La fenêtre demande glibc 2.39 ou plus récent (Debian 13, Ubuntu 24.04, Fedora 40 ou plus récent), que ce système n'a pas : Prism s'ouvre dans le terminal.",
 	"The window could not open ({0}): Prism opens in the terminal.":
 		"La fenêtre n'a pas pu s'ouvrir ({0}) : Prism s'ouvre dans le terminal.",
 	"The window does not take {0} yet: Prism opens in the terminal.":
@@ -3684,11 +3743,14 @@ export const FR: Record<string, string> = {
 	"Host declared for: {0}": "Hôte déclaré pour : {0}",
 	"No supported browser found in your home folder (Chromium, Chrome, Brave, Vivaldi, Edge, Helium, Firefox, Zen, or one of them in Flatpak).":
 		"Aucun navigateur pris en charge dans votre dossier personnel (Chromium, Chrome, Brave, Vivaldi, Edge, Helium, Firefox, Zen, ou l’un d’eux en Flatpak).",
-	"Extension folder: {0}": "Dossier de l’extension : {0}",
-	"Chromium, Chrome, Brave, Helium: open chrome://extensions, turn on Developer mode, choose Load unpacked and select the extension folder.":
-		"Chromium, Chrome, Brave, Helium : ouvrez chrome://extensions, activez le mode développeur, choisissez « Charger l’extension non empaquetée » et sélectionnez le dossier de l’extension.",
-	"Firefox, Zen: open about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select manifest.json in the extension folder (until the signed version).":
-		"Firefox, Zen : ouvrez about:debugging#/runtime/this-firefox, choisissez « Charger un module complémentaire temporaire » et sélectionnez manifest.json dans le dossier de l’extension (en attendant la version signée).",
+	"Chrome, Chromium, Brave, Vivaldi, Edge: install the Prism extension from the Chrome Web Store: {0}":
+		"Chrome, Chromium, Brave, Vivaldi, Edge : installez l’extension Prism depuis le Chrome Web Store : {0}",
+	"Firefox, Zen and other Firefox-based browsers: install the Prism extension from addons.mozilla.org: {0}":
+		"Firefox, Zen et les autres navigateurs basés sur Firefox : installez l’extension Prism depuis addons.mozilla.org : {0}",
+	"Without the store, Chromium family: open chrome://extensions, turn on Developer mode, choose Load unpacked and select {0}.":
+		"Sans la boutique, famille Chromium : ouvrez chrome://extensions, activez le mode développeur, choisissez « Charger l’extension non empaquetée » et sélectionnez {0}.",
+	"Without the store, Firefox family: open about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select manifest.json in {0} (removed at each restart).":
+		"Sans la boutique, famille Firefox : ouvrez about:debugging#/runtime/this-firefox, choisissez « Charger un module complémentaire temporaire » et sélectionnez manifest.json dans {0} (retiré à chaque redémarrage).",
 	"Let {0} start Prism outside its sandbox?": "Autoriser {0} à lancer Prism hors de sa sandbox ?",
 	"The Prism extension reaches Prism through flatpak-spawn --host. Prism runs: flatpak override --user --talk-name=org.freedesktop.Flatpak {0}. With it, this browser can start any program on your computer outside its sandbox, not only Prism. Undo with: flatpak override --user --no-talk-name=org.freedesktop.Flatpak {0}.":
 		"L’extension Prism joint Prism par flatpak-spawn --host. Prism lance : flatpak override --user --talk-name=org.freedesktop.Flatpak {0}. Avec cette autorisation, ce navigateur peut lancer n’importe quel programme de votre ordinateur hors de sa sandbox, pas seulement Prism. Pour l’annuler : flatpak override --user --no-talk-name=org.freedesktop.Flatpak {0}.",
@@ -3787,8 +3849,23 @@ export const FR: Record<string, string> = {
 		"Choisissez « Charger l’extension non empaquetée » et sélectionnez ce dossier : {0}",
 	"Choose Load Temporary Add-on and select manifest.json in this folder: {0}":
 		"Choisissez « Charger un module complémentaire temporaire » et sélectionnez manifest.json dans ce dossier : {0}",
-	"A temporary add-on is removed when the browser closes: add it again after a restart, until the signed version.":
-		"Un module temporaire disparaît à la fermeture du navigateur : ajoutez-le de nouveau après un redémarrage, en attendant la version signée.",
+	"A temporary add-on is removed when the browser closes: add it again after a restart, or install the extension from the store.":
+		"Un module temporaire disparaît à la fermeture du navigateur : ajoutez-le de nouveau après un redémarrage, ou installez l’extension depuis la boutique.",
+	"Open the Prism extension's page in {1}: {0} (the buttons below open it there and copy its address).":
+		"Ouvrez la page de l’extension Prism dans {1} : {0} (les boutons ci-dessous l’y ouvrent et copient son adresse).",
+	"Choose Add to Chrome, then Add extension.": "Choisissez « Ajouter à Chrome », puis « Ajouter l’extension ».",
+	"Choose Add to Firefox, then Add.": "Choisissez « Ajouter à Firefox », puis « Ajouter ».",
+	"No store in this browser, or no add button? Load the extension from a folder instead.":
+		"Pas de boutique dans ce navigateur, ou pas de bouton d’ajout ? Chargez plutôt l’extension depuis un dossier.",
+	"Close {0} completely, then start it again: what was just changed applies only when it starts.":
+		"Fermez complètement {0}, puis relancez-le : ce qui vient d’être changé ne s’applique qu’à son démarrage.",
+	"Open the page in {0}": "Ouvrir la page dans {0}",
+	"Load from a folder instead": "Charger depuis un dossier",
+	"Developer mode, for a browser without the store.": "Mode développeur, pour un navigateur sans la boutique.",
+	"A temporary add-on, removed at each restart.": "Un module temporaire, retiré à chaque redémarrage.",
+	"Back to the store": "Retour à la boutique",
+	"Is the Prism extension in about:addons, turned on? Restarting the browser after the first declaration can help.":
+		"L’extension Prism est-elle dans about:addons, activée ? Redémarrer le navigateur après la première déclaration peut aider.",
 	"Add the Prism extension:": "Ajoutez l’extension Prism :",
 	"Prism also runs: flatpak override --user {0} {1}. This browser can then read and write the extension folder: without write access, the file picker of a Flatpak gives it a copy of manifest.json alone, and the extension cannot load.":
 		"Prism lance aussi : flatpak override --user {0} {1}. Ce navigateur peut alors lire et écrire le dossier de l’extension : sans l’écriture, le sélecteur de fichiers d’un Flatpak ne lui donne qu’une copie de manifest.json, et l’extension ne peut pas se charger.",
@@ -3818,9 +3895,8 @@ export const FR: Record<string, string> = {
 	"For real clicks and keys in Firefox: /browser firefox (it restarts Firefox with remote control).":
 		"Pour de vrais clics et de vraies touches dans Firefox : /browser firefox (il relance Firefox avec le contrôle à distance).",
 	"Host declared for {0}: {1}": "Hôte déclaré pour {0} : {1}",
-	"The browser may start Prism outside its sandbox.": "Le navigateur peut lancer Prism hors de son bac à sable.",
-	"The browser may not start Prism outside its sandbox.":
-		"Le navigateur ne peut pas lancer Prism hors de son bac à sable.",
+	"The browser may start Prism outside its sandbox.": "Le navigateur peut lancer Prism hors de sa sandbox.",
+	"The browser may not start Prism outside its sandbox.": "Le navigateur ne peut pas lancer Prism hors de sa sandbox.",
 	"The extension did not connect from {0}.": "L’extension ne s’est pas connectée depuis {0}.",
 	"Is the extension in about:debugging? A temporary add-on is gone after a restart of the browser.":
 		"L’extension est-elle dans about:debugging ? Un module temporaire disparaît au redémarrage du navigateur.",
@@ -3890,12 +3966,31 @@ export const FR: Record<string, string> = {
 	"extension out of date: /browser setup": "extension à mettre à jour : /browser setup",
 	"The Prism extension in {0} (version {1}) is newer than this Prism's ({2}): /update updates Prism.":
 		"L’extension Prism de {0} (version {1}) est plus récente que celle de ce Prism ({2}) : /update met Prism à jour.",
-	"The Prism extension in {0} is version {1}; this Prism comes with {2}. The browser's add-on store updates it; until then, some actions may fail.":
-		"L’extension Prism de {0} est en version {1} ; ce Prism est livré avec la {2}. La boutique d’extensions du navigateur la met à jour ; d’ici là, certaines actions peuvent échouer.",
 	"extension {0}, newer than this Prism's {1}: /update":
 		"extension {0}, plus récente que celle de ce Prism ({1}) : /update",
 	"extension {0}, this Prism comes with {1}: the store updates it":
 		"extension {0}, ce Prism est livré avec la {1} : la boutique la met à jour",
+	// fork (audit PB-22): `prism auth login` and `prism auth logout` (src/fork/auth-login-cli.ts).
+	"The API key is empty.": "La clé d’API est vide.",
+	"--no-browser only applies to account sign-in; omit it with --api-key.":
+		"--no-browser ne sert qu’à la connexion avec un compte ; retirez-le avec --api-key.",
+	"{0} has no API key login. Omit --api-key to sign in.":
+		"{0} ne se connecte pas avec une clé d’API. Retirez --api-key pour vous connecter.",
+	"Select 1-{0}: ": "Choisissez 1-{0} : ",
+	"Enter a number from 1 to {0}.": "Saisissez un nombre de 1 à {0}.",
+	'"{0}" requires an interactive terminal.': "« {0} » doit être lancé dans un terminal interactif.",
+	"To save an API key without one: {0}": "Pour enregistrer une clé d’API sans terminal interactif : {0}",
+	"Open this URL to sign in:\n  {0}": "Ouvrez cette adresse pour vous connecter :\n  {0}",
+	'To use "{0}" instead, run {1}': "Pour utiliser « {0} » à la place, lancez {1}",
+	"Other sign-in methods: {0}. Run {1} to choose one.":
+		"Autres méthodes de connexion : {0}. Lancez {1} pour en choisir une.",
+	"Open {0} and enter code: {1}": "Ouvrez {0} et saisissez le code : {1}",
+	"Login cancelled.": "Connexion annulée.",
+	"No stored credentials for {0}. Environment variables and models.json config are unchanged.":
+		"Aucun identifiant enregistré pour {0}. Les variables d’environnement et la configuration models.json restent inchangées.",
+	"Stored credentials: {0}": "Identifiants enregistrés : {0}",
+	"Providers: {0}": "Fournisseurs : {0}",
+	'Unknown provider "{0}".': "Fournisseur inconnu : « {0} ».",
 };
 
 /** Texts with variable parts, `{0}` `{1}`…; the parts are kept as they are. */
@@ -4276,6 +4371,10 @@ export const FR_PATTERNS: Record<string, string> = {
 	"/{0}: the {1} module is off. Turn it on in /settings › Modules.":
 		"/{0} : le module {1} est désactivé. Activez-le dans /settings › Modules.",
 	"/{0} is unavailable: {1}.": "/{0} est indisponible : {1}.",
+	"Unknown command /{0}. Did you mean /{1}? It was not sent to the model.":
+		"Commande inconnue : /{0}. Vouliez-vous dire /{1} ? Elle n'a pas été envoyée au modèle.",
+	"Unknown command /{0}. Type / to see the commands. It was not sent to the model.":
+		"Commande inconnue : /{0}. Tapez / pour voir les commandes. Elle n'a pas été envoyée au modèle.",
 	"/{0} is not supported by this model: {1}.": "/{0} n'est pas pris en charge par ce modèle : {1}.",
 
 	// fork: the task scope. The quoted forms come first: the others would match them too.
@@ -4732,4 +4831,6 @@ export const FR_PATTERNS: Record<string, string> = {
 	"{0}: install Prism's extension with /browser setup.": "{0} : installez l’extension Prism avec /browser setup.",
 	"To finish setting up computer use:": "Pour finir de préparer l’utilisation de l’ordinateur :",
 	"labwc is not installed; install it with: {0}": "labwc n’est pas installé ; installez-le avec : {0}",
+	// fork (audit PB-22): what logoutProvider() returns, printed by `prism auth logout` (src/fork/auth-login-cli.ts).
+	"Logged out of {0}": "Déconnecté de {0}",
 };

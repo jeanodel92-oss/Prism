@@ -26,11 +26,29 @@ export const KEYS = [
 	"tui.altScreen.nextPrompt",
 ];
 
+/**
+ * The window's own keys, which have no terminal equivalent: their defaults, used unless the engine sends a binding
+ * for the same id (get_keys). Audit of 2026-11-23, UX-03: the page's zoom, as in a browser; Ctrl+Shift+= and the
+ * keypad's + type "+", so "ctrl++" covers them.
+ */
+export const WINDOW_KEYS = {
+	"window.zoom.in": ["ctrl+=", "ctrl++"],
+	"window.zoom.out": ["ctrl+-"],
+	"window.zoom.reset": ["ctrl+0"],
+};
+
+/** The keys bound to the window's own `id`: the engine's, if it sends some, else the window's default. */
+export function windowKeys(keys, id) {
+	return keys?.bindings?.[id]?.keys ?? WINDOW_KEYS[id] ?? [];
+}
+
 const NAMES = { arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right", " ": "space" };
 
 export function matches(event, id) {
-	const parts = id.toLowerCase().split("+");
-	const key = parts.pop();
+	// "ctrl++": the key is "+" itself, not an empty name after the last separator.
+	const plus = id.endsWith("++");
+	const parts = (plus ? id.slice(0, -2) : id).toLowerCase().split("+");
+	const key = plus ? "+" : parts.pop();
 	const mods = new Set(parts);
 	if (event.ctrlKey !== mods.has("ctrl") || event.altKey !== mods.has("alt")) return false;
 	if (event.metaKey !== (mods.has("super") || mods.has("meta"))) return false;

@@ -237,6 +237,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			modelFallbackMessage = formatNoModelsAvailableMessage();
 		} else if (modelFallbackMessage) {
 			modelFallbackMessage += `. Using ${model.provider}/${model.id}`;
+		} else {
+			modelFallbackMessage = result.fallbackMessage; // fork: saved default not usable
 		}
 	}
 

@@ -375,7 +375,7 @@ export function resetReportedRepositories(): void {
  * The repositories that were not under the layout's treatment for the whole command, with what in them would run,
  * and the folders that became unreadable; undefined when none needs the user. A repository is skipped only when the
  * layout covered it with the identity it has now, and the last check (any session's) saw it so too. `folders` are
- * the repositories whose hooks or configuration would run a program (AS-018).
+ * the repositories whose hooks or configuration would run a program.
  */
 export function checkNewRepositories(before: RepositorySearch): { note: string; folders: string[] } | undefined {
 	const found = findRepositories(before.roots);

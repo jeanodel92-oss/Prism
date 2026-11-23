@@ -1,4 +1,14 @@
 import type { AutocompleteProvider, AutocompleteSuggestions } from "../autocomplete.ts";
+import {
+	type ChunkSelection,
+	deleteRange,
+	getChunkSelection,
+	getRangeText,
+	getSelectionRange,
+	renderSelectedChunk,
+	type TextPosition,
+	type TextRange,
+} from "../editor-selection.ts";
 import { getKeybindings } from "../keybindings.ts";
 import { decodePrintableKey, matchesKey } from "../keys.ts";
 import { KillRing } from "../kill-ring.ts";
@@ -236,6 +246,7 @@ interface LayoutLine {
 	text: string;
 	hasCursor: boolean;
 	cursorPos?: number;
+	selection?: ChunkSelection; // fork
 }
 
 export interface EditorTheme {
@@ -369,6 +380,10 @@ export class Editor implements Component, Focusable {
 
 	// Undo support
 	private undoStack = new UndoStack<EditorSnapshot>();
+	// fork: edits that undo took back, for redo. A new edit drops them.
+	private redoStack = new UndoStack<EditorSnapshot>();
+	// fork: the fixed end of a keyboard selection; the cursor is the moving end.
+	private selectionAnchor: TextPosition | null = null;
 
 	public onSubmit?: (text: string) => void;
 	public onChange?: (text: string) => void;
@@ -495,6 +510,7 @@ export class Editor implements Component, Focusable {
 
 	/** Internal setText that doesn't reset history state - used by navigateHistory */
 	private setTextInternal(text: string, cursorPlacement: "start" | "end" = "end"): void {
+		this.selectionAnchor = null; // fork
 		const lines = text.split("\n");
 		this.state.lines = lines.length === 0 ? [""] : lines;
 		this.state.cursorLine = cursorPlacement === "start" ? 0 : this.state.lines.length - 1;
@@ -577,8 +593,15 @@ export class Editor implements Component, Focusable {
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
 
-			// Add cursor if this line has it
-			if (layoutLine.hasCursor && layoutLine.cursorPos !== undefined) {
+			if (layoutLine.selection) {
+				// fork: selected text in inverse video; the edge of the selection shows the cursor.
+				const marker = emitCursorMarker && layoutLine.hasCursor ? CURSOR_MARKER : "";
+				const rendered = renderSelectedChunk(displayText, layoutLine.selection, layoutLine.cursorPos, marker);
+				displayText = rendered.text;
+				lineVisibleWidth += rendered.extraWidth;
+				cursorInPadding = lineVisibleWidth > contentWidth && paddingX > 0;
+			} else if (layoutLine.hasCursor && layoutLine.cursorPos !== undefined) {
+				// Add cursor if this line has it
 				const before = displayText.slice(0, layoutLine.cursorPos);
 				const after = displayText.slice(layoutLine.cursorPos);
 
@@ -692,6 +715,7 @@ export class Editor implements Component, Focusable {
 
 		this.state.cursorLine = visualLine.logicalLine;
 		this.setCursorCol(visualLine.startCol + targetIndex);
+		this.selectionAnchor = null; // fork
 		this.lastAction = null;
 		this.exitHistoryBrowsing();
 		if (this.autocompleteState) this.updateAutocomplete();
@@ -758,6 +782,11 @@ export class Editor implements Component, Focusable {
 			this.undo();
 			return;
 		}
+		if (kb.matches(data, "tui.editor.redo")) {
+			this.redo();
+			return;
+		}
+		if (this.handleSelectionKey(data, kb)) return; // fork
 
 		// Handle autocomplete mode
 		if (this.autocompleteState && this.autocompleteList) {
@@ -1021,6 +1050,7 @@ export class Editor implements Component, Focusable {
 			return layoutLines;
 		}
 
+		const selection = this.getSelection(); // fork
 		// Process each logical line
 		for (let i = 0; i < this.state.lines.length; i++) {
 			const line = this.state.lines[i] || "";
@@ -1034,11 +1064,13 @@ export class Editor implements Component, Focusable {
 						text: line,
 						hasCursor: true,
 						cursorPos: this.state.cursorCol,
+						selection: getChunkSelection(selection, i, 0, line.length, true),
 					});
 				} else {
 					layoutLines.push({
 						text: line,
 						hasCursor: false,
+						selection: getChunkSelection(selection, i, 0, line.length, true),
 					});
 				}
 			} else {
@@ -1077,16 +1109,19 @@ export class Editor implements Component, Focusable {
 						}
 					}
 
+					const chunkSelection = getChunkSelection(selection, i, chunk.startIndex, chunk.endIndex, isLastChunk);
 					if (hasCursorInChunk) {
 						layoutLines.push({
 							text: chunk.text,
 							hasCursor: true,
 							cursorPos: adjustedCursorPos,
+							selection: chunkSelection,
 						});
 					} else {
 						layoutLines.push({
 							text: chunk.text,
 							hasCursor: false,
+							selection: chunkSelection,
 						});
 					}
 				}
@@ -1144,6 +1179,7 @@ export class Editor implements Component, Focusable {
 		if (!text) return;
 		this.cancelAutocomplete();
 		this.pushUndoSnapshot();
+		this.replaceSelection(false); // fork
 		this.lastAction = null;
 		this.exitHistoryBrowsing();
 		this.insertTextAtCursorInternal(text);
@@ -1215,8 +1251,10 @@ export class Editor implements Component, Focusable {
 		// - Space captures state before itself (so undo removes space+following word together)
 		// - Each space is separately undoable
 		// Skip coalescing when called from atomic operations (e.g., handlePaste)
+		// fork: typed text replaces the selection; that replacement is one undo step with the word typed.
+		const replacedSelection = this.replaceSelection(!skipUndoCoalescing);
 		if (!skipUndoCoalescing) {
-			if (isWhitespaceChar(char) || this.lastAction !== "type-word") {
+			if (!replacedSelection && (isWhitespaceChar(char) || this.lastAction !== "type-word")) {
 				this.pushUndoSnapshot();
 			}
 			this.lastAction = "type-word";
@@ -1272,6 +1310,7 @@ export class Editor implements Component, Focusable {
 		this.lastAction = null;
 
 		this.pushUndoSnapshot();
+		this.replaceSelection(false); // fork
 
 		// Some terminals (e.g. tmux popups with extended-keys-format=csi-u) re-encode
 		// control bytes inside bracketed paste as CSI-u Ctrl+<letter> sequences
@@ -1340,6 +1379,7 @@ export class Editor implements Component, Focusable {
 		this.lastAction = null;
 
 		this.pushUndoSnapshot();
+		this.replaceSelection(false); // fork
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
 
@@ -1375,11 +1415,13 @@ export class Editor implements Component, Focusable {
 		const result = this.expandPasteMarkers(this.state.lines.join("\n")).trim();
 
 		this.state = { lines: [""], cursorLine: 0, cursorCol: 0 };
+		this.selectionAnchor = null; // fork
 		this.pastes.clear();
 		this.pasteCounter = 0;
 		this.exitHistoryBrowsing();
 		this.scrollOffset = 0;
 		this.undoStack.clear();
+		this.redoStack.clear();
 		this.lastAction = null;
 
 		if (this.onChange) this.onChange("");
@@ -1387,6 +1429,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private handleBackspace(): void {
+		if (this.deleteSelection()) return; // fork
 		this.exitHistoryBrowsing();
 		this.lastAction = null;
 
@@ -1423,7 +1466,7 @@ export class Editor implements Component, Focusable {
 					text.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup, suffixGroup) => {
 						const x = Number(idGroup);
 						if (x <= targetId) return fullMatch;
-						return `[paste #${x - 1}${suffixGroup}]`;
+						return `[paste #${x - 1}${suffixGroup ?? ""}]`;
 					});
 				// fork: cut the marker at its own bounds before renumbering ([paste #10]
 				// before it becomes [paste #9], one character shorter), and keep the cursor where the cut is.
@@ -1639,6 +1682,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteToStartOfLine(): void {
+		if (this.deleteSelection()) return; // fork
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1674,6 +1718,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteToEndOfLine(): void {
+		if (this.deleteSelection()) return; // fork
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1706,6 +1751,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteWordBackwards(): void {
+		if (this.deleteSelection()) return; // fork
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1751,6 +1797,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteWordForward(): void {
+		if (this.deleteSelection()) return; // fork
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1793,6 +1840,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private handleForwardDelete(): void {
+		if (this.deleteSelection()) return; // fork
 		this.exitHistoryBrowsing();
 		this.lastAction = null;
 
@@ -2131,13 +2179,28 @@ export class Editor implements Component, Focusable {
 
 	private pushUndoSnapshot(): void {
 		this.undoStack.push({ state: this.state, pastes: this.pastes, pasteCounter: this.pasteCounter });
+		this.redoStack.clear();
 	}
 
 	private undo(): void {
 		this.exitHistoryBrowsing();
 		const snapshot = this.undoStack.pop();
 		if (!snapshot) return;
+		this.redoStack.push({ state: this.state, pastes: this.pastes, pasteCounter: this.pasteCounter });
+		this.restoreSnapshot(snapshot);
+	}
+
+	private redo(): void {
+		this.exitHistoryBrowsing();
+		const snapshot = this.redoStack.pop();
+		if (!snapshot) return;
+		this.undoStack.push({ state: this.state, pastes: this.pastes, pasteCounter: this.pasteCounter });
+		this.restoreSnapshot(snapshot);
+	}
+
+	private restoreSnapshot(snapshot: EditorSnapshot): void {
 		Object.assign(this.state, snapshot.state);
+		this.selectionAnchor = null; // fork
 		this.pastes = snapshot.pastes;
 		this.pasteCounter = snapshot.pasteCounter;
 		this.lastAction = null;
@@ -2145,6 +2208,107 @@ export class Editor implements Component, Focusable {
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
+	}
+
+	// fork: keyboard selection. Shift+movement extends it from an anchor; a typed character, a
+	// paste or a new line replaces it; a deletion key deletes it; left/right collapse it to its edge; any
+	// other action key drops it.
+	private getSelection(): TextRange | undefined {
+		return getSelectionRange(this.state.lines, this.selectionAnchor, {
+			line: this.state.cursorLine,
+			col: this.state.cursorCol,
+		});
+	}
+
+	/** The selected text with paste markers expanded, or undefined when nothing is selected. */
+	getSelectedText(): string | undefined {
+		const range = this.getSelection();
+		return range ? this.expandPasteMarkers(getRangeText(this.state.lines, range)) : undefined;
+	}
+
+	private handleSelectionKey(data: string, kb: ReturnType<typeof getKeybindings>): boolean {
+		const extend = this.getSelectionMove(data, kb);
+		if (extend) {
+			this.selectionAnchor ??= { line: this.state.cursorLine, col: this.state.cursorCol };
+			extend();
+			if (!this.getSelection()) this.selectionAnchor = null;
+			return true;
+		}
+		const range = this.getSelection();
+		if (!range) {
+			this.selectionAnchor = null;
+			return false;
+		}
+		const toStart = kb.matches(data, "tui.editor.cursorLeft");
+		if (toStart || kb.matches(data, "tui.editor.cursorRight")) {
+			const edge = toStart ? range.start : range.end;
+			this.selectionAnchor = null;
+			this.lastAction = null;
+			this.state.cursorLine = edge.line;
+			this.setCursorCol(edge.col);
+			if (this.autocompleteState) this.updateAutocomplete();
+			return true;
+		}
+		const dropsSelection = (
+			[
+				"tui.editor.cursorUp",
+				"tui.editor.cursorDown",
+				"tui.editor.historyPrevious",
+				"tui.editor.historyNext",
+				"tui.editor.cursorWordLeft",
+				"tui.editor.cursorWordRight",
+				"tui.editor.cursorLineStart",
+				"tui.editor.cursorLineEnd",
+				"tui.editor.jumpForward",
+				"tui.editor.jumpBackward",
+				"tui.editor.pageUp",
+				"tui.editor.pageDown",
+				"tui.editor.yank",
+				"tui.editor.yankPop",
+				"tui.input.tab",
+				"tui.input.submit",
+			] as const
+		).some((action) => kb.matches(data, action));
+		if (dropsSelection) this.selectionAnchor = null;
+		return false;
+	}
+
+	private getSelectionMove(data: string, kb: ReturnType<typeof getKeybindings>): (() => void) | undefined {
+		if (kb.matches(data, "tui.editor.selectLeft")) return () => this.moveCursor(0, -1);
+		if (kb.matches(data, "tui.editor.selectRight")) return () => this.moveCursor(0, 1);
+		if (kb.matches(data, "tui.editor.selectUp")) {
+			return () => (this.isOnFirstVisualLine() ? this.moveToLineStart() : this.moveCursor(-1, 0));
+		}
+		if (kb.matches(data, "tui.editor.selectDown")) {
+			return () => (this.isOnLastVisualLine() ? this.moveToLineEnd() : this.moveCursor(1, 0));
+		}
+		if (kb.matches(data, "tui.editor.selectWordLeft")) return () => this.moveWordBackwards();
+		if (kb.matches(data, "tui.editor.selectWordRight")) return () => this.moveWordForwards();
+		if (kb.matches(data, "tui.editor.selectLineStart")) return () => this.moveToLineStart();
+		if (kb.matches(data, "tui.editor.selectLineEnd")) return () => this.moveToLineEnd();
+		return undefined;
+	}
+
+	/** Remove the selected text and put the cursor at its start. Does not call onChange. */
+	private replaceSelection(pushUndoSnapshot: boolean): boolean {
+		const range = this.getSelection();
+		this.selectionAnchor = null;
+		if (!range) return false;
+		if (pushUndoSnapshot) this.pushUndoSnapshot();
+		this.state.lines = deleteRange(this.state.lines, range);
+		this.state.cursorLine = range.start.line;
+		this.setCursorCol(range.start.col);
+		return true;
+	}
+
+	/** Deletion keys delete the selection, when there is one. */
+	private deleteSelection(): boolean {
+		this.exitHistoryBrowsing();
+		if (!this.replaceSelection(true)) return false;
+		this.lastAction = null;
+		this.onChange?.(this.getText());
+		if (this.autocompleteState) this.updateAutocomplete();
+		return true;
 	}
 
 	/**

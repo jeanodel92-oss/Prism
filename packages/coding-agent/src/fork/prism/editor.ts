@@ -11,13 +11,13 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
-import { APP_NAME } from "../../config.ts";
 import type { EditorFactory } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { CustomEditor, keyText } from "../../modes/interactive/components/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { indicator } from "../animation-frames.ts";
 import type { AnimationStyle } from "../animations.ts";
+import { APP_DISPLAY_NAME } from "../brand.ts";
 import { fill, t } from "../i18n/index.ts";
 import { type EditorState, editorState } from "./editor-state.ts";
 import {
@@ -93,8 +93,6 @@ export function workingLine(
 	return [spinner, text];
 }
 
-const PLACEHOLDER = `Ask ${APP_NAME} anything…`;
-
 export function formatElapsed(ms: number): string {
 	const s = Math.floor(ms / 1000);
 	if (s < 60) return `${s}s`;
@@ -159,7 +157,8 @@ class PrismEditor extends CustomEditor {
 		if (this.getText() === "" && body.length === 1 && !working) {
 			const head = body[0].replace(/ +$/, "");
 			const room = inner - visibleWidth(head) - 1;
-			if (room > 4) body[0] = `${head} ${theme.fg("dim", truncateToWidth(t(PLACEHOLDER), room, "…"))}`;
+			if (room > 4)
+				body[0] = `${head} ${theme.fg("dim", truncateToWidth(fill("Ask {0} anything…", APP_DISPLAY_NAME), room, "…"))}`;
 		}
 
 		const rows = [...body, "", this.infoRow(inner)];

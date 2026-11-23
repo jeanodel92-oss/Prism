@@ -96,6 +96,9 @@ APPDIR=${APPDIR:-$(dirname "$(readlink -f "$0")")}
 export APPDIR
 PRISM_LAUNCHER=${APPIMAGE:-$APPDIR/AppRun}
 export PRISM_LAUNCHER
+# Double-clicked in a file manager (no argument, no terminal): open the window, not a terminal interface nobody
+# sees (audit REL-13).
+if [ $# -eq 0 ] && ! [ -t 0 ] && ! [ -t 1 ]; then set -- --gui; fi
 "$APPDIR/usr/lib/prism/node/bin/node" "$APPDIR/usr/lib/prism/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js" "$@"
 status=$?
 while ls -l /proc/[0-9]*/exe 2>/dev/null | grep -qF " $APPDIR/"; do sleep 1; done

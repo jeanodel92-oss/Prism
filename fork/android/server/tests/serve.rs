@@ -85,7 +85,7 @@ fn spawn_pc(name: &str, engine_args: String, extra: &[&OsStr]) -> Pc {
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
-    // Not a terminal: the server writes no code at start (AS-003); the code comes from the running server, as the
+    // Not a terminal: the server writes no code at start; the code comes from the running server, as the
     // window and /phone get it.
     if let Err(error) = wait_serving(&mut child, &dir) {
         let _ = child.kill();

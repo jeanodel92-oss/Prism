@@ -1,5 +1,5 @@
 {
-	"name": "pi-monorepo",
+	"name": "prism-monorepo",
 	"private": true,
 	"type": "module",
 	"workspaces": [

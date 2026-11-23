@@ -19,7 +19,7 @@ export function sandboxPromptSection(layout: SandboxLayout, services: Services =
 		"# Sandbox",
 		"Your shell commands (bash, background) run in Prism's sandbox:",
 		`- They can write only to: /tmp, ${layout.writable.map((path) => homeRelative(path)).join(", ")}. Elsewhere is read-only.`,
-		// fork (AS-010): the package caches keep a command's writes for that command only.
+		// fork: the package caches keep a command's writes for that command only.
 		...(layout.caches?.length
 			? [
 					`- In the package caches (${layout.caches.map((path) => homeRelative(path)).join(", ")}), what a command writes is kept for that command only, never in the user's caches.`,
@@ -209,7 +209,7 @@ export function describeSandbox(input: {
 	layout?: SandboxLayout;
 	/** fork: the private Git copies kept for the user (`describeGitCopies`). */
 	gitCopies?: string[];
-	/** fork (AS-018): repositories commands made whose hooks or configuration run programs (`nested-git.ts`). */
+	/** fork: repositories commands made whose hooks or configuration run programs (`nested-git.ts`). */
 	repositories?: Array<{ folder: string; reasons: string }>;
 	settingsPath: string;
 }): string[] {

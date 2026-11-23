@@ -75,7 +75,10 @@ describe("fork: the interface language never reaches the model", () => {
 		expect(english.tools).not.toEqual([]);
 		expect(JSON.stringify(english.tools)).toContain('"agent"');
 		expect(french.tools).toEqual(english.tools);
-		expect(french.systemPrompt).toBe(english.systemPrompt);
+		// The machine context reads the home folder's free space at each request, and the suite writes meanwhile
+		// (audit TESTS-07: 11 then 12 GB made this flaky); the language must change nothing else.
+		const steady = (prompt: string | undefined) => prompt?.replace(/\d+ GB free of \d+ GB/g, "N GB free of N GB");
+		expect(steady(french.systemPrompt)).toBe(steady(english.systemPrompt));
 	});
 
 	it("returns the harness's tool errors to the model in English, and shows them translated", async () => {

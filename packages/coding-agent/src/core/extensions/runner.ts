@@ -366,6 +366,7 @@ export class ExtensionRunner {
 	private errorListeners: Set<ExtensionErrorListener> = new Set();
 	private getModel: () => Model<any> | undefined = () => undefined;
 	private getScopedModels: () => readonly ScopedModel[] = () => [];
+	private addToScopeFn: ((models: readonly Model<any>[]) => void) | undefined; // fork
 	private isIdleFn: () => boolean = () => true;
 	private isProjectTrustedFn: () => boolean = () => true;
 	private getSignalFn: () => AbortSignal | undefined = () => undefined;
@@ -440,6 +441,7 @@ export class ExtensionRunner {
 		// Context actions (required)
 		this.getModel = contextActions.getModel;
 		this.getScopedModels = contextActions.getScopedModels;
+		this.addToScopeFn = contextActions.addToScope; // fork
 		this.isIdleFn = contextActions.isIdle;
 		this.isProjectTrustedFn = contextActions.isProjectTrusted;
 		this.getSignalFn = contextActions.getSignal;
@@ -903,6 +905,11 @@ export class ExtensionRunner {
 			get scopedModels() {
 				runner.assertActive();
 				return getScopedModels();
+			},
+			// fork: server-model-refresh.ts adds a server's new models.
+			addToScope(models) {
+				runner.assertActive();
+				runner.addToScopeFn?.(models);
 			},
 			get thinkingLevel() {
 				runner.assertActive();

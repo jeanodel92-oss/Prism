@@ -517,7 +517,9 @@ export function buildContextEntries(
 			contextEntries.push(entry);
 		}
 	}
-	contextEntries.push(...path.slice(compactionIdx + 1));
+	for (let i = compactionIdx + 1; i < path.length; i++) {
+		contextEntries.push(path[i]);
+	}
 	return contextEntries;
 }
 
@@ -1246,7 +1248,7 @@ export class SessionManager {
 	}
 
 	private _appendEntry(appended: SessionEntry): void {
-		// fork (Codex review lot 2, F-H3 (a)): the session keeps no known secret, in memory as on disk, so that exports
+		// fork (review lot 2, F-H3 (a)): the session keeps no known secret, in memory as on disk, so that exports
 		// of an open session read what the file holds. The agent's state is rebuilt from this projection; what it holds
 		// before that is masked on its way to the model (model-runtime.ts).
 		const entry = maskValue(appended, knownSecrets());

@@ -6,8 +6,9 @@
  * . A model without a date stays checked: nothing says it is old. The choice is saved as
  * `enabledModels`, the list `/scoped-models` edits, and applies to the session right away. Escape
  * keeps every model, as before. Nothing is asked when every model would be checked anyway. Either way, a
- * list that names none of the provider's models gets `provider/*`, so a provider added after another
- * login narrowed the list does not stay hidden from /model.
+ * list that names none of the provider's models gets `provider/**`, so a provider added after another
+ * login narrowed the list does not stay hidden from /model. A server added again with new models
+ * gets those models added to a list that names only its old ones.
  */
 import type { Model } from "@earendil-works/pi-ai";
 import {
@@ -22,6 +23,15 @@ import { theme } from "../modes/interactive/theme/theme.ts";
 import { fill, t } from "./i18n/index.ts";
 
 const RECENT_MONTHS = 6;
+
+/**
+ * Every model of a provider. `**`, not `*`: a glob `*` stops at "/", and model IDs often hold one (a local
+ * server's `unsloth/Qwen3-27B-GGUF`, OpenRouter's `anthropic/claude-sonnet-4.5`), so `provider/*` matched none of
+ * them.
+ */
+function wholeProvider(providerId: string): string {
+	return `${providerId}/**`;
+}
 const MAX_VISIBLE = 10;
 
 /** Newest first; models without a date first, in catalog order. */
@@ -52,7 +62,7 @@ export function recentModelIds(models: readonly Model<any>[], keep: readonly str
 /**
  * `enabledModels` once `providerId` is narrowed to `chosen`: the patterns naming that provider's
  * models are replaced. With no list yet (every model on), the other providers keep all their
- * models through a `provider/*` pattern each.
+ * models through a `provider/**` pattern each.
  */
 export function scopeAfterLogin(
 	patterns: readonly string[] | undefined,
@@ -64,7 +74,7 @@ export function scopeAfterLogin(
 		? patterns.filter((pattern) => !pattern.toLowerCase().startsWith(`${providerId.toLowerCase()}/`))
 		: [...new Set(available.map((model) => model.provider))]
 				.filter((provider) => provider !== providerId)
-				.map((provider) => `${provider}/*`);
+				.map(wholeProvider);
 	return [...kept, ...chosen.map((id) => `${providerId}/${id}`)];
 }
 
@@ -153,6 +163,8 @@ export interface LoginModelsScope {
 	patterns: string[] | undefined;
 	/** Model IDs of this provider to keep checked: the current and the default one. */
 	keep: readonly string[];
+	/** A server added again: the model IDs it lists now and did not before, to add to a list that misses them. */
+	added?: readonly string[];
 	savePatterns: (patterns: string[]) => void;
 	setScopedModels: (models: ScopedModel[]) => void;
 }
@@ -178,9 +190,15 @@ export function loginModelsChoice(scope: LoginModelsScope): LoginModelsChoice | 
 	const keepAll = () => {
 		const patterns = scope.patterns;
 		if (!patterns) return;
-		const scoped = resolveModelScopeFromModels(patterns, [...scope.available]).scopedModels;
-		if (scoped.some((entry) => entry.model.provider === scope.providerId)) return;
-		apply([...patterns, `${scope.providerId}/*`]);
+		const scoped = resolveModelScopeFromModels(patterns, [...scope.available])
+			.scopedModels.filter((entry) => entry.model.provider === scope.providerId)
+			.map((entry) => entry.model.id);
+		if (scoped.length === 0) {
+			apply([...patterns, wholeProvider(scope.providerId)]);
+			return;
+		}
+		const missing = (scope.added ?? []).filter((id) => !scoped.includes(id));
+		if (missing.length > 0) apply([...patterns, ...missing.map((id) => `${scope.providerId}/${id}`)]);
 	};
 	const checked = recentModelIds(models, scope.keep);
 	if (checked.length === models.length) {

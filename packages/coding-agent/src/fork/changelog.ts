@@ -1,6 +1,6 @@
 // fork: a branded build's /changelog shows Prism's release notes
-// (fork/CHANGELOG.md), not upstream pi's CHANGELOG.md. fork/scripts/install-local.sh
-// copies fork/CHANGELOG.md into the package under this name.
+// (fork/RELEASE-NOTES.md), not upstream pi's CHANGELOG.md. fork/scripts/install-local.sh
+// copies fork/RELEASE-NOTES.md into the package under this name.
 
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -13,7 +13,8 @@ export const PRISM_CHANGELOG_FILE = "PRISM-CHANGELOG.md";
 
 export function getPrismChangelogPath(packageDir: string = getPackageDir()): string {
 	const bundled = join(packageDir, PRISM_CHANGELOG_FILE);
-	const source = resolve(packageDir, "../../fork/CHANGELOG.md");
+	// The English, user-facing notes (audit CLM-03), not the French internal history in fork/CHANGELOG.md.
+	const source = resolve(packageDir, "../../fork/RELEASE-NOTES.md");
 	return existsSync(bundled) || !existsSync(source) ? bundled : source;
 }
 

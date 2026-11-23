@@ -1,3 +1,3 @@
 Prism is an agent harness that runs on your computer. This app is its window on your phone: the same sessions, tools and settings, driven from the phone while the agent, its sandbox, its keys and its models stay on the computer.
 
-The phone reaches the computer over the local network or Tailscale; there is no server in between. Pair the phone from Prism on the computer: "Link a phone" in the window's settings, or /phone in the terminal.
+The phone reaches the computer over the local network or Tailscale; there is no server in between. Pair the phone from Prism on the computer: Settings › Window › Link a phone in the window, or /phone in the terminal.

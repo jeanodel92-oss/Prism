@@ -1,4 +1,4 @@
-// fork: owner's decisions of 2026-11-05. Rarely needed commands leave the "/" list but still run when typed;
+// fork: maintainer's decisions of 2026-11-05. Rarely needed commands leave the "/" list but still run when typed;
 // /clone is the last entry of /fork.
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it } from "vitest";

@@ -163,8 +163,8 @@ describe("fork: each model's page in /settings", () => {
 		await writeToolCalls(deps.capabilitiesFile, "local", "coder-30b", false);
 		const { view, lines, done } = page(false);
 		await flush();
-		// Name, Context, Max output, Images, Thinking, Thinking budget, Tool calls, then the removal.
-		for (let i = 0; i < 7; i++) view.handleInput(DOWN);
+		// Name, Context, Max output, Images, Images from tools, Thinking, Thinking budget, Tool calls, then the removal.
+		for (let i = 0; i < 8; i++) view.handleInput(DOWN);
 		expect(lines().some((l) => l.startsWith("→ Remove my changes for this model"))).toBe(true);
 		view.handleInput(ENTER);
 		expect(lines().some((l) => l.includes("Enter again removes your changes, Esc keeps them"))).toBe(true);

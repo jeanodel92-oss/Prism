@@ -231,6 +231,13 @@ Every MCP call passes through Prism's tool pipeline. Extension `tool_call` and `
 
 <a id="other-mcp-extensions"></a>
 
+## Not supported
+
+- **Elicitation.** A server cannot ask you a question during a tool call (`elicitation/create`); such a request fails with "Method not found".
+- **Client ID Metadata Documents.** For OAuth, Prism registers itself dynamically or uses the client you configure; it does not identify itself with a metadata document URL.
+
+The MCP conformance suite runs on every change; the scenarios that fail on purpose are listed in `test/mcp-conformance/baseline.json`.
+
 ## Extensions and SDK
 
 ### Add servers from extensions

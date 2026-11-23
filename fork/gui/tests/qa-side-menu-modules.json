@@ -44,7 +44,7 @@
 	{ "do": "wait", "selector": ".panel.inspector", "gone": true },
 
 	{ "do": "click", "selector": ".rail-button[data-view='logs']" },
-	{ "do": "wait", "selector": "#side-logs-output", "text": "reply from", "why": "owner's QA, 2026-11-13: the logs say what went well too, each reply with its tokens and time" },
+	{ "do": "wait", "selector": "#side-logs-output", "text": "reply from", "why": "maintainer's QA, 2026-11-13: the logs say what went well too, each reply with its tokens and time" },
 	{ "do": "wait", "selector": "#side-logs-output", "text": "tool write failed" },
 	{ "do": "wait", "selector": "#side-logs-output", "text": "idle" },
 	{ "do": "shot", "name": "s5-logs-turn" },

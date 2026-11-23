@@ -19,7 +19,7 @@ import { automaticModelCatalogRefresh, MODEL_CATALOG_REFRESH_SETTING } from "./p
 import { UPDATE_MODE_SETTING, type UpdateMode, updateMode } from "./self-update.ts";
 import { animationsSetting } from "./settings-animations.ts";
 import { EXTENSION_DESCRIPTIONS, EXTENSION_LABELS, SETTING_DESCRIPTIONS } from "./settings-descriptions.ts";
-import { changeModelsSetting, type ModelsSettings, modelsItems } from "./settings-models.ts";
+import { changeModelsSetting, type ModelsSettings, modelKey, modelsItems } from "./settings-models.ts";
 import { paged, withPage } from "./settings-pages.ts";
 import { type SectionContext, type SettingsSection, settingsSections } from "./settings-sections.ts";
 import { ThemeEditor, type ThemeEditorHost } from "./theme-editor.ts";
@@ -551,7 +551,22 @@ export function groupSettingsByDomain(
 		cached: undefined as SettingItem[] | undefined,
 		searched: undefined as SettingItem[] | undefined,
 	}));
-	const context: SectionContext = { advanced: () => advanced, requestRender: () => extras.requestRender?.() };
+	const models = extras.models;
+	const context: SectionContext = {
+		advanced: () => advanced,
+		requestRender: () => extras.requestRender?.(),
+		// fork: a model page that removes the default offers another one; the domain's row follows.
+		defaultModel: models?.savedDefault
+			? {
+					get: models.savedDefault,
+					set: (model) => {
+						models.onDefaultModel(model);
+						const row = byId.get("default-model");
+						if (row) row.currentValue = modelKey(model);
+					},
+				}
+			: undefined,
+	};
 	const sectionItems = (entry: (typeof sections)[number]) => {
 		entry.cached ??= entry.section.items(context);
 		return entry.cached;

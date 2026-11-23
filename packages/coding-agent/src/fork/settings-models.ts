@@ -16,6 +16,8 @@ export interface ModelsSettings {
 	models: Model<Api>[];
 	/** The saved default, as "provider/id", or undefined when none is saved. */
 	defaultModel?: string;
+	/** fork: the saved default as it is now, for the pages that remove models. */
+	savedDefault?(): { provider: string; id: string } | undefined;
 	onDefaultModel(model: Model<Api>): void;
 	thinkingLevel: ThinkingLevel;
 	thinkingLevels: readonly ThinkingLevel[];

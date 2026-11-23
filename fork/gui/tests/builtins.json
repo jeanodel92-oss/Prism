@@ -47,7 +47,7 @@
 
 	{ "do": "type", "text": "/fork" },
 	{ "do": "send" },
-	{ "do": "click", "selector": ".panel.choice .listbox li", "text": "The whole conversation, as it is now", "why": "owner's decision 2026-11-05: /clone is the last entry of /fork" },
+	{ "do": "click", "selector": ".panel.choice .listbox li", "text": "The whole conversation, as it is now", "why": "maintainer's decision 2026-11-05: /clone is the last entry of /fork" },
 	{ "do": "wait", "selector": ".panel.choice", "gone": true },
 	{ "do": "wait", "selector": ".msg.assistant .md", "why": "the copy keeps the reply, as /clone" },
 	{ "do": "wait", "selector": ".history li:nth-child(2)", "text": "Built-ins test", "why": "the copy is done: the original is in the history next to the first /clone's" },

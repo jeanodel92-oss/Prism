@@ -1,4 +1,4 @@
-// fork.12 security audit (AS-016, AS-017): untrusted text shown to the user (a command, a path or a prompt in a
+// fork.12 security audit: untrusted text shown to the user (a command, a path or a prompt in a
 // permission question, an excerpt of a tool result) must not act on the terminal nor hide or reorder what follows.
 
 /** Controls, format characters (bidi overrides and isolates, zero-width), line and paragraph separators. */

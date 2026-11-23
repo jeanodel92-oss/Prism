@@ -411,6 +411,22 @@
 									<option value="fr">Français</option>
 									<option value="en">English</option></select
 							></label>
+							<!-- Audit of 2026-11-23, UX-03: the page's zoom, also on Ctrl+plus, Ctrl+minus and Ctrl+0 (app.js). -->
+							<label class="field-row" id="pref-zoom-row"
+								><span data-i18n="textSize"></span>
+								<select id="pref-zoom">
+									<option value="0.5">50 %</option>
+									<option value="0.67">67 %</option>
+									<option value="0.75">75 %</option>
+									<option value="0.8">80 %</option>
+									<option value="0.9">90 %</option>
+									<option value="1">100 %</option>
+									<option value="1.1">110 %</option>
+									<option value="1.25">125 %</option>
+									<option value="1.5">150 %</option>
+									<option value="1.75">175 %</option>
+									<option value="2">200 %</option></select
+							></label>
 							<label class="field-row"
 								><span data-i18n="animations"></span>
 								<select id="pref-animations">
@@ -423,7 +439,7 @@
 							<dl class="info">
 								<dt data-i18n="folder"></dt>
 								<dd id="info-folder"></dd>
-								<dt data-i18n="version"></dt>
+								<dt id="info-version-label" data-i18n="version"></dt>
 								<dd id="info-version"></dd>
 							</dl>
 						</div>

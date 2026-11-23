@@ -1,0 +1,82 @@
+# Prism's CI on the public repository (audit REL-03, TESTS-01): the exported tree is built, checked and
+# tested on every push, with the same steps as the maintainer's CI.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-check-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep bubblewrap
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
+
+      # fork: Prism's sandbox runs shell commands in bubblewrap and refuses them when it cannot start,
+      # so the security tests need a working bwrap. Ubuntu's AppArmor blocks the user namespaces it
+      # needs; the profile below is the one Prism tells Ubuntu users to add. The step fails unless
+      # bwrap really creates its namespaces.
+      - name: Enable the sandbox
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile bwrap %s flags=(unconfined) {\n  userns,\n}\n' "$(command -v bwrap)" |
+              sudo tee /etc/apparmor.d/bwrap >/dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --version
+          # A file written to the sandbox's own /tmp must not reach the runner's.
+          bwrap --unshare-all --die-with-parent --ro-bind / / --proc /proc --dev /dev --tmpfs /tmp \
+            sh -c 'echo probe > /tmp/bwrap-probe && test -s /tmp/bwrap-probe'
+          test ! -e /tmp/bwrap-probe
+          echo "bwrap runs in its namespaces: $(command -v bwrap)"
+
+      # fork: the browser module's test drives the runner's Chromium, a build in /usr/local/share that Ubuntu's
+      # AppArmor profiles do not name, so it cannot create the user namespaces its sandbox needs and stops at
+      # start. Same remedy as bwrap above, on its real program file. The step fails unless Chromium really runs.
+      - name: Let Chromium start its sandbox
+        run: |
+          chromium=$(command -v chromium-browser || command -v chromium || true)
+          if [ -z "$chromium" ]; then echo "no Chromium on this runner: its test is skipped"; exit 0; fi
+          chromium=$(readlink -f "$chromium")
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile prism-ci-chromium %s flags=(unconfined) {\n  userns,\n}\n' "$chromium" |
+              sudo tee /etc/apparmor.d/prism-ci-chromium >/dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/prism-ci-chromium
+          fi
+          "$chromium" --headless=new --disable-gpu --user-data-dir="$(mktemp -d)" --dump-dom about:blank | grep -q "<html"
+          echo "Chromium runs with its sandbox: $chromium"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # The model catalogue is a committed snapshot, refreshed at each release (fork/scripts/release.sh).
+      - name: Build
+        run: npm run build:offline
+
+      - name: Check
+        run: npm run check
+
+      - name: Test
+        run: npm test

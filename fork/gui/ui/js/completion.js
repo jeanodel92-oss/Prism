@@ -5,6 +5,34 @@
 
 import { clear, h } from "./dom.js";
 
+/**
+ * The name in `names` closest to `name`, a typo away (letters added, dropped, changed or swapped, at most two and at
+ * most a third of the name), or undefined. Audit of 2026-11-23 (FIN-27): an unknown command suggests the one meant.
+ */
+export function closestCommand(name, names) {
+	const limit = Math.min(2, Math.max(1, Math.floor(name.length / 3)));
+	let best;
+	let bestDistance = limit + 1;
+	for (const candidate of new Set(names)) {
+		const distance = editDistance(name, candidate);
+		if (distance < bestDistance) [best, bestDistance] = [candidate, distance];
+	}
+	return best;
+}
+
+/** Optimal string alignment distance: insertions, deletions, substitutions and swaps of two neighbours. */
+function editDistance(a, b) {
+	const rows = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+	for (let j = 1; j <= b.length; j++) rows[0][j] = j;
+	for (let i = 1; i <= a.length; i++)
+		for (let j = 1; j <= b.length; j++) {
+			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+			rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+			if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+		}
+	return rows[a.length][b.length];
+}
+
 /** Edits closer than this are asked as one (the terminal's editor waits 20 ms after an @ edit, editor.ts). */
 const EDIT_GROUP_MS = 20;
 
@@ -67,7 +95,7 @@ export class Completion {
 		if (event.key === "Tab" && !event.shiftKey && !modified) {
 			if (this.state) this.#choose(this.state.items[this.state.selected]);
 			else if (this.input.value.trim()) this.pending = this.#ask({ tab: true });
-			else return false; // an empty composer keeps Tab for moving the focus
+			else return false; // an empty composer keeps Tab for moving the focus (and so does a draft with nothing to complete, #ask)
 			return true;
 		}
 		if (!this.state || modified || event.shiftKey) return false;
@@ -119,6 +147,9 @@ export class Completion {
 		}
 		if (!data.items?.length) {
 			this.close();
+			// Audit of 2026-11-23, UX-13: Tab with nothing to complete moves the keyboard on, as Tab does elsewhere: a
+			// draft in the composer no longer keeps keyboard users from the buttons and the side menu.
+			if (options.tab) this.app.focusNext?.(this.input);
 			return;
 		}
 		this.state = { items: data.items, prefix: data.prefix, selected: data.selected ?? 0, mode: data.mode, text, cursor };

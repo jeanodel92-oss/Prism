@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of 2026-11-04: a click beside a menu the user opened closes it; what the harness opened on its own stays." },
+	{ "do": "log", "text": "maintainer's QA of 2026-11-04: a click beside a menu the user opened closes it; what the harness opened on its own stays." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "type", "text": "/docs" },
 	{ "do": "send" },

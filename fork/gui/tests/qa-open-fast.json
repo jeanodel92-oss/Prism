@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of 2026-11-04: a short conversation took seconds to open from the history, on 'Opening the conversation…'." },
+	{ "do": "log", "text": "maintainer's QA of 2026-11-04: a short conversation took seconds to open from the history, on 'Opening the conversation…'." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "type", "text": "md" },
 	{ "do": "send" },

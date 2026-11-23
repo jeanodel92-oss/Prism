@@ -6,7 +6,7 @@
  * answer (print mode, a scheduled run), the call is refused. The extension runs after the permission gate, which
  * judges the command with its labels.
  *
- * fork.12 (security audit, AS-014): a file that received a key is hidden from the agent until the end of the session
+ * a file that received a key is hidden from the agent until the end of the session
  * (key-files.ts); the question says so, and the file tools that would read it are refused here.
  */
 
@@ -64,7 +64,7 @@ const PROBLEMS: Record<LabelProblem, (name: string) => string> = {
 const its = (names: readonly string[]) => (names.length === 1 ? "its value" : "their values");
 
 /**
- * fork.12 (AS-014): why a file tool may not read a file that received a key in this session, or undefined. `edit`
+ * why a file tool may not read a file that received a key in this session, or undefined. `edit`
  * passes when it names each of the file's keys by its label: it then reads the file with them as labels (reveal.ts).
  */
 function keyFileRefusal(
@@ -91,7 +91,7 @@ function keyFileRefusal(
 	return `${hidden} To change it, write the label of each key it holds (${[...found.names].map(secretLabel).join(", ")}) in your edit, or write the whole file again.`;
 }
 
-/** fork.12 (AS-014): the files this session's earlier calls wrote a key into, hidden again when it is resumed. */
+/** the files this session's earlier calls wrote a key into, hidden again when it is resumed. */
 function restoreKeyFiles(ctx: ExtensionContext): void {
 	forgetKeyFiles(ctx.sessionManager);
 	const failed = new Set<string>();
@@ -178,7 +178,7 @@ export function registerKeyQuestion(pi: ExtensionAPI): void {
 						: undefined;
 			const always = rule ? fill("Yes, always for {0}", rule) : undefined;
 			const no = t("No");
-			// fork.12 (AS-014): what the agent can do with the file afterwards. Without a sandbox, its commands can read it.
+			// what the agent can do with the file afterwards. Without a sandbox, its commands can read it.
 			const title =
 				target.kind === "command"
 					? `${fill("The agent wants to use {0} in this command. Prism puts the key in when it runs; the agent never sees it.", list)}\n\n${target.command}`

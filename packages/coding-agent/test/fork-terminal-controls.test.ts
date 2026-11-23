@@ -70,7 +70,7 @@ function leftovers(out: string): string {
 }
 
 /**
- * `"marked"`: the output shows each control as a `<U+XXXX>` token (visibleText, AS-033) instead of dropping the
+ * `"marked"`: the output shows each control as a `<U+XXXX>` token instead of dropping the
  * sequence, so its inert payload stays readable.
  */
 function expectClean(out: string, visible: boolean | "marked" = true): void {

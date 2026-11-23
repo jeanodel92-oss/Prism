@@ -13,6 +13,7 @@ mod drive;
 const DRIVE_TITLE: &str = "Prism drive";
 mod gl;
 mod phone_link;
+mod window_state;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -53,6 +54,9 @@ struct AppInfo {
     engine_error: Option<String>,
     locale: String,
     version: &'static str,
+    /// The version of Prism the launcher runs (`prism --gui` sets `PRISM_GUI_PRODUCT_VERSION`), shown in the settings
+    /// rather than the window's own.
+    product_version: Option<String>,
 }
 
 #[tauri::command]
@@ -68,7 +72,18 @@ fn app_info(state: State<'_, AppState>) -> AppInfo {
         engine_error: state.engine_error.clone(),
         locale,
         version: env!("CARGO_PKG_VERSION"),
+        product_version: std::env::var("PRISM_GUI_PRODUCT_VERSION").ok().filter(|v| !v.is_empty()),
     }
+}
+
+/// The page's zoom (Settings › Window › Text size, Ctrl+plus, Ctrl+minus, Ctrl+0), which the page keeps with its
+/// preferences. Within 50% and 200%, as the page offers.
+#[tauri::command]
+fn set_zoom(window: tauri::WebviewWindow, scale: f64) -> Result<(), String> {
+    if !scale.is_finite() {
+        return Err("bad zoom".into());
+    }
+    window.set_zoom(scale.clamp(0.5, 2.0)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -166,13 +181,58 @@ fn attach_picked(state: State<'_, AppState>, engine: u32, id: String, paths: Vec
 /// The page has drawn its first frames: says so once on stdout, which `prism --gui` waits for to know the window
 /// started (launch-interface.ts). Nobody may be reading any more: a write error is ignored.
 #[tauri::command]
-fn window_ready() {
+fn window_ready(window: tauri::WebviewWindow) {
     static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if !SAID.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        #[cfg(target_os = "linux")]
+        stop_background_paint(&window);
+        #[cfg(not(target_os = "linux"))]
+        let _ = window;
         use std::io::Write;
         let mut out = std::io::stdout();
         let _ = writeln!(out, "prism-gui: ready").and_then(|_| out.flush());
     }
+}
+
+/// maintainer's QA, 2026-11-23: GTK filled the whole window with its background colour on the processor (cairo) before
+/// each frame of the page, which covers it entirely. On a 2880x1800 screen at 120 Hz that was about 60% of a core
+/// while the welcome scene played (measured: 2-3% without it), and the window lagged. The colour stays until the page
+/// has drawn its first frames, so the start does not show an empty window, and comes back while the window changes
+/// size: the page draws the new area a few frames late, and that area showed the colour, not what is behind the window.
+#[cfg(target_os = "linux")]
+fn stop_background_paint(window: &tauri::WebviewWindow) {
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        use gtk::prelude::*;
+        use std::cell::Cell;
+        use std::rc::Rc;
+        const SETTLE: Duration = Duration::from_millis(300);
+        let Ok(gtk_window) = target.gtk_window() else { return };
+        let provider = gtk::CssProvider::new();
+        if provider.load_from_data(b"window { background: none; }").is_err() {
+            return;
+        }
+        let context = gtk_window.style_context();
+        context.add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_USER);
+        let size = Rc::new(Cell::new((gtk_window.allocated_width(), gtk_window.allocated_height())));
+        let generation = Rc::new(Cell::new(0u64));
+        gtk_window.connect_size_allocate(move |window, allocation| {
+            let now = (allocation.width(), allocation.height());
+            if size.replace(now) == now {
+                return;
+            }
+            let context = window.style_context();
+            context.remove_provider(&provider);
+            let current = generation.get() + 1;
+            generation.set(current);
+            let (provider, generation) = (provider.clone(), generation.clone());
+            gtk::glib::timeout_add_local_once(SETTLE, move || {
+                if generation.get() == current {
+                    context.add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_USER);
+                }
+            });
+        });
+    });
 }
 
 #[tauri::command]
@@ -312,6 +372,7 @@ fn main() {
         open_external,
         set_title,
         set_minimized,
+        set_zoom,
         close_window,
         drop_listen,
         phone_link::phone_link_state,
@@ -338,6 +399,7 @@ fn main() {
         open_external,
         set_title,
         set_minimized,
+        set_zoom,
         close_window,
         drop_listen,
         phone_link::phone_link_state,
@@ -377,11 +439,19 @@ fn main() {
             if let Some(dir) = std::env::var_os("PRISM_GUI_DATA_DIR") {
                 window = window.data_directory(dir.into());
             }
+            // Audit of 2026-11-23, UX-04: the size, place and maximized state the window had when it last closed.
+            let state_file = window_state::file(app.handle());
+            let saved = state_file.as_deref().and_then(window_state::load);
+            let screens = window_state::screens(app.handle());
+            let geometry = window_state::restored(saved, &screens);
+            window = window.inner_size(geometry.width, geometry.height).maximized(geometry.maximized);
+            if let (Some(x), Some(y)) = (geometry.x, geometry.y) {
+                window = window.position(x, y);
+            }
             let window = window
                 // The test variant opens under its own title so drive.sh can keep it off the user's screen.
                 .title(if cfg!(feature = "drive") { DRIVE_TITLE } else { "Prism" })
-                .inner_size(1180.0, 780.0)
-                .min_inner_size(420.0, 360.0)
+                .min_inner_size(window_state::MIN_WIDTH, window_state::MIN_HEIGHT)
                 .background_color(tauri::window::Color(5, 5, 5, 255))
                 // The window shows only its own pages; links go to the browser through `open_external`.
                 .on_navigation(|url| {
@@ -389,11 +459,23 @@ fn main() {
                         || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost"))
                 })
                 .build()?;
-            window.on_window_event(move |event| {
-                if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+            let tracker = window_state::Tracker::new(geometry, state_file);
+            // Also written when the app exits without closing the window first (the test driver's quit).
+            {
+                use tauri::Manager;
+                app.manage(tracker.clone());
+            }
+            #[cfg(target_os = "linux")]
+            tracker.watch_size(&window);
+            let watched = window.clone();
+            window.on_window_event(move |event| match event {
+                tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
                     let paths = paths.iter().map(|path| path.to_string_lossy().into_owned()).collect();
                     dropped(&window_drops, &window_picked, paths);
                 }
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_) => tracker.follow(&watched, event),
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => tracker.save(),
+                _ => {}
             });
             Ok(())
         })
@@ -405,6 +487,9 @@ fn main() {
             {
                 use tauri::Manager;
                 _handle.state::<phone_link::PhoneLink>().stop_child();
+                if let Some(tracker) = _handle.try_state::<window_state::Tracker>() {
+                    tracker.save();
+                }
             }
             shared.hub.stop_all(Duration::from_secs(2));
         }

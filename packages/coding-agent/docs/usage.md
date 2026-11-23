@@ -27,7 +27,7 @@ The startup header lists the instructions and resources Prism loaded. The editor
 
 Whether Prism asks before a tool call depends on the permission mode. In the default `broad` mode, Prism works in the project without asking and asks before reaching outside it, before `sudo`, and before calls it detects as dangerous. `ask` also confirms file changes and commands not known to be safe, `safe` lets the agent only read and run safe commands, and `unrestricted` skips ordinary questions once you have accepted it. Press `Alt+M` to cycle modes, or use `/perm mode <mode>` for the session and `/perm default <mode>` for new sessions. See [Permissions](permissions.md#modes).
 
-The permission check is not a sandbox. Review commands and changed files, and use a sandbox for untrusted or unattended work. See [Security](security.md).
+In the `safe`, `ask` and `broad` modes, the agent's shell commands also run in the [sandbox](sandbox.md), which limits what they can write, read and reach. File tools, extensions and the `unrestricted` mode are not covered by it. Review commands and changed files, and use a container for untrusted or unattended work. See [Security](security.md).
 
 ## Change direction
 

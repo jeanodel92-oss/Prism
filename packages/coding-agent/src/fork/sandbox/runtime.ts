@@ -89,7 +89,7 @@ export interface SandboxRuntime {
 	askGitConfig?: FinishOptions["askGitConfig"];
 	/** fork: safe mode; the project is mounted read-only (`LayoutInput`). */
 	readOnlyProject?: boolean;
-	/** fork.12 (AS-014): files hidden from this session's commands only, read before each command. */
+	/** files hidden from this session's commands only, read before each command. */
 	sessionHidden?: () => string[];
 }
 
@@ -117,7 +117,7 @@ export function takeSandboxLayout(runtime: SandboxRuntime, toolCallId: string): 
 export function setSessionSandbox(session: object, sandbox: SessionSandbox | undefined): void {
 	if (sandbox) runtimes.set(session, sandbox);
 	else runtimes.delete(session);
-	// fork.12 (AS-014): the files that received a key in this session (secrets/key-files.ts).
+	// the files that received a key in this session (secrets/key-files.ts).
 	if (sandbox && !("error" in sandbox)) sandbox.sessionHidden = () => keyFiles(session);
 }
 
@@ -386,7 +386,7 @@ export function sandboxTask(
  * `sandboxArgv`, with the folders the command may write; with `git`, each repository it finds works in a private
  * copy of its Git metadata, recorded with the command's origin and pushed to `git.copies`,
  * which the caller finishes after the command. `release` removes the command's cache layers once it has ended
- * (AS-010); those not released go when Prism exits.
+ *; those not released go when Prism exits.
  */
 function sandboxCommand(
 	runtime: SandboxRuntime,
@@ -459,7 +459,7 @@ function sandboxCommand(
 	// fork (SEC-07): `host.prism.internal` names this command's own address of the relay (`relay.ts`).
 	if (channel.hosts && existsSync("/etc/hosts")) layout.copies.push([channel.hosts, realPath("/etc/hosts")]);
 	channel.network.sandboxWrites = sandboxWrites(layout);
-	// fork (AS-010): the package caches through layers of this command's own, never the real caches.
+	// fork: the package caches through layers of this command's own, never the real caches.
 	const layersRoot = join(runtime.agentDir, "sandbox", "layers");
 	const caches = layout.caches ?? [];
 	const layers = cacheLayers(caches, {
@@ -656,7 +656,7 @@ export function createSandboxableBashOperations(
 				channel.close();
 				release();
 				// fork: a repository the command could write directly. Checked before
-				// the publication, which refuses to add one as a submodule (AS-018).
+				// the publication, which refuses to add one as a submodule.
 				const found = repositories && checkNewRepositories(repositories);
 				// fork: also after an interrupted command, whose Git changes are published or kept.
 				const search = repositories;

@@ -32,7 +32,7 @@ import { buildInitialMessage } from "./cli/initial-message.ts";
 import { listModels } from "./cli/list-models.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import { selectSession } from "./cli/session-picker.ts";
-import { shouldRunFirstTimeSetup, showFirstTimeSetup, showStartupSelector } from "./cli/startup-ui.ts";
+import { showStartupSelector } from "./cli/startup-ui.ts";
 import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
@@ -63,17 +63,19 @@ import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
+import { runAuthLoginCommand } from "./fork/auth-login-cli.ts";
 import { APP_DISPLAY_NAME, IS_BRANDED_BUILD, PRISM_LOGO_SVG } from "./fork/brand.ts";
 // `prism browser-host`, started by the browser for the Prism extension.
 import { runBrowserHostCommand } from "./fork/browser/host.ts";
 import { setCliExtensions } from "./fork/child-invocation.ts";
 import { mayHoldMessage } from "./fork/cli-flag-values.ts";
 import { getCompactionThresholdStartupDiagnostic } from "./fork/compaction-threshold-warning.ts";
+import { defaultModelFallbackMessage } from "./fork/default-model-fallback.ts";
 import { runDoctorCommand } from "./fork/doctor-cli.ts";
 // fork: expose the resource loader's recorded failures to /doctor.
 import { setExtensionLoadDiagnostics } from "./fork/doctor-diagnostics.ts";
 import { addSandboxWritable, hostCommand } from "./fork/host-program.ts";
-import { resolveLanguage, setLanguage, t } from "./fork/i18n/index.ts";
+import { fill, resolveLanguage, setLanguage, t } from "./fork/i18n/index.ts";
 import { startInterface } from "./fork/launch-interface.ts";
 import { trustedWithoutPrompt } from "./fork/project-trust-default.ts";
 import { getSafeModeDiagnostics } from "./fork/safe-mode.ts";
@@ -121,6 +123,12 @@ function reportDiagnostics(diagnostics: readonly AgentSessionRuntimeDiagnostic[]
 		const prefix = diagnostic.type === "error" ? "Error: " : diagnostic.type === "warning" ? "Warning: " : "";
 		console.error(color(`${t(prefix)}${t(diagnostic.message)}`)); // fork: translated
 	}
+	// fork (audit FIN-14): an unknown option points to the help.
+	if (
+		diagnostics.some((diagnostic) => diagnostic.type === "error" && diagnostic.message.startsWith("Unknown option"))
+	) {
+		console.error(chalk.dim(fill("Run {0} --help to see the options.", APP_NAME)));
+	}
 }
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
@@ -154,6 +162,8 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 		printAuthCommandHelp();
 		return true;
 	}
+	// fork (audit PB-22): `prism auth login|logout <provider>` (src/fork/auth-login-cli.ts).
+	if (await runAuthLoginCommand(args)) return true;
 
 	let command: AuthCommand | undefined;
 	try {
@@ -477,9 +487,12 @@ function buildSessionOptions(
 	options: CreateAgentSessionOptions;
 	cliThinkingFromModel: boolean;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
+	/** fork: the saved default could not be used; shown once at start. */
+	modelFallbackMessage?: string;
 } {
 	const options: CreateAgentSessionOptions = {};
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
+	let modelFallbackMessage: string | undefined;
 	let cliThinkingFromModel = false;
 
 	// Model from CLI
@@ -528,8 +541,13 @@ function buildSessionOptions(
 			if (!parsed.thinking && savedInScope.thinkingLevel) {
 				options.thinkingLevel = savedInScope.thinkingLevel;
 			}
+		} else if (!parsed.models && savedModel && modelRuntime.hasConfiguredAuth(savedModel.provider)) {
+			// fork: `enabledModels` narrows the Ctrl+P cycle, not the saved default; only `--models` does.
+			options.model = savedModel;
 		} else {
 			options.model = scopedModels[0].model;
+			// fork: a saved default that is gone or has no key is said, not replaced silently.
+			modelFallbackMessage = defaultModelFallbackMessage(modelRuntime, savedProvider, savedModelId, options.model);
 			// Use thinking level from first scoped model if explicitly set
 			if (!parsed.thinking && scopedModels[0].thinkingLevel) {
 				options.thinkingLevel = scopedModels[0].thinkingLevel;
@@ -568,7 +586,7 @@ function buildSessionOptions(
 		options.excludeTools = [...parsed.excludeTools];
 	}
 
-	return { options, cliThinkingFromModel, diagnostics };
+	return { options, cliThinkingFromModel, diagnostics, modelFallbackMessage };
 }
 
 function resolveCliPaths(cwd: string, paths: string[] | undefined): string[] | undefined {
@@ -630,7 +648,20 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 	cleanupManagedInstall();
 
-	let cwd = process.cwd();
+	let cwd: string;
+	try {
+		cwd = process.cwd();
+	} catch (error) {
+		// fork: upstream 88ffcdc73 (#11511), a deleted working directory is reported instead of crashing.
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		setLanguage(resolveLanguage(undefined));
+		console.error(
+			chalk.red(
+				t("Error: The current working directory no longer exists. Change to an existing directory and try again."),
+			),
+		);
+		process.exit(1);
+	}
 	const agentDir = getAgentDir();
 	const bootstrapSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
@@ -754,13 +785,6 @@ export async function main(args: string[], options?: MainOptions) {
 
 	const startupSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: startupProjectTrusted });
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);
-
-	// Experimental first-time setup: theme choice and analytics opt-in.
-	// Runs before any runtime services are created so the chosen settings apply everywhere.
-	if (appMode === "interactive" && !parsed.help && parsed.listModels === undefined && shouldRunFirstTimeSetup()) {
-		await showFirstTimeSetup(startupSettingsManager);
-		time("firstTimeSetup");
-	}
 
 	if (appMode === "interactive" && parsed.useTheme !== undefined) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
@@ -921,6 +945,7 @@ export async function main(args: string[], options?: MainOptions) {
 			options: sessionOptions,
 			cliThinkingFromModel,
 			diagnostics: sessionOptionDiagnostics,
+			modelFallbackMessage: defaultModelFallback,
 		} = buildSessionOptions(
 			parsed,
 			scopedModels,
@@ -960,6 +985,7 @@ export async function main(args: string[], options?: MainOptions) {
 
 		return {
 			...created,
+			modelFallbackMessage: created.modelFallbackMessage ?? defaultModelFallback, // fork
 			services,
 			diagnostics,
 		};

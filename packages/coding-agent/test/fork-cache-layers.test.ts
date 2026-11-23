@@ -51,7 +51,7 @@ const overlaysHere = ((): boolean => {
 	}
 })();
 
-describe("fork: package caches through layers (AS-010)", () => {
+describe("fork: package caches through layers", () => {
 	let base: string;
 	let home: string;
 	let agentDir: string;

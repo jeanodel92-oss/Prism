@@ -97,6 +97,39 @@ describe("fork: install.sh", () => {
 		chmodSync(join(bin, "labwc"), 0o755);
 		expect(run().stdout).toBe("");
 	});
+	// Public release audit (REL-06, REL-22, CLM-02): an older glibc is named for the window instead of a list of
+	// "missing libraries", and a missing secret-tool is named with where keys go instead.
+	it.runIf(process.platform === "linux")("names glibc for the window and secret-tool for the keys", () => {
+		const lines = readFileSync(INSTALLER, "utf-8").split("\n");
+		writeFileSync(join(dir, "functions.sh"), lines.filter((line) => line !== 'main "$@"').join("\n"));
+		const bin = join(dir, "bin");
+		mkdirSync(bin);
+		for (const tool of ["sh", "awk", "cat", "sort", "head", "printf"]) {
+			const found = spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf-8" }).stdout.trim();
+			if (found.startsWith("/")) symlinkSync(found, join(bin, tool));
+		}
+		const stub = (name: string, body: string) => {
+			writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`);
+			chmodSync(join(bin, name), 0o755);
+		};
+		stub("getconf", 'echo "glibc 2.36"');
+		stub("ldd", 'echo "\t$1: version \\`GLIBC_2.39\' not found"');
+		mkdirSync(join(dir, "current", "gui"), { recursive: true });
+		stub(join("..", "current", "gui", "prism-gui"), "true");
+		const run = (fn: string) =>
+			spawnSync(join(bin, "sh"), ["-c", `. ${join(dir, "functions.sh")}; INSTALL_DIR=${dir}; ${fn}`], {
+				encoding: "utf-8",
+				env: { PATH: bin },
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+		const window = run("window_libraries");
+		expect(window.stdout).toContain("need glibc 2.39 or newer");
+		expect(window.stdout).toContain("this system has 2.36");
+		expect(window.stdout).not.toContain("needs libraries");
+		expect(run("keyring_program").stdout).toContain("saved in ~/.prism/agent/auth.json");
+		stub("secret-tool", "true");
+		expect(run("keyring_program").stdout).toBe("");
+	});
 	// the portal helper (the user's desktop under GNOME and KDE) needs libei and PipeWire; a first
 	// install names the missing libraries and the packages, an install with them says nothing.
 	it.runIf(process.platform === "linux")("names libei and PipeWire when the portal helper misses them", () => {

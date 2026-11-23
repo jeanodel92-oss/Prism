@@ -9,6 +9,7 @@ import { APP_NAME, getAuthPath, getDocsPath, getModelsPath } from "../config.ts"
 import type { AgentSession } from "../core/agent-session.ts";
 import type { ExtensionContext } from "../core/extensions/types.ts";
 import { CredentialSynchronizationError } from "../core/model-runtime.ts";
+import { webUrl } from "../modes/interactive/components/login-dialog.ts";
 import {
 	type AuthSelectorProvider,
 	formatAuthSelectorProviderStatus,
@@ -174,7 +175,9 @@ export class NativeLoginView extends NativeFlow {
 			dialog.lines = [];
 			dialog.links = [{ url: event.url }];
 			dialog.notes = event.instructions ? [t(event.instructions)] : [];
-			openBrowser(event.url);
+			// The shared launcher also opens files and custom protocols: only a web URL is opened (upstream 89c921d8b).
+			const target = webUrl(event.url);
+			if (target !== undefined) openBrowser(target);
 		} else if (event.type === "device_code") {
 			dialog.lines = [];
 			dialog.links = [{ url: event.verificationUri }];
@@ -526,13 +529,14 @@ class LoginRun {
 	}
 
 	/** fork: the checklist of the provider's models (login-models.ts). */
-	private async offerModels(providerId: string, providerName: string): Promise<void> {
+	private async offerModels(providerId: string, providerName: string, added?: readonly string[]): Promise<void> {
 		const settings = this.session.settingsManager;
 		const choice = loginModelsChoice({
 			providerId,
 			available: this.runtime.getAvailableSnapshot(),
 			patterns: settings.getEnabledModels(),
 			keep: loginModelsKeep(this.session, providerId),
+			added,
 			savePatterns: (patterns) => settings.setEnabledModels(patterns),
 			setScopedModels: (models) => this.session.setScopedModels(models),
 		});
@@ -563,7 +567,7 @@ class LoginRun {
 		}
 		const { message } = await finishCompatibleServer(this.session, server, getModelsPath(), previousModel);
 		this.ctx.ui.notify(message, "info");
-		await this.offerModels(server.providerId, server.providerId);
+		await this.offerModels(server.providerId, server.providerId, server.added);
 	}
 
 	/** `/logout`: a stored credential, removed. */

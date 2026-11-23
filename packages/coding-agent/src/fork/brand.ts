@@ -3,6 +3,16 @@ import { APP_NAME } from "../config.ts";
 /** Capitalized display form of the configured harness name. */
 export const APP_DISPLAY_NAME = APP_NAME[0].toUpperCase() + APP_NAME.slice(1);
 
+/**
+ * fork (audit FIN-18): the version people read, "12.1" for 1.0.0-fork.12.1 and "12.2 canary 3" for
+ * 1.0.0-fork.12.2.canary.3; a version without the fork suffix (source checkout) stays whole.
+ */
+export function displayVersion(version: string): string {
+	const match = /^\d+\.\d+\.\d+-fork\.(\d+(?:\.\d+)?)(?:[.-]canary\.(\d+))?$/.exec(version);
+	if (!match) return version;
+	return match[2] ? `${match[1]} canary ${match[2]}` : match[1]!;
+}
+
 /** True in a branded build (`prism`), false in the source checkout, which keeps upstream's texts. */
 export const IS_BRANDED_BUILD = APP_NAME !== "pi";
 
@@ -16,7 +26,7 @@ export const PRISM_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="
 export const BRANDED_RADIUS_LOGIN_INTRO = `Radius is a service by Earendil Works, the makers of pi, on which ${APP_DISPLAY_NAME} is built`;
 
 /** `--help` line for `update` in a branded build. */
-export const BRANDED_UPDATE_COMMAND_LINE = `${APP_NAME} update [source|self]       Update ${APP_NAME}, extensions or model catalogs`;
+export const BRANDED_UPDATE_COMMAND_LINE = `${APP_NAME} update [source|self]      Update ${APP_DISPLAY_NAME}, extensions or model catalogs`;
 
 /** `update --help` in a branded build: `--self` runs the site installer (src/fork/self-update.ts). */
 export function brandedUpdateHelp(usage: string): string {

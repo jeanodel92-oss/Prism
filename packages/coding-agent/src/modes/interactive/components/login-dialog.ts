@@ -19,6 +19,16 @@ import { keyHint } from "./keybinding-hints.ts";
 export const SECRET_MASK = "•";
 
 /**
+ * The `http:` or `https:` URL `value` names, normalized, or undefined. The shared launcher also opens files and custom
+ * protocols, so login only opens web URLs (upstream 89c921d8b).
+ */
+export function webUrl(value: string): string | undefined {
+	if (!URL.canParse(value)) return undefined;
+	const url = new URL(value);
+	return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
+}
+
+/**
  * Login dialog component - replaces editor during OAuth login flow
  */
 export class LoginDialogComponent extends Container implements Focusable {
@@ -134,7 +144,8 @@ export class LoginDialogComponent extends Container implements Focusable {
 			this.contentContainer.addChild(new Text(theme.fg("warning", t(instructions)), 1, 0));
 		}
 
-		openBrowser(url);
+		const target = webUrl(url);
+		if (target !== undefined) openBrowser(target);
 		this.tui.requestRender();
 	}
 

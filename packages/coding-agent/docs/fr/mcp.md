@@ -71,7 +71,7 @@ Gardez les serveurs personnels et ceux qui utilisent des identifiants dans le fi
 - Les valeurs de `env` et `headers` peuvent utiliser des variables d’environnement comme `${GITHUB_TOKEN}`. Elles peuvent aussi exécuter une commande avec `!command`, mais celle-ci doit constituer toute la valeur, par exemple `"Authorization": "!echo Bearer $(gh auth token)"`.
 - Les entrées invalides sont signalées et ignorées sans empêcher la connexion des autres serveurs.
 
-`prism mcp add` et `prism mcp remove` permettent d’effectuer les modifications courantes depuis un shell. Consultez [Commandes MCP](../cli.md#mcp-commands) pour les options.
+`prism mcp add` et `prism mcp remove` permettent d’effectuer les modifications courantes depuis un shell. Consultez [Commandes MCP](cli.md#commandes-mcp) pour les options.
 
 ### Examiner ou modifier un serveur
 
@@ -170,8 +170,8 @@ Chaque outil du serveur est enregistré sous le nom `mcp__<server>__<tool>`. La 
 
 | Exposition | Fonctionnement | Utilisation habituelle |
 |---|---|---|
-| `codemode` (par défaut) | Accessible depuis les scripts [`codemode`](../cli.md#tools), mais ni déclarée au modèle ni répertoriée dans la description de codemode. Les scripts trouvent les outils avec `searchTools()`, `describeTool()` ou `ALL_TOOLS`. | Serveurs MCP généralistes, surtout si les scripts doivent combiner ou filtrer les appels. |
-| `deferred` | Pas déclarée avant que [`tool_search`](../cli.md#tools) ne charge une correspondance pour le prochain appel du modèle. | Grands serveurs dont les outils doivent être appelés directement après leur découverte. |
+| `codemode` (par défaut) | Accessible depuis les scripts [`codemode`](cli.md#outils), mais ni déclarée au modèle ni répertoriée dans la description de codemode. Les scripts trouvent les outils avec `searchTools()`, `describeTool()` ou `ALL_TOOLS`. | Serveurs MCP généralistes, surtout si les scripts doivent combiner ou filtrer les appels. |
+| `deferred` | Pas déclarée avant que [`tool_search`](cli.md#outils) ne charge une correspondance pour le prochain appel du modèle. | Grands serveurs dont les outils doivent être appelés directement après leur découverte. |
 | `direct` | Déclarée au modèle comme un outil intégré et également accessible depuis codemode. | Petits ensembles d’outils utilisés souvent. |
 | `hidden` | Enregistrée, mais inaccessible. | Serveurs ou outils qui doivent rester indisponibles. |
 
@@ -230,6 +230,13 @@ Chaque appel MCP passe par la chaîne d’outils de Prism. Les gestionnaires d�
 `pi.getAllTools()` renvoie les annotations déclarées par chaque serveur : `readOnlyHint`, `destructiveHint`, `idempotentHint` et `openWorldHint`. Les extensions de permissions peuvent utiliser ces indications pour décider quels appels nécessitent une confirmation (consultez [Exposition des outils](../extensions.md#tool-exposure)). Les outils de ressources sont marqués en lecture seule.
 
 <a id="other-mcp-extensions"></a>
+
+## Non pris en charge
+
+- **Élicitation.** Un serveur ne peut pas vous poser de question pendant un appel d'outil (`elicitation/create`) ; une telle demande échoue avec « Method not found ».
+- **Client ID Metadata Documents.** Pour OAuth, Prism s'enregistre dynamiquement ou utilise le client que vous configurez ; il ne s'identifie pas par l'adresse d'un document de métadonnées.
+
+La suite de conformité MCP tourne à chaque modification ; les scénarios qui échouent volontairement sont listés dans `test/mcp-conformance/baseline.json`.
 
 ## Extensions et SDK
 

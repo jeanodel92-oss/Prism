@@ -31,4 +31,5 @@ trap 'rm -f "$tmp" "$tmp.part"' EXIT
 		cat "$tmp.part"
 	done
 } >"$tmp"
+chmod 0644 "$tmp"
 mv "$tmp" "$out"

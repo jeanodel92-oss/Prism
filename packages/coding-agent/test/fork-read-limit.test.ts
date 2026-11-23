@@ -573,7 +573,7 @@ describe.skipIf(!bwrap)("fork: reading limited to the project, in the real sandb
 		expect(tools).toContain("hello from cargo");
 		expect(tools).toContain("Bench");
 		// Test 7: the home folder is read-only, the caches of the table writable; the real ~/.cache is not shown.
-		// fork (AS-010): a write to a cache stays in the command's own layer, never in the real cache.
+		// fork: a write to a cache stays in the command's own layer, never in the real cache.
 		const writes = await bash(
 			harness,
 			"touch ~/nouveau && echo created; echo n > ~/.npm/x && echo npm-ok; echo c > ~/.cache/x && echo cache-ok; true",
@@ -754,7 +754,7 @@ describe.skipIf(!bwrap)("fork: reading limited to the project, in the real sandb
 		}
 		const { harness } = await start();
 		expect(await bash(harness, "npm && cargo")).toMatch(/npm-ok\s+cargo-ok/);
-		// Made by Prism before the command; what the command writes in them stays in its own layer (AS-010).
+		// Made by Prism before the command; what the command writes in them stays in its own layer.
 		expect(existsSync(join(home, ".npm"))).toBe(true);
 		expect(existsSync(join(home, ".cargo/registry"))).toBe(true);
 		expect(existsSync(join(home, ".npm/_cacache"))).toBe(false);

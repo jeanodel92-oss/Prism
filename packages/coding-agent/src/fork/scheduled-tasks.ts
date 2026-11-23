@@ -394,7 +394,7 @@ export function installTask(
 		enabling = true;
 		systemctlOrThrow(systemd, ["enable", "--now", unitName(task.id, "timer")]);
 	} catch (error) {
-		// Hardening review, point 5: a task that failed to install leaves nothing behind that could still run.
+		// review, point 5: a task that failed to install leaves nothing behind that could still run.
 		if (enabling) {
 			const undo = systemd.systemctl(["disable", "--now", unitName(task.id, "timer")]);
 			// Its timer's state is unknown: the task and its units stay, so /schedule shows it and can remove it.

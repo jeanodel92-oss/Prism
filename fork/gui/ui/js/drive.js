@@ -862,6 +862,28 @@ export async function runDrive(app) {
 					if (ratio < (step.min ?? 4.5)) throw new Error(`contrast ${ratio.toFixed(2)} below ${step.min ?? 4.5}`);
 					break;
 				}
+				case "viewport": {
+					// The page's size in CSS pixels, kept as `mark`; within 2 px of `width`×`height` when given (a size kept across launches)
+					// , or of the size marked `sameAs` divided by `scale` (the page's zoom).
+					const marked = step.sameAs && driveMarks.get(step.sameAs);
+					const width = marked ? marked[0] / (step.scale ?? 1) : step.width;
+					const height = marked ? marked[1] / (step.scale ?? 1) : step.height;
+					const until = performance.now() + (step.timeout ?? 3000);
+					const off = () => (width && Math.abs(window.innerWidth - width) > 2) || (height && Math.abs(window.innerHeight - height) > 2);
+					while (off() && performance.now() < until) await sleep(50);
+					await log(`viewport ${window.innerWidth}x${window.innerHeight}`);
+					if (off()) throw new Error(`viewport ${window.innerWidth}x${window.innerHeight}, not ${Math.round(width) || "any"}x${Math.round(height) || "any"}`);
+					if (step.mark) driveMarks.set(step.mark, [window.innerWidth, window.innerHeight]);
+					break;
+				}
+				case "size": {
+					// The element's box within `maxHeight` (FIN-30: the settings' sections take little room) and `minWidth`.
+					const box = (await waitFor(step)).getBoundingClientRect();
+					await log(`size ${step.selector}: ${Math.round(box.width)}x${Math.round(box.height)}`);
+					if (step.maxHeight && box.height > step.maxHeight) throw new Error(`size ${step.selector}: ${Math.round(box.height)} px tall, over ${step.maxHeight}`);
+					if (step.minWidth && box.width < step.minWidth) throw new Error(`size ${step.selector}: ${Math.round(box.width)} px wide, under ${step.minWidth}`);
+					break;
+				}
 				case "fits": {
 					// Nothing is cut on the right: the content is no wider than the box that shows it.
 					const el = await waitFor(step);
@@ -874,7 +896,8 @@ export async function runDrive(app) {
 					const read = () => getComputedStyle(el).getPropertyValue(step.property).trim();
 					const deadline = Date.now() + (step.timeout ?? 5000);
 					while (read() !== step.value && Date.now() < deadline) await new Promise(requestAnimationFrame);
-					if (read() !== step.value) throw new Error(`style ${step.property}: ${read()}, not ${step.value}`);
+					// A state style (:focus) needs the window in front: say whether it was.
+					if (read() !== step.value) throw new Error(`style ${step.property}: ${read()}, not ${step.value} (window focused: ${document.hasFocus()}, :focus ${el.matches(":focus")})`);
 					break;
 				}
 				case "open-sessions": {

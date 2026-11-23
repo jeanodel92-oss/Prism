@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The themed icon of Android 13 and later (audit 2026-11-23, FIN-08): the prism and its beam as plain lines, which
+     the launcher tints; same place and size as the foreground layer (icon/ic_launcher_foreground.svg). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="16.88"
+        android:translateY="14.78"
+        android:scaleX="0.145"
+        android:scaleY="0.145">
+        <path
+            android:pathData="M-160,114.8 L167,270"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="12"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M226,169 L286,147 L416,372 L356,394 Z"
+            android:fillColor="#66FFFFFF"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="14"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M226,169 L356,394 L96,394 Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="16"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

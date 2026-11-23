@@ -30,6 +30,8 @@ export type SettingKey =
 	| "contextWindow"
 	| "maxTokens"
 	| "vision"
+	/** fork: tool-result images inside the tool message, `compat.supportsImagesInToolResults`. */
+	| "toolImages"
 	| "reasoning"
 	/** fork: one budget for every thinking level, stored as the model's `thinkingBudgets`. */
 	| "thinkingBudget"
@@ -71,6 +73,7 @@ const LABELS: Record<RowKey, string> = {
 	contextWindow: "Context",
 	maxTokens: "Max output",
 	vision: "Images",
+	toolImages: "Images from tools",
 	reasoning: "Thinking",
 	thinkingBudget: "Thinking budget",
 	tools: "Tool calls",
@@ -151,6 +154,12 @@ export async function writeModelCorrection(
 			else sampling[key] = value;
 			if (Object.keys(sampling).length > 0) override.samplingParams = sampling;
 			else delete override.samplingParams;
+		} else if (key === "toolImages") {
+			const compat = { ...(record(override.compat) ?? {}) };
+			if (value === undefined) delete compat.supportsImagesInToolResults;
+			else compat.supportsImagesInToolResults = value;
+			if (Object.keys(compat).length > 0) override.compat = compat;
+			else delete override.compat;
 		} else {
 			const field = key === "vision" ? "input" : key;
 			if (value === undefined) delete override[field];
@@ -214,7 +223,7 @@ export function parseSettingValue(key: RowKey, text: string): SettingValue | Err
 	if (key === "name") return text.trim() || new Error(t("Type a name."));
 	if (key === "extra") return parseExtra(text);
 	const value = text.trim().toLowerCase();
-	if (key === "vision" || key === "reasoning" || key === "tools") {
+	if (key === "vision" || key === "toolImages" || key === "reasoning" || key === "tools") {
 		if (["yes", "on", "true", "oui"].includes(value)) return true;
 		if (["no", "off", "false", "non"].includes(value)) return false;
 		return new Error(t("Type yes or no."));
@@ -300,6 +309,19 @@ export function settingRows(
 			prism: yesNo(model.input.includes("image")),
 			corrected: correction.input !== undefined,
 		},
+		// Only the OpenAI-compatible chat API sends tool images as a separate message.
+		...(model.api === "openai-completions"
+			? [
+					{
+						key: "toolImages" as const,
+						label: t(LABELS.toolImages),
+						prism: yesNo(
+							(model.compat as OpenAICompletionsCompat | undefined)?.supportsImagesInToolResults === true,
+						),
+						corrected: record(correction.compat)?.supportsImagesInToolResults !== undefined,
+					},
+				]
+			: []),
 		{
 			key: "reasoning",
 			label: t(LABELS.reasoning),
@@ -461,14 +483,15 @@ export default function modelSettings(pi: ExtensionAPI) {
 			syncServer: async (model) => {
 				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 				const apiKey = auth.ok && auth.apiKey !== "none" ? auth.apiKey : undefined;
-				const { added, removed } = await syncCompatibleServer(modelsPath, model.provider, apiKey);
+				const { added, removed, updated } = await syncCompatibleServer(modelsPath, model.provider, apiKey);
 				await ctx.modelRegistry.refresh({ allowNetwork: false });
 				const message =
-					added.length === 0 && removed.length === 0
+					added.length === 0 && removed.length === 0 && updated.length === 0
 						? t("The server's model list has not changed.")
 						: [
 								added.length > 0 ? fill("Added: {0}.", added.join(", ")) : "",
 								removed.length > 0 ? fill("Removed: {0}.", removed.join(", ")) : "",
+								updated.length > 0 ? fill("Updated from the server: {0}.", updated.join(", ")) : "",
 							]
 								.filter(Boolean)
 								.join(" ");

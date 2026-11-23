@@ -14,7 +14,7 @@ llama-server \
   --no-models-autoload \
   --jinja \
   --host 127.0.0.1 \
-  --port 8080 \
+  --port 9931 \
   -ngl 999 \
   -c 32768
 ```
@@ -51,14 +51,14 @@ Démarrez Prism et configurez le fournisseur :
 /login llama.cpp
 ```
 
-Saisissez l’URL du routeur et, facultativement, sa clé API. L’URL par défaut est `http://127.0.0.1:8080`.
+Saisissez l’URL du routeur et, facultativement, sa clé API. L’URL par défaut est `http://127.0.0.1:9931`.
 
 Si vous démarrez le routeur avec `--no-models-autoload`, `/login llama.cpp` n’enregistre que la connexion. Exécutez `/llama` pour charger un modèle, puis `/model` pour le choisir dans la session actuelle.
 
 Vous pouvez configurer les mêmes valeurs avec des variables d’environnement, sans `/login` :
 
 ```bash
-export LLAMA_BASE_URL=http://127.0.0.1:8080
+export LLAMA_BASE_URL=http://127.0.0.1:9931
 export LLAMA_API_KEY=optional-secret
 prism
 ```
@@ -88,7 +88,7 @@ Si la connexion au routeur est interrompue, `/llama` propose **Retry** et **Clos
 
 ## Classification
 
-Tous les modèles répertoriés pour le dialogue le sont aussi comme modèles de classification, avec le même identifiant et l’API `llama-cpp-classify`. Les modèles de classification répondent à des questions structurées `choice`, `bool` et `score` sur un état JSON, comme les modèles Jev de TypeSafe. Le modèle y accède depuis les scripts [`codemode`](../cli.md#enable-codemode), et les extensions avec `ctx.modelRegistry.classify()` ; consultez [Modèles de classification](models.md).
+Tous les modèles répertoriés pour le dialogue le sont aussi comme modèles de classification, avec le même identifiant et l’API `llama-cpp-classify`. Les modèles de classification répondent à des questions structurées `choice`, `bool` et `score` sur un état JSON, comme les modèles Jev de TypeSafe. Le modèle y accède depuis les scripts [`codemode`](cli.md#activer-codemode), et les extensions avec `ctx.modelRegistry.classify()` ; consultez [Modèles de classification](models.md).
 
 Le modèle ne rédige pas de réponse. Chaque question devient un prompt de dialogue : l’état, chaque question de la demande, l’état de nouveau, puis la question accompagnée de ses réponses sous forme d’étiquettes d’un seul token. Les choix utilisent des lettres (jusqu’à 62 options), les booléens `Yes` et `No`, et les notes des chiffres (jusqu’à 10 niveaux). La seconde copie de l’état est examinée avec les questions, ce qui a amélioré la précision sur JevBench avec de petits modèles. Prism lit les probabilités des étiquettes comme token suivant et les normalise. Un choix renvoie la probabilité de chaque option et un niveau de confiance de `(n * peak - 1) / (n - 1)` ; une note renvoie le niveau attendu.
 
@@ -102,8 +102,8 @@ Le modèle ne rédige pas de réponse. Chaque question devient un prompt de dial
 Vérifiez que le routeur est accessible :
 
 ```bash
-curl http://127.0.0.1:8080/health
-curl http://127.0.0.1:8080/models
+curl http://127.0.0.1:9931/health
+curl http://127.0.0.1:9931/models
 ```
 
 - **Aucun modèle dans `/llama` :** vérifiez `--models-dir`, l’organisation des dossiers et redémarrez le routeur.

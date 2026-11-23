@@ -356,6 +356,8 @@ export interface ExtensionContext {
 	 *  the `/scoped-models` command shows. Empty when no scoping is
 	 *  configured (all available models are usable). Read-only snapshot. */
 	scopedModels: readonly ScopedModel[];
+	/** fork: adds models to a non-empty scope and to `enabledModels`, as a model made the default is. */
+	addToScope?(models: readonly Model<any>[]): void;
 	/** Current thinking level, when provided by the session runtime. */
 	thinkingLevel?: ThinkingLevel;
 	/** Whether the agent is idle (not streaming) */
@@ -2186,6 +2188,8 @@ export interface ExtensionActions {
 export interface ExtensionContextActions {
 	getModel: () => Model<any> | undefined;
 	getScopedModels: () => readonly ScopedModel[];
+	/** fork: backs `ExtensionContext.addToScope()`. */
+	addToScope?: (models: readonly Model<any>[]) => void;
 	isIdle: () => boolean;
 	isProjectTrusted: () => boolean;
 	getSignal: () => AbortSignal | undefined;

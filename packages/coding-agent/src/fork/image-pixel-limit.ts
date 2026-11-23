@@ -63,7 +63,7 @@ function pngSize(bytes: Uint8Array): ImageHeaderSize | undefined {
 
 /**
  * Every frame header (SOF0 to SOF15, except DHT, JPG and DAC) before the first scan, walking the markers exactly as
- * the decoder (jpeg-decoder in Photon) does (AS-027): bytes other than FF between segments are skipped, FF fill
+ * the decoder (jpeg-decoder in Photon) does: bytes other than FF between segments are skipped, FF fill
  * bytes and FF 00 are not markers, and only a marker with a length is followed by a segment. Reading FF 00 as a
  * segment once skipped the real frame header and read a fake one the decoder never saw. A marker the decoder
  * refuses before the first scan (RSTn, SOI, TEM) or a frame of zero width or height makes the size unreadable.

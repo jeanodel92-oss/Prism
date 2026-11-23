@@ -23,6 +23,7 @@ const compat: Omit<Required<OpenAICompletionsCompat>, "thinkingTokenBudgetField"
 	maxTokensField: "max_completion_tokens",
 	requiresToolResultName: false,
 	requiresAssistantAfterToolResult: false,
+	requiresToolsWithToolHistory: false,
 	requiresThinkingAsText: false,
 	requiresReasoningContentOnAssistantMessages: false,
 	thinkingFormat: "openai",
@@ -41,6 +42,7 @@ const compat: Omit<Required<OpenAICompletionsCompat>, "thinkingTokenBudgetField"
 	sendSessionAffinityHeaders: false,
 	sessionAffinityFormat: "openai",
 	supportsLongCacheRetention: true,
+	supportsImagesInToolResults: false,
 };
 
 function buildToolResult(toolCallId: string, timestamp: number): ToolResultMessage {
@@ -142,6 +144,69 @@ describe("openai-completions convertMessages", () => {
 			(part) => part?.type === "image_url",
 		);
 		expect(imageParts.length).toBe(2);
+	});
+
+	it("keeps tool-result images inside each tool message with supportsImagesInToolResults", () => {
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const model: Model<"openai-completions"> = {
+			...baseModel,
+			api: "openai-completions",
+			input: ["text", "image"],
+		};
+
+		const now = Date.now();
+		const assistantMessage: AssistantMessage = {
+			role: "assistant",
+			content: [
+				{ type: "toolCall", id: "tool-1", name: "read", arguments: { path: "img-1.png" } },
+				{ type: "toolCall", id: "tool-2", name: "screenshot", arguments: {} },
+			],
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+			usage: emptyUsage,
+			stopReason: "toolUse",
+			timestamp: now,
+		};
+		const imageOnly: ToolResultMessage = {
+			role: "toolResult",
+			toolCallId: "tool-2",
+			toolName: "screenshot",
+			content: [{ type: "image", data: "YmFy", mimeType: "image/jpeg" }],
+			isError: false,
+			timestamp: now + 2,
+		};
+
+		const context = normalizeContext({
+			messages: [
+				{ role: "user", content: "Read the images", timestamp: now - 2 },
+				assistantMessage,
+				buildToolResult("tool-1", now + 1),
+				imageOnly,
+				{ role: "user", content: "Thanks", timestamp: now + 3 },
+			],
+		});
+
+		const messages = convertMessages(model, context, { ...compat, supportsImagesInToolResults: true });
+		expect(messages.slice(2)).toEqual([
+			{
+				role: "tool",
+				tool_call_id: "tool-1",
+				content: [
+					{ type: "text", text: "Read image file [image/png]" },
+					{ type: "image_url", image_url: { url: "data:image/png;base64,ZmFrZQ==" } },
+				],
+			},
+			{
+				role: "tool",
+				tool_call_id: "tool-2",
+				content: [
+					{ type: "text", text: "(see attached image)" },
+					{ type: "image_url", image_url: { url: "data:image/jpeg;base64,YmFy" } },
+				],
+			},
+			{ role: "user", content: "Thanks" },
+		]);
 	});
 
 	// Whitespace-only cases: https://github.com/earendil-works/pi/issues/8720

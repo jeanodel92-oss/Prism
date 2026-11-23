@@ -235,7 +235,10 @@ pub struct Status {
     pub paired: bool,
     pub connected: bool,
     pub host: Option<String>,
+    /// The raw reason, in English and with system wording ("Connection refused (os error 111)"): a detail.
     pub error: Option<String>,
+    /// What `error` means, for the page to say it in the user's language.
+    pub error_kind: Option<ErrorKind>,
     /// Not connected, and trying again in the background.
     pub reconnecting: bool,
     /// Why the last connection was lost, if one was.
@@ -326,7 +329,7 @@ impl Link {
     /// Pairs with a `prism-pair:v1;...` code and connects. Blocks until the PC answers.
     pub fn pair(&self, code: &str) -> Result<(), String> {
         self.new_epoch();
-        match Invitation::decode(code) {
+        match Invitation::decode(&normalize_code(code)) {
             Ok(invitation) => self.connect(&invitation, None),
             Err(error) => {
                 lock(&self.0.state).error = Some(error.clone());
@@ -499,6 +502,7 @@ impl Link {
             connected: open.is_some(),
             host: state.name.clone().filter(|_| open.is_some()).or(address),
             error: state.error.clone(),
+            error_kind: state.error.as_deref().map(ErrorKind::of),
             reconnecting: state.retrying && open.is_none(),
             last_lost: state.last_lost.clone(),
         }
@@ -617,6 +621,85 @@ pub const NOT_LINKED: &str = "Not linked to a PC: pair one in the pairing screen
 pub const REVOKED: &str = "This PC removed this phone: pair it again with a code from the PC.";
 /// What the PC answers a phone it does not know (prism-link).
 const NOT_PAIRED_ANSWER: &str = "DENIED this device is not paired (or was revoked)";
+
+/// What a link error means, whatever its wording: the page says it in the user's language and keeps the raw error as
+/// a detail (audit 2026-11-23, FIN-33: "127.0.0.1:47512: Connection refused (os error 111)" was all the user saw).
+#[derive(Serialize, Debug, PartialEq, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorKind {
+    /// No PC paired yet.
+    NotLinked,
+    /// The PC removed this phone.
+    Revoked,
+    /// The connection was up, then dropped.
+    Lost,
+    /// The PC's machine answers but nothing listens on the port: Prism, or its phone link, is not running there.
+    Refused,
+    /// No answer at all: the PC is off, asleep, or on another network.
+    Timeout,
+    /// The phone has no route to that address (no network, or not on the same network as the PC, local or Tailscale).
+    Unreachable,
+    /// The PC refused the pairing code: already used, expired, or never given.
+    CodeRefused,
+    /// The text is not a Prism pairing code.
+    CodeInvalid,
+    /// The machine at that address is not the PC this phone was paired with (its certificate differs).
+    OtherPc,
+    /// Anything else: only the raw error says.
+    Other,
+}
+
+impl ErrorKind {
+    pub fn of(error: &str) -> Self {
+        // Linux and Android errno values: they do not change with the system's language or C library wording.
+        let os = |codes: &[u32]| {
+            codes
+                .iter()
+                .any(|code| error.contains(&format!("(os error {code})")))
+        };
+        if error == NOT_LINKED {
+            Self::NotLinked
+        } else if error == REVOKED || error == NOT_PAIRED_ANSWER {
+            Self::Revoked
+        } else if error.starts_with(LOST) {
+            Self::Lost
+        } else if os(&[111]) {
+            Self::Refused
+        } else if os(&[110]) || error.ends_with("connection timed out") {
+            Self::Timeout
+        } else if os(&[100, 101, 113]) {
+            Self::Unreachable
+        } else if error.starts_with("DENIED") && error.contains("pairing code") {
+            Self::CodeRefused
+        } else if error.contains("certificate is not the one paired") {
+            Self::OtherPc
+        } else if [
+            "not a Prism pairing code",
+            "unexpected field",
+            "no address",
+            "no port",
+            "no fingerprint",
+            "invalid socket address syntax",
+        ]
+        .iter()
+        .any(|text| error.contains(text))
+        {
+            Self::CodeInvalid
+        } else {
+            Self::Other
+        }
+    }
+}
+
+/// A pairing code typed on the phone's keyboard comes back with spaces and capitals the keyboard added
+///, and one pasted from the terminal with line breaks. A code has no
+/// whitespace, and every part of it is lower case (hex fingerprint and token, digits, IP addresses): both are undone.
+pub fn normalize_code(code: &str) -> String {
+    code.chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
 
 /// A PC this phone was paired with (several PCs, and a way to switch between them).
 #[derive(Serialize, Debug, PartialEq, Clone)]
@@ -800,6 +883,7 @@ mod tests {
                 connected: false,
                 host: None,
                 error: None,
+                error_kind: None,
                 reconnecting: false,
                 last_lost: None
             }
@@ -1028,5 +1112,92 @@ mod tests {
         // A code that is not one.
         let error = intruder.pair("hello").unwrap_err();
         assert_eq!(intruder.status().error, Some(error));
+    }
+
+    /// Audit 2026-11-23, FIN-35: a code typed on the phone's keyboard got a space and a capital ("prism-pair: V1").
+    #[test]
+    fn a_code_mangled_by_the_keyboard_still_pairs() {
+        let pc = FakePc::start(echo());
+        let phone = Dir::new();
+        let link = Link::new(&phone.0).unwrap();
+        let mangled = pc
+            .code()
+            .replacen("prism-pair:v1;", "Prism-pair: V1; ", 1)
+            .replace(";t=", ";\nT=")
+            .to_uppercase()
+            .replacen("PRISM", "Prism", 1);
+        assert_ne!(mangled, pc.code());
+        link.pair(&mangled).unwrap();
+        assert!(link.status().connected);
+        assert_eq!(
+            normalize_code(" prism-pair:V1;\n h=10.0.0.2 "),
+            "prism-pair:v1;h=10.0.0.2"
+        );
+    }
+
+    /// Audit 2026-11-23, FIN-33: the page says what went wrong in the user's language, from `error_kind`.
+    #[test]
+    fn link_errors_have_a_kind_the_page_can_translate() {
+        let phone = Dir::new();
+        let link = Link::new(&phone.0).unwrap();
+
+        // Nothing listens on the PC's port: refused.
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let pc = FakePc::start(echo());
+        let code = pc
+            .code()
+            .replace(&format!(";p={}", pc.port), &format!(";p={port}"));
+        let error = link.pair(&code).unwrap_err();
+        assert!(error.contains("(os error 111)"), "{error}");
+        assert_eq!(link.status().error_kind, Some(ErrorKind::Refused));
+
+        // Not a code.
+        link.pair("hello").unwrap_err();
+        assert_eq!(link.status().error_kind, Some(ErrorKind::CodeInvalid));
+
+        // A code already used.
+        let code = pc.code();
+        Link::new(&Dir::new().0).unwrap().pair(&code).unwrap();
+        link.pair(&code).unwrap_err();
+        assert_eq!(link.status().error_kind, Some(ErrorKind::CodeRefused));
+
+        // The wordings that cannot be produced here without a network.
+        for (error, kind) in [
+            ("10.0.0.9:47392: connection timed out", ErrorKind::Timeout),
+            (
+                "10.0.0.9:47392: Connection timed out (os error 110)",
+                ErrorKind::Timeout,
+            ),
+            (
+                "10.0.0.9:47392: Network is unreachable (os error 101)",
+                ErrorKind::Unreachable,
+            ),
+            (
+                "10.0.0.9:47392: No route to host (os error 113)",
+                ErrorKind::Unreachable,
+            ),
+            (
+                "invalid peer certificate: Other(the PC's certificate is not the one paired)",
+                ErrorKind::OtherPc,
+            ),
+            (REVOKED, ErrorKind::Revoked),
+            (NOT_LINKED, ErrorKind::NotLinked),
+            (
+                "connection to the PC lost: the PC closed the connection",
+                ErrorKind::Lost,
+            ),
+            (
+                "10.0.0.9:47392: Connection reset by peer (os error 104)",
+                ErrorKind::Other,
+            ),
+        ] {
+            assert_eq!(ErrorKind::of(error), kind, "{error}");
+        }
+        assert_eq!(
+            serde_json::to_value(ErrorKind::CodeRefused).unwrap(),
+            json!("code_refused")
+        );
     }
 }

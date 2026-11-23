@@ -68,11 +68,20 @@ pkg.piConfig = { ...pkg.piConfig, name: "prism", configDir: ".prism" };
 fs.writeFileSync(to, `${JSON.stringify(pkg, null, "\t")}\n`);
 ' "$ROOT/packages/coding-agent/package.json" "$package/package.json"
 export PI_PACKAGE_DIR="$package"
+# The version the engine reports (`prism --version`), which the window's settings show (as `prism --gui` gives it).
+PRISM_GUI_PRODUCT_VERSION="$(node -p 'require(process.argv[1]).version' "$package/package.json")"
+export PRISM_GUI_PRODUCT_VERSION
 
 case "$mode" in
 	demo | local | empty)
 		profile="${PRISM_GUI_PROFILE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/prism-gui/profiles}/$mode"
 		mkdir -p "$profile/agent" "$profile/work"
+		# A scripted run (drive.sh, drive-gnome.sh): the scenarios were written for the "ask" permission mode, Prism's
+		# default until 2026-11-18 (now "broad"), so a profile starts in it unless its scenario seeded its own
+		# permissions (drive-all.sh). Audit of 2026-11-23, TESTS-17: run alone, those scenarios failed.
+		if [[ -n "${PRISM_GUI_DRIVE:-}" && ! -f "$profile/agent/permissions.json" ]]; then
+			echo '{"mode":"ask"}' >"$profile/agent/permissions.json"
+		fi
 		# The keyring stays off, as in the test suites: a throwaway profile never touches your keyring.
 		export PI_CODING_AGENT_DIR="$profile/agent" PRISM_CODING_AGENT_DIR="$profile/agent" PRISM_SECRET_SERVICE=off
 		export PRISM_GUI_DATA_DIR="$profile/webview"

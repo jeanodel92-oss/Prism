@@ -1,5 +1,5 @@
 // fork: the simple interface shows one line per action, in plain words; ctrl+o or a click
-// shows the call and its output. Owner's QA report on 1.0.0-fork.6: every command and every output showed in
+// shows the call and its output. maintainer's QA report on 1.0.0-fork.6: every command and every output showed in
 // full in the simple interface.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

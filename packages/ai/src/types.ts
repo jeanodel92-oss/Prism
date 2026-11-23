@@ -808,6 +808,8 @@ export interface OpenAICompletionsCompat {
 	requiresToolResultName?: boolean;
 	/** Whether a user message after tool results requires an assistant message in between. Default: auto-detected from URL. */
 	requiresAssistantAfterToolResult?: boolean;
+	/** Whether requests without tools must send "tools": [] when the conversation contains tool calls or tool results. Needed by some proxies in front of Anthropic, such as older LiteLLM versions. Default: false, the field is omitted. */
+	requiresToolsWithToolHistory?: boolean;
 	/** Whether thinking blocks must be converted to text blocks with <thinking> delimiters. Default: auto-detected from URL. */
 	requiresThinkingAsText?: boolean;
 	/** Whether all replayed assistant messages must include an empty reasoning_content field when reasoning is enabled. Default: auto-detected from URL. */
@@ -868,6 +870,12 @@ export interface OpenAICompletionsCompat {
 	 * interactive sessions. Off by default; not set on the generated catalog.
 	 */
 	vllmPriority?: number;
+	/**
+	 * Whether `tool` messages accept image content parts. When true, images from a tool result stay inside its
+	 * `tool` message instead of a following `user` message ("Attached image(s) from tool result:"), which some
+	 * chat templates render as a turn from the user. Off by default: OpenAI rejects images in tool messages.
+	 */
+	supportsImagesInToolResults?: boolean;
 }
 
 /** Compatibility settings for OpenAI Responses APIs. */
@@ -876,7 +884,7 @@ export interface OpenAIResponsesCompat {
 	supportsDeveloperRole?: boolean;
 	/** Whether the exact model accepts developer or system messages after the conversation has started. When false, later system messages are folded into the leading system message. Default: false; the generated model catalog enables it for verified models. */
 	supportsMidConvoSystemMessages?: boolean;
-	/** Session-affinity header format: `openai` sends `session_id` and `x-client-request-id`; `openai-nosession` sends `x-client-request-id`; `openrouter` sends `x-session-id`. Does not affect the `prompt_cache_key` body param, which is governed by cache retention. Default: auto-detected. */
+	/** Session-affinity header format: `openai` sends `session-id` and `x-client-request-id`; `openai-nosession` sends `x-client-request-id`; `openrouter` sends `x-session-id`. Does not affect the `prompt_cache_key` body param, which is governed by cache retention. Default: auto-detected. */
 	sessionAffinityFormat?: SessionAffinityFormat;
 	/** Whether the provider supports long prompt cache retention. This uses `prompt_cache_options.ttl: "30m"` on GPT-5.6+ and `prompt_cache_retention: "24h"` on earlier models. Default: true. */
 	supportsLongCacheRetention?: boolean;

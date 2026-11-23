@@ -50,9 +50,10 @@ PRISM_PUBLIC_KEY=RWQHj1LfelCE8N3pmVRt9kJcLo18AA41Gm8c7heF0irUFX2+UNOKpPHf
 PRISM_CANARY_PUBLIC_KEY=RWSWxch0cx1AagI3TOgfwXv2dU/QF+mah75kGskd/HrnYZBTpa6JvJxm
 MARKER=".prism-install"
 
-say() { printf 'prism-install: %s\n' "$*"; }
+# The prefix of each line: "prism update: " when `prism update` runs this copy (audit FIN-14).
+say() { printf '%s%s\n' "${PRISM_SAY_PREFIX-prism-install: }" "$*"; }
 die() {
-	printf 'prism-install: %s\n' "$*" >&2
+	printf '%s%s\n' "${PRISM_SAY_PREFIX-prism-install: }" "$*" >&2
 	exit 1
 }
 
@@ -155,6 +156,11 @@ older_than() {
 	[ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" ]
 }
 
+# The system's glibc version (2.39), empty when it cannot be read (audit CLM-13, REL-06).
+glibc_version() {
+	getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }'
+}
+
 # The channel a version belongs to, from its name.
 version_channel() {
 	case $1 in
@@ -227,13 +233,31 @@ sandbox_program() {
 	offer_command "$command"
 }
 
+# fork (audit CLM-02): keys go to the system keyring through secret-tool (libsecret); without it, Prism saves them in
+# auth.json, readable only by the user. Say so, and offer the package, as for bubblewrap.
+keyring_program() {
+	command -v secret-tool >/dev/null 2>&1 && return 0
+	command=$(package_command libsecret libsecret libsecret-tools libsecret-tools)
+	say "API keys go to the system keyring with secret-tool, which is missing: until it is installed, they are saved in ~/.prism/agent/auth.json, readable only by you"
+	[ -n "$command" ] || return 0
+	say "install it with: $command"
+	offer_command "$command"
+}
+
 # Remove the link, but only if it points into the installation directory.
 # The window (gui/prism-gui) uses the system's WebKitGTK 4.1 and GTK 3 (LIV-02): nothing to build, but a system
 # without them gets told which package to install; until then Prism opens in the terminal.
 window_libraries() {
 	gui="$INSTALL_DIR/current/gui/prism-gui"
 	[ -x "$gui" ] && command -v ldd >/dev/null 2>&1 || return 0
-	missing=$(ldd "$gui" 2>/dev/null | awk '/not found/ { printf "%s ", $1 }')
+	# The window and the phone link are built against glibc 2.39 (audit REL-06, REL-22): an older system cannot run
+	# them whatever it installs, so say that instead of listing the glibc error as missing libraries.
+	glibc=$(glibc_version)
+	if [ -n "$glibc" ] && older_than "$glibc" 2.39; then
+		say "the window (prism --gui) and the phone link need glibc 2.39 or newer (Debian 13, Ubuntu 24.04, Fedora 40 or newer); this system has $glibc, so Prism opens in the terminal"
+		return 0
+	fi
+	missing=$(ldd "$gui" 2>/dev/null | awk '/=> not found/ { printf "%s ", $1 }')
 	[ -n "$missing" ] || return 0
 	say "the window (prism --gui) needs libraries this system does not have: ${missing% }"
 	# the one command for this distribution, run on the user's yes.
@@ -302,7 +326,7 @@ apt_lacks() {
 # when there is one; without one, nothing is run.
 offer_command() {
 	if [ -t 2 ] && { : </dev/tty; } 2>/dev/null; then
-		printf 'prism-install: run it now? [y/N] ' >&2
+		printf '%srun it now? [y/N] ' "${PRISM_SAY_PREFIX-prism-install: }" >&2
 		read -r answer </dev/tty || answer=
 		case "$answer" in
 		y | Y | yes | o | O | oui) $1 || say "the command failed; run it yourself: $1" ;;
@@ -438,6 +462,10 @@ main() {
 	[ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || die "only linux-x64 is supported"
 	# The bundled Node is built against glibc.
 	[ -e /lib64/ld-linux-x86-64.so.2 ] || die "glibc is required (musl systems such as Alpine are not supported)"
+	glibc=$(glibc_version)
+	if [ -n "$glibc" ] && older_than "$glibc" 2.28; then
+		die "Prism needs glibc 2.28 or newer; this system has $glibc"
+	fi
 	for tool in curl tar gzip base64 od dd sort; do
 		command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
 	done
@@ -577,7 +605,7 @@ main() {
 	if [ "$mode" = install ]; then
 		mkdir -p "$BIN_DIR"
 		ln -sfn "$INSTALL_DIR/current/prism" "$BIN_DIR/prism"
-		say "installed prism $version ($channel channel) in $INSTALL_DIR"
+		say "installed Prism $version ($channel channel) in $INSTALL_DIR"
 		say "command: $BIN_DIR/prism"
 		case ":$PATH:" in
 		*":$BIN_DIR:"*) ;;
@@ -591,10 +619,15 @@ main() {
 		fi
 	fi
 	sandbox_program
+	keyring_program
 	window_libraries
 	[ "$mode" != install ] || desktop_libraries
 	[ "$mode" != install ] || portal_libraries
 	[ "$channel" = stable ] || canary_warning
+	# fork (audit FIN-14): end on what to do next, after the optional dependencies above.
+	if [ "$mode" = install ]; then
+		printf '\nPrism %s is ready. Open a project folder and run: prism\n' "$version"
+	fi
 }
 
 main "$@"

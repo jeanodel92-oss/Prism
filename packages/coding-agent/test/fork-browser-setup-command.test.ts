@@ -194,16 +194,18 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 				case 0:
 					return "Chromium";
 				case 1:
-					return "Open Chromium";
+					return "Open the page in Chromium";
 				case 2:
 					await until(() => read(log).includes("chromium"));
 					return "Copy the address";
 				case 3:
-					return "Copy the folder path";
+					return "Load from a folder instead";
 				case 4:
+					return "Copy the folder path";
+				case 5:
 					await startHost("Chromium");
 					return "It is added: check";
-				case 5:
+				case 6:
 					// The waiting screen: never answered, the check ends it.
 					return new Promise<undefined>(() => {});
 				default:
@@ -223,15 +225,19 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 		) as { path: string; allowed_origins: string[] };
 		expect(declaration.allowed_origins).toEqual([`chrome-extension://${CHROMIUM_EXTENSION_ID}/`]);
 		expect(read(declaration.path)).toContain("exec /opt/prism/prism browser-host");
-		// The steps name the extensions page and the folder; the browser opened, the address and the folder copied.
-		const extension = shown[1]!.text;
+		// The store first: its page opened in Chromium and its address copied. Then the folder, for a browser without
+		// the store: the extensions page and the folder named, the folder copied.
+		const store = `https://chromewebstore.google.com/detail/prism/${CHROMIUM_EXTENSION_ID}`;
+		expect(shown[1]!.text).toContain(store);
+		expect(shown[1]!.text).not.toContain("chrome://extensions");
+		expect(read(log)).toContain(`chromium ${store}`);
+		expect(shown[2]!.text).toContain("Chromium opened.");
+		expect(shown[3]!.text).toContain(`${store} copied`);
+		const extension = shown[4]!.text;
 		expect(extension).toContain("chrome://extensions");
 		const folder = /select this folder: (\S+)/.exec(extension)![1]!;
 		expect(JSON.parse(read(join(folder, "manifest.json"))).manifest_version).toBe(3);
-		expect(read(log)).toContain("chromium");
-		expect(shown[2]!.text).toContain("Chromium opened.");
-		expect(shown[3]!.text).toContain("chrome://extensions copied");
-		expect(shown[4]!.text).toContain("Folder path copied.");
+		expect(shown[5]!.text).toContain("Folder path copied.");
 		expect(read(join(root, "clipboard"))).toBe(folder);
 		// Step 3: the check went through the host, and Chromium is the browser the agent uses from now on.
 		expect(shown.at(-1)!.text).toContain("Checked: Prism opened, read and closed a tab of its own");
@@ -242,22 +248,43 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 
 	it("sets up a Flatpak Zen: asks, grants, says to restart first, opens it through flatpak", async () => {
 		const { command } = load();
-		const { ctx, shown } = terminal(({ labels }) => {
+		let folderAsked = false;
+		let openedStore = false;
+		let openedPlain = false;
+		const { ctx, shown } = terminal(({ text, labels }) => {
 			if (labels.includes("Zen (Flatpak)") && shown.length === 1) return "Zen (Flatpak)";
-			if (labels.includes("Allow and continue")) return "Allow and continue";
-			if (labels.includes("Open Zen (Flatpak)") && !read(log).includes("flatpak run")) return "Open Zen (Flatpak)";
+			if (labels.includes("Allow and continue")) {
+				if (text.includes("--filesystem=")) folderAsked = true;
+				return "Allow and continue";
+			}
+			if (labels.includes("Open the page in Zen (Flatpak)") && !openedStore) {
+				openedStore = true;
+				return "Open the page in Zen (Flatpak)";
+			}
+			if (labels.includes("Load from a folder instead") && !folderAsked) return "Load from a folder instead";
+			if (labels.includes("Open Zen (Flatpak)") && !openedPlain) {
+				openedPlain = true;
+				return "Open Zen (Flatpak)";
+			}
 			return undefined;
 		});
 
 		await command("setup", ctx);
-		await until(() => read(log).includes("flatpak run"));
+		await until(() => read(log).includes("flatpak run app.zen_browser.zen\n"));
 
 		const grant = shown.find((screen) => screen.labels.includes("Allow and continue"))!;
 		expect(grant.text).toContain("flatpak override --user --talk-name=org.freedesktop.Flatpak app.zen_browser.zen");
-		expect(read(log)).toMatch(
-			/flatpak override --user --talk-name=org\.freedesktop\.Flatpak --filesystem=\S+\/Prism --persist=\.mozilla app\.zen_browser\.zen/,
+		// The store first: no folder grant for it, the AMO page opened in Zen.
+		expect(grant.text).not.toContain("--filesystem=");
+		expect(read(log)).toContain(
+			"flatpak override --user --talk-name=org.freedesktop.Flatpak --persist=.mozilla app.zen_browser.zen\n",
 		);
-		expect(read(log)).toContain("flatpak run app.zen_browser.zen");
+		expect(read(log)).toContain("flatpak run app.zen_browser.zen https://addons.mozilla.org/addon/prism-browser/");
+		// The folder, when chosen, asks for its own grant.
+		expect(read(log)).toMatch(
+			/flatpak override --user --talk-name=org\.freedesktop\.Flatpak --filesystem=\S+\/Prism app\.zen_browser\.zen/,
+		);
+		expect(read(log)).toContain("flatpak run app.zen_browser.zen\n");
 		const zen = join(home, ".var/app/app.zen_browser.zen");
 		for (const dir of [".zen/native-messaging-hosts", ".mozilla/native-messaging-hosts"]) {
 			const declaration = JSON.parse(read(join(zen, dir, `${NATIVE_HOST_NAME}.json`))) as {
@@ -268,6 +295,11 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 			expect(read(declaration.path)).toContain("exec flatpak-spawn --host /opt/prism/prism browser-host");
 		}
 		// The order of the maintainer's QA: the portal setting, then the restart, then the extension.
+		const store = shown.find((screen) => screen.labels.includes("Open the page in Zen (Flatpak)"))!.text;
+		expect(store.indexOf("then start it again")).toBeGreaterThan(store.indexOf("about:config"));
+		expect(store.indexOf("https://addons.mozilla.org/addon/prism-browser/")).toBeGreaterThan(
+			store.indexOf("then start it again"),
+		);
 		const steps = shown.find((screen) => screen.labels.includes("Open Zen (Flatpak)"))!.text;
 		const at = (text: string) => steps.indexOf(text);
 		expect(at("about:config")).toBeGreaterThan(-1);
@@ -277,13 +309,16 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 
 	it("gives Firefox its own copy of the extension and the about:debugging steps", async () => {
 		const { command } = load();
-		const { ctx, shown } = terminal(({ labels }) =>
-			shown.length === 1 && labels.includes("Firefox") ? "Firefox" : undefined,
-		);
+		const { ctx, shown } = terminal(({ labels }) => {
+			if (shown.length === 1 && labels.includes("Firefox")) return "Firefox";
+			if (shown.length === 2) return "Load from a folder instead";
+			return undefined;
+		});
 
 		await command("setup", ctx);
 
-		const steps = shown[1]!.text;
+		expect(shown[1]!.text).toContain("https://addons.mozilla.org/addon/prism-browser/");
+		const steps = shown[2]!.text;
 		expect(steps).toContain("about:debugging#/runtime/this-firefox");
 		const folder = /select manifest\.json in this folder: (\S+)/.exec(steps)![1]!;
 		const manifest = JSON.parse(read(join(folder, "manifest.json"))) as Record<string, unknown>;
@@ -359,14 +394,13 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 	});
 
 	// The extension from AMO or the Chrome Web Store carries no build: it is compared by its version.
-	it("says when a browser runs an older store version of the extension, and nothing when it is the same", async () => {
+	// An older store version gets no start warning: the store updates it once it publishes the new one.
+	it("notes an older store version of the extension in /browser only, and nothing when it is the same", async () => {
 		await startHost("Firefox", "", "0.0.9");
 		const older = load();
 		const first = terminal(() => undefined);
 		await older.sessionStart({ reason: "startup" }, first.ctx);
-		expect(first.notes.map((note) => note.text)).toEqual([
-			`The Prism extension in Firefox is version 0.0.9; this Prism comes with ${shippedExtensionVersion()}. The browser's add-on store updates it; until then, some actions may fail.`,
-		]);
+		expect(first.notes).toEqual([]);
 		const status = terminal(() => undefined);
 		await older.command("", status.ctx);
 		expect(status.notes[0]!.text).toContain(
@@ -397,6 +431,10 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 		expect(notes).toHaveLength(1);
 		// Only the browsers installed, as in the guided setup.
 		expect(notes[0]!.text).toContain("Host declared for: Chromium, Firefox, Zen (Flatpak)\n");
+		expect(notes[0]!.text).toContain(
+			`Chrome Web Store: https://chromewebstore.google.com/detail/prism/${CHROMIUM_EXTENSION_ID}`,
+		);
+		expect(notes[0]!.text).toContain("addons.mozilla.org: https://addons.mozilla.org/addon/prism-browser/");
 		expect(existsSync(join(home, ".config/chromium/NativeMessagingHosts", `${NATIVE_HOST_NAME}.json`))).toBe(true);
 	});
 
@@ -470,6 +508,8 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 										};
 										if (screens.length === 1) pick("Chromium");
 										else if (screens.length === 2) pick("Copy the address");
+										else if (screens.length === 3) pick("Load from a folder instead");
+										else if (screens.length === 4) pick("Copy the address");
 										else component.handleNativeMenuInput({ kind: "back", revision: menu.revision });
 									}),
 							},
@@ -485,7 +525,11 @@ describe("fork: /browser setup, the real command in a throwaway home", () => {
 
 		expect(notes).toEqual([]);
 		expect(screens[0]!.items.map((item) => item.label)).toEqual(["Chromium", "Firefox", "Zen (Flatpak)"]);
-		expect(screens[1]!.lines.join("\n")).toContain("chrome://extensions");
+		expect(screens[1]!.lines.join("\n")).toContain(
+			`https://chromewebstore.google.com/detail/prism/${CHROMIUM_EXTENSION_ID}`,
+		);
+		expect(screens[2]!.lines.join("\n")).toContain(`/detail/prism/${CHROMIUM_EXTENSION_ID} copied`);
+		expect(screens[3]!.lines.join("\n")).toContain("chrome://extensions");
 		expect(read(join(root, "clipboard"))).toBe("chrome://extensions");
 	});
 });

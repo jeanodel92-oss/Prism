@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { detectCapabilities, templateThinking } from "../src/fork/capabilities.ts";
+import { detectCapabilities, templateThinking, thinkingLevelNames } from "../src/fork/capabilities.ts";
 import { writeCompatibleServer } from "../src/fork/compatible-server.ts";
 
 type Routes = Record<string, unknown>;
@@ -304,6 +304,42 @@ describe("fork: capability detection", () => {
 		expect(templateThinking("{% if reasoning_effort == 'high' %}x{% endif %}")?.levels.off).toBeNull();
 		expect(templateThinking("{{ messages }}")).toBeUndefined();
 		expect(templateThinking(undefined)).toBeUndefined();
+	});
+
+	// maintainer's QA, 2026-11-22: GLM 5.3 Flash under Maya offered low and high, not max, the value its template falls back to.
+	it("chat template: the value an `in [...] else` falls back to is a level too", () => {
+		const glm =
+			"{%- set effective_reasoning_effort = reasoning_effort if reasoning_effort in ['low', 'high'] else 'max' -%}";
+		expect(templateThinking(glm)).toEqual({
+			kwargs: { reasoning_effort: { $var: "thinking.effort" } },
+			levels: { off: null, minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: "max" },
+		});
+		// `not in [...] else 'x'` gives x to the listed values only, which already count; an else further on is not read.
+		expect(templateThinking("{{ 'a' if reasoning_effort not in ['low'] else 'max' }}")?.levels.max).toBeNull();
+		expect(
+			templateThinking(`{% if reasoning_effort in ['low'] %}x{% endif %}${" ".repeat(80)}{{ y if z else 'max' }}`)
+				?.levels.max,
+		).toBeNull();
+	});
+
+	// maintainer's QA, 2026-11-22: Maya turns thinking off on enable_thinking: false, which GLM's template does not name.
+	it("Maya: off through enable_thinking, even when the template does not name it", async () => {
+		const glm =
+			"[gMASK]<sop>{%- set effective_reasoning_effort = reasoning_effort if reasoning_effort is defined and reasoning_effort in ['low', 'high'] else 'max' -%}";
+		const props = { default_generation_settings: { n_ctx: 262144 }, total_slots: 2, chat_template: glm };
+		const maya = await serve({ "GET /props": { ...props, ablate: { available: true, default: false, why: "" } } });
+		const [model] = (await detectCapabilities(maya, ["glm-5.3-flash"])).models;
+		expect(model?.thinking).toEqual({
+			kwargs: { enable_thinking: { $var: "thinking.enabled" }, reasoning_effort: { $var: "thinking.effort" } },
+			levels: { minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: "max" },
+		});
+		expect(thinkingLevelNames(model!.thinking!)).toEqual(["off", "low", "high", "max"]);
+		expectReadsOnly();
+
+		// The same template on llama.cpp: nothing says off works.
+		const llama = await serve({ "GET /props": props });
+		const [plain] = (await detectCapabilities(llama, ["glm-5.3-flash"])).models;
+		expect(plain?.thinking?.levels.off).toBeNull();
 	});
 
 	it("/login writes the template's thinking levels to models.json", async () => {

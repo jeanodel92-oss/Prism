@@ -427,6 +427,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 	await rebindSession();
 	registerSignalHandlers();
+	// fork: the window shows the start's model notice (a saved default not usable), as the terminal does.
+	if (runtimeHost.modelFallbackMessage) createExtensionUIContext().notify(runtimeHost.modelFallbackMessage, "warning");
 
 	// Handle a single command
 	const handleCommand = async (command: RpcCommand): Promise<RpcResponse | undefined> => {

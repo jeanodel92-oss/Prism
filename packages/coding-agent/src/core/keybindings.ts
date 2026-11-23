@@ -81,8 +81,15 @@ export const KEYBINDINGS = {
 	...TUI_KEYBINDINGS,
 	"tui.editor.undo": {
 		...TUI_KEYBINDINGS["tui.editor.undo"],
-		defaultKeys: process.platform === "win32" ? "ctrl+z" : windowsKeybindings ? "alt+z" : "ctrl+-",
+		// fork: ctrl+z undoes in the editor, as everywhere else; ctrl+- still does.
+		defaultKeys: process.platform === "win32" ? "ctrl+z" : windowsKeybindings ? "alt+z" : ["ctrl+z", "ctrl+-"],
 	},
+	"tui.editor.redo": {
+		...TUI_KEYBINDINGS["tui.editor.redo"],
+		// fork: ctrl+y redoes, as everywhere else; it no longer yanks by default.
+		defaultKeys: ["ctrl+y", "ctrl+shift+z"],
+	},
+	"tui.editor.yank": { ...TUI_KEYBINDINGS["tui.editor.yank"], defaultKeys: [] },
 	"tui.altScreen.previousPrompt": {
 		...TUI_KEYBINDINGS["tui.altScreen.previousPrompt"],
 		defaultKeys: windowsKeybindings ? "ctrl+up" : ["ctrl+shift+up", "ctrl+up"],
@@ -100,7 +107,8 @@ export const KEYBINDINGS = {
 	"app.clear": { defaultKeys: "ctrl+c", description: "Clear editor" },
 	"app.exit": { defaultKeys: "ctrl+d", description: "Exit when editor is empty" },
 	"app.suspend": {
-		defaultKeys: process.platform === "win32" ? [] : "ctrl+z",
+		// fork: no default key outside WSL, ctrl+z undoes; keybindings.json can still set one.
+		defaultKeys: windowsKeybindings && process.platform !== "win32" ? "ctrl+z" : [],
 		description: "Suspend to background",
 	},
 	"app.thinking.cycle": {

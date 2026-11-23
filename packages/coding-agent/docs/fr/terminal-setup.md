@@ -13,7 +13,7 @@ Prism utilise des protocoles de touches étendus pour distinguer des combinaison
 | Le défilement est particulièrement lent en plein écran | [iTerm2](#iterm2) |
 | Les liens fonctionnent, mais aucun aperçu ne s’affiche au survol | [Ghostty](#ghostty) |
 | Les images intégrées ou les couleurs ne sont pas détectées | [Remplacer les capacités détectées](#remplacer-les-capacites-detectees) |
-| Le sélecteur IME apparaît au mauvais endroit | [WezTerm](#wezterm) ou [Terminal intégré IntelliJ IDEA](#terminal-integre-intellij-idea) |
+| Le sélecteur IME apparaît au mauvais endroit | [WezTerm](#wezterm) ou [Terminal intégré IntelliJ IDEA](#terminal-intégré-dintellij-idea) |
 | Les touches modifiées ne fonctionnent que dans tmux | [Exécuter Prism dans tmux](tmux.md) |
 
 Utilisez `/help` pour voir les raccourcis actifs de Prism. Consultez [Raccourcis clavier](keybindings.md) pour les modifier.

@@ -1,4 +1,4 @@
-// fork: in French, every value /settings shows is French. The owner's QA on 1.0.0-fork.6
+// fork: in French, every value /settings shows is French. The maintainer's QA on 1.0.0-fork.6
 // found "capped at 93.4%", "1 configured", "tree", "disabled", "on" and "off" left in English.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

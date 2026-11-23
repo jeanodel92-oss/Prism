@@ -1,14 +1,16 @@
 /**
  * fork: `/browser setup` as a guided setup, one step after the other, in the window (native
- * screens) and in the terminal (dialogs): choose the browser, declare Prism's host to it, add the extension (the
- * browser opened, its extensions page's address and the folder copied), then a check from end to end, a tab opened, read and closed through
- * the extension. When it fails, the screen says what is in place and what is not. Linking another browser later
- * makes it the one the agent uses (hot switch): the choice is saved, and each session's last browser forgotten.
+ * screens) and in the terminal (dialogs): choose the browser, declare Prism's host to it, add the extension (from its
+ * add-on store first: the store page opened in the browser or its address copied; or, for a browser without the store,
+ * from the folder Prism wrote: its extensions page's address and the folder copied), then a check from end to end, a
+ * tab opened, read and closed through the extension. When it fails, the screen says what is in place and what is not.
+ * Linking another browser later makes it the one the agent uses (hot switch): the choice is saved, and each session's
+ * last browser forgotten.
  */
 import type { ExtensionContext } from "../../core/extensions/types.ts";
 import { fill, t } from "../i18n/index.ts";
 import { NativeFlow, showNativeFlow } from "../native-flow.ts";
-import { extensionsPage, type FoundBrowser } from "./setup.ts";
+import { extensionStorePage, extensionsPage, type FoundBrowser } from "./setup.ts";
 
 export interface WizardAction {
 	id: string;
@@ -47,8 +49,8 @@ export interface WizardDeps {
 	};
 	grantFlatpak(app: string, extra: readonly string[]): void;
 	extensionDir(browser: FoundBrowser): string;
-	/** Opens the browser: undefined, or why it could not. */
-	openBrowser(browser: FoundBrowser): string | undefined;
+	/** Opens the browser, on `url` when given: undefined, or why it could not. */
+	openBrowser(browser: FoundBrowser, url?: string): string | undefined;
 	copy(text: string): Promise<void>;
 	linked(): Promise<LinkedBrowser[]>;
 	/** A tab opened, read and closed in that browser through the extension: undefined, or what failed. */
@@ -133,12 +135,14 @@ async function setUp(
 		});
 		return undefined;
 	}
-	// A Flatpak browser starts the host through flatpak-spawn --host, which its sandbox refuses by default; a Firefox one
-	// also needs to read the extension folder, and Zen to keep ~/.mozilla (see flatpakExtraGrants).
+	// A Flatpak browser starts the host through flatpak-spawn --host, which its sandbox refuses by default; Zen also
+	// needs to keep ~/.mozilla (see flatpakExtraGrants). A Firefox one needs the extension folder only to load it from
+	// there: that grant waits until the user chooses the folder over the store.
 	let granted = false;
-	if (declared.flatpak && (!declared.flatpak.hostAccess || declared.flatpak.extra.length > 0)) {
+	let folderGrants = declared.flatpak?.extra.filter((arg) => arg.startsWith("--filesystem=")) ?? [];
+	const otherGrants = declared.flatpak?.extra.filter((arg) => !arg.startsWith("--filesystem=")) ?? [];
+	if (declared.flatpak && (!declared.flatpak.hostAccess || otherGrants.length > 0)) {
 		const app = declared.flatpak.app;
-		const extra = declared.flatpak.extra;
 		const answer = await ui.ask({
 			id: "flatpak",
 			title,
@@ -152,19 +156,7 @@ async function setUp(
 								app,
 							),
 						]),
-				...extra.map((arg) =>
-					arg.startsWith("--filesystem=")
-						? fill(
-								"Prism also runs: flatpak override --user {0} {1}. This browser can then read and write the extension folder: without write access, the file picker of a Flatpak gives it a copy of manifest.json alone, and the extension cannot load.",
-								arg,
-								app,
-							)
-						: fill(
-								"Prism also runs: flatpak override --user {0} {1}. This browser then keeps its ~/.mozilla folder, where it reads the Prism host declaration.",
-								arg,
-								app,
-							),
-				),
+				...otherGrants.map((arg) => grantLine(arg, app)),
 			],
 			actions: [
 				{ id: "allow", label: t("Allow and continue") },
@@ -173,9 +165,9 @@ async function setUp(
 		});
 		if (answer !== "allow") return undefined;
 		try {
-			deps.grantFlatpak(app, extra);
+			deps.grantFlatpak(app, otherGrants);
 			granted = true;
-			declared = { ...declared, flatpak: { app, hostAccess: true, extra: [] } };
+			declared = { ...declared, flatpak: { app, hostAccess: true, extra: folderGrants } };
 		} catch (error) {
 			await ui.ask({
 				id: "flatpak-failed",
@@ -195,16 +187,190 @@ async function setUp(
 		return undefined;
 	}
 	const page = extensionsPage(browser.family);
-	const actions: string[] = [];
-	if (browser.extraHostsDir) {
-		// Zen's Flatpak sends native messaging through a portal this computer lacks (probed, Zen 1.23.3b).
+	const store = extensionStorePage(browser.family);
+	// The store comes first (both stores accepted the extension); the folder stays for a browser without the store
+	// (Ungoogled Chromium) and for development.
+	let fromFolder = false;
+	let note: string | undefined;
+	let problem: string | undefined;
+	for (;;) {
+		const answer = await ui.ask(
+			fromFolder
+				? {
+						id: "extension-folder",
+						title,
+						lines: [
+							fill("Step {0} of {1}", "2", "3"),
+							t("Add the Prism extension:"),
+							...folderSteps(browser, granted, page, folder),
+							...(note ? [note] : []),
+						],
+						...(problem ? { errors: [problem] } : {}),
+						actions: [
+							{ id: "open", label: fill("Open {0}", browser.name) },
+							{ id: "copy-page", label: t("Copy the address") },
+							{ id: "copy", label: t("Copy the folder path") },
+							{
+								id: "check",
+								label: t("It is added: check"),
+								description: t("Opens, reads and closes a tab of its own."),
+							},
+							{ id: "store", label: t("Back to the store") },
+						],
+					}
+				: {
+						id: "extension",
+						title,
+						lines: [
+							fill("Step {0} of {1}", "2", "3"),
+							t("Add the Prism extension:"),
+							...storeSteps(browser, granted, store),
+							t("No store in this browser, or no add button? Load the extension from a folder instead."),
+							...(note ? [note] : []),
+						],
+						...(problem ? { errors: [problem] } : {}),
+						actions: [
+							{ id: "open-store", label: fill("Open the page in {0}", browser.name) },
+							{ id: "copy-store", label: t("Copy the address") },
+							{
+								id: "check",
+								label: t("It is added: check"),
+								description: t("Opens, reads and closes a tab of its own."),
+							},
+							{
+								id: "folder",
+								label: t("Load from a folder instead"),
+								description:
+									browser.family === "chromium"
+										? t("Developer mode, for a browser without the store.")
+										: t("A temporary add-on, removed at each restart."),
+							},
+						],
+					},
+		);
+		note = undefined;
+		problem = undefined;
+		if (answer === undefined || answer === "store") {
+			if (!fromFolder) return undefined;
+			fromFolder = false;
+			continue;
+		}
+		if (answer === "open" || answer === "open-store") {
+			const failed = deps.openBrowser(browser, answer === "open-store" ? store : undefined);
+			if (failed) problem = failed;
+			else note = fill("{0} opened.", browser.name);
+			continue;
+		}
+		if (answer === "copy-page" || answer === "copy-store") {
+			const address = answer === "copy-store" ? store : page;
+			try {
+				await deps.copy(address);
+				note = fill("{0} copied: paste it in the address bar of {1}.", address, browser.name);
+			} catch (error) {
+				problem = fill("Could not copy: {0}", (error as Error).message);
+			}
+			continue;
+		}
+		if (answer === "copy") {
+			try {
+				await deps.copy(folder);
+				note = t("Folder path copied.");
+			} catch (error) {
+				problem = fill("Could not copy: {0}", (error as Error).message);
+			}
+			continue;
+		}
+		if (answer === "folder") {
+			// A Flatpak Firefox reaches the folder only once allowed to: asked here, not for the store.
+			if (declared.flatpak && folderGrants.length > 0) {
+				const app = declared.flatpak.app;
+				const consent = await ui.ask({
+					id: "flatpak-folder",
+					title,
+					lines: [fill("Step {0} of {1}", "2", "3"), ...folderGrants.map((arg) => grantLine(arg, app))],
+					actions: [
+						{ id: "allow", label: t("Allow and continue") },
+						{ id: "store", label: t("Back to the store") },
+					],
+				});
+				if (consent !== "allow") continue;
+				try {
+					deps.grantFlatpak(app, folderGrants);
+					folderGrants = [];
+					granted = true;
+				} catch (error) {
+					problem = fill("{0}: flatpak override failed: {1}", browser.name, (error as Error).message);
+					continue;
+				}
+			}
+			fromFolder = true;
+			continue;
+		}
+		const outcome = await check(ui, deps, browser, before, declared, fromFolder);
+		if (outcome === "linked") return browser.name;
+		if (outcome === "other") return undefined;
+	}
+}
+
+/** The consent line of one extra `flatpak override` argument. */
+function grantLine(arg: string, app: string): string {
+	return arg.startsWith("--filesystem=")
+		? fill(
+				"Prism also runs: flatpak override --user {0} {1}. This browser can then read and write the extension folder: without write access, the file picker of a Flatpak gives it a copy of manifest.json alone, and the extension cannot load.",
+				arg,
+				app,
+			)
+		: fill(
+				"Prism also runs: flatpak override --user {0} {1}. This browser then keeps its ~/.mozilla folder, where it reads the Prism host declaration.",
+				arg,
+				app,
+			);
+}
+
+/** Zen's portal pref, when its Flatpak needs it: the first step either way. */
+function portalStep(browser: FoundBrowser): string[] {
+	// Zen's Flatpak sends native messaging through a portal this computer lacks (probed, Zen 1.23.3b).
+	return browser.extraHostsDir
+		? [
+				fill(
+					"In {0}, open about:config and set widget.use-xdg-desktop-portal.native-messaging to 0: without it, {0} does not read Prism's host declaration.",
+					browser.name,
+				),
+			]
+		: [];
+}
+
+const numbered = (actions: readonly string[]): string[] =>
+	actions.map((text, index) => fill("{0}. {1}", String(index + 1), text));
+
+/** The steps that install the extension from the browser family's store. */
+function storeSteps(browser: FoundBrowser, granted: boolean, store: string): string[] {
+	const actions = portalStep(browser);
+	if (browser.extraHostsDir || granted) {
+		// A store install survives a restart, unlike a temporary add-on: the order does not matter here.
 		actions.push(
 			fill(
-				"In {0}, open about:config and set widget.use-xdg-desktop-portal.native-messaging to 0: without it, {0} does not read Prism's host declaration.",
+				"Close {0} completely, then start it again: what was just changed applies only when it starts.",
 				browser.name,
 			),
 		);
 	}
+	actions.push(
+		fill(
+			"Open the Prism extension's page in {1}: {0} (the buttons below open it there and copy its address).",
+			store,
+			browser.name,
+		),
+		browser.family === "chromium"
+			? t("Choose Add to Chrome, then Add extension.")
+			: t("Choose Add to Firefox, then Add."),
+	);
+	return numbered(actions);
+}
+
+/** The steps that load the extension from the folder Prism wrote: unpacked (Chromium) or temporary (Firefox). */
+function folderSteps(browser: FoundBrowser, granted: boolean, page: string, folder: string): string[] {
+	const actions = portalStep(browser);
 	// Zen's Flatpak was told to restart after the temporary add-on was loaded, which removes it,
 	// and its new Flatpak permissions (the extension folder) apply only when it starts. Restart first, then add it.
 	if (browser.extraHostsDir || granted) {
@@ -232,64 +398,15 @@ async function setUp(
 	} else {
 		actions.push(fill("Choose Load Temporary Add-on and select manifest.json in this folder: {0}", folder));
 	}
-	const steps = actions.map((text, index) => fill("{0}. {1}", String(index + 1), text));
+	const steps = numbered(actions);
 	if (browser.family === "firefox") {
 		steps.push(
 			t(
-				"A temporary add-on is removed when the browser closes: add it again after a restart, until the signed version.",
+				"A temporary add-on is removed when the browser closes: add it again after a restart, or install the extension from the store.",
 			),
 		);
 	}
-	let note: string | undefined;
-	let problem: string | undefined;
-	for (;;) {
-		const answer = await ui.ask({
-			id: "extension",
-			title,
-			lines: [fill("Step {0} of {1}", "2", "3"), t("Add the Prism extension:"), ...steps, ...(note ? [note] : [])],
-			...(problem ? { errors: [problem] } : {}),
-			actions: [
-				{ id: "open", label: fill("Open {0}", browser.name) },
-				{ id: "copy-page", label: t("Copy the address") },
-				{ id: "copy", label: t("Copy the folder path") },
-				{
-					id: "check",
-					label: t("It is added: check"),
-					description: t("Opens, reads and closes a tab of its own."),
-				},
-			],
-		});
-		note = undefined;
-		problem = undefined;
-		if (answer === undefined) return undefined;
-		if (answer === "open") {
-			const failed = deps.openBrowser(browser);
-			if (failed) problem = failed;
-			else note = fill("{0} opened.", browser.name);
-			continue;
-		}
-		if (answer === "copy-page") {
-			try {
-				await deps.copy(page);
-				note = fill("{0} copied: paste it in the address bar of {1}.", page, browser.name);
-			} catch (error) {
-				problem = fill("Could not copy: {0}", (error as Error).message);
-			}
-			continue;
-		}
-		if (answer === "copy") {
-			try {
-				await deps.copy(folder);
-				note = t("Folder path copied.");
-			} catch (error) {
-				problem = fill("Could not copy: {0}", (error as Error).message);
-			}
-			continue;
-		}
-		const outcome = await check(ui, deps, browser, before, declared);
-		if (outcome === "linked") return browser.name;
-		if (outcome === "other") return undefined;
-	}
+	return steps;
 }
 
 /** Step 3: waits for the extension, then checks it end to end; "linked", "steps" (back to them) or "other". */
@@ -299,6 +416,7 @@ async function check(
 	browser: FoundBrowser,
 	before: Set<number>,
 	declared: ReturnType<WizardDeps["declare"]>,
+	fromFolder: boolean,
 ): Promise<"linked" | "steps" | "other"> {
 	const title = fill("Set up {0}", browser.name);
 	for (;;) {
@@ -379,11 +497,15 @@ async function check(
 		if (!found) {
 			errors.push(fill("The extension did not connect from {0}.", browser.name));
 			diagnostics.push(
-				browser.family === "firefox"
-					? t("Is the extension in about:debugging? A temporary add-on is gone after a restart of the browser.")
-					: t(
+				browser.family === "chromium"
+					? t(
 							"Is the extension in chrome://extensions, turned on, without an error? Restarting the browser after the first declaration can help.",
-						),
+						)
+					: fromFolder
+						? t("Is the extension in about:debugging? A temporary add-on is gone after a restart of the browser.")
+						: t(
+								"Is the Prism extension in about:addons, turned on? Restarting the browser after the first declaration can help.",
+							),
 			);
 			if (others.length > 0) {
 				diagnostics.push(fill("Connected instead: {0}.", others.map((entry) => entry.name).join(", ")));

@@ -1,6 +1,6 @@
 # Exécuter Prism dans un environnement isolé
 
-Utilisez un environnement isolé pour limiter les fichiers, identifiants, processus et services réseau auxquels les commandes générées peuvent accéder ou qu’elles peuvent affecter.
+La [sandbox](sandbox.md) de Prism enferme déjà les commandes shell de l’agent dans les modes `safe`, `ask` et `broad`. Utilisez un conteneur ou une machine virtuelle si vous voulez aussi enfermer le processus de Prism lui-même, ses extensions et ses outils de fichiers, ou tenir toute la session à l’écart de votre machine. Sur cette page, « environnement isolé » désigne ce conteneur ou cette machine virtuelle.
 
 Vous pouvez isoler tout le processus Prism, ou garder Prism sur l’hôte et rediriger certains outils vers un environnement isolé.
 
@@ -33,13 +33,13 @@ Docker standard fournit la limite de conteneurisation la plus simple pour tout l
 
 ### Construire l’image
 
-Créez le fichier `Dockerfile.pi` :
+Créez un fichier `Dockerfile` :
 
 ```dockerfile
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends bash ca-certificates curl git openssl ripgrep \
+  && apt-get install -y --no-install-recommends bash bubblewrap ca-certificates curl git openssl ripgrep \
   && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://prism.odelserver.space/install.sh | sh \
   && ln -s /root/.local/bin/prism /usr/local/bin/prism
@@ -51,8 +51,10 @@ ENTRYPOINT ["prism"]
 Construisez l’image depuis le dossier qui contient le fichier :
 
 ```bash
-docker build -t prism-sandbox -f Dockerfile.pi .
+docker build -t prism .
 ```
+
+Podman accepte les mêmes commandes (`podman build`, `podman run`).
 
 ### Démarrer Prism
 
@@ -61,12 +63,26 @@ Depuis le dossier de travail auquel vous voulez donner accès à Prism, exécute
 ```bash
 docker run --rm -it \
   -e ANTHROPIC_API_KEY \
-  -v "$PWD:/workspace" \
+  -v "$PWD:/workspace:Z" \
   -v prism-agent-home:/root/.prism/agent \
-  prism-sandbox
+  prism
 ```
 
 Remplacez `ANTHROPIC_API_KEY` par l’identifiant requis par votre fournisseur. Le volume nommé `prism-agent-home` conserve les réglages, identifiants et sessions du conteneur entre les exécutions.
+
+Le suffixe `:Z` réétiquette le dossier pour SELinux (Fedora, RHEL et les autres systèmes où SELinux est appliqué). Sans lui, le dossier est monté, mais Prism ne peut pas y écrire. Il est sans effet sur les systèmes sans SELinux.
+
+Pour une seule tâche sans interface, comme en CI, passez le prompt avec `-p` :
+
+```bash
+docker run --rm -e ANTHROPIC_API_KEY -v "$PWD:/workspace:Z" prism -p "Run the tests and summarize the failures"
+```
+
+Consultez [Automatisation](automation.md) pour ce que font les permissions sans interface.
+
+### La sandbox de Prism dans le conteneur
+
+L’image installe `bubblewrap` : la sandbox de Prism peut donc fonctionner dans le conteneur, quand l’environnement d’exécution des conteneurs permet les espaces de noms utilisateur dont elle a besoin. Beaucoup les refusent par défaut (le profil seccomp par défaut de Docker, par exemple). Prism dit alors au démarrage que la sandbox ne fonctionne pas, et les commandes shell de l’agent restent bloquées. Dans ce cas, le conteneur sert de frontière : désactivez la sandbox de Prism pour le conteneur dans `/settings` › Permissions et sandbox › Dans les modes. Le réglage est gardé dans le volume `prism-agent-home`, pas sur votre machine.
 
 Ne montez pas le dossier `~/.prism/agent` de l’hôte, sauf si vous voulez que le conteneur accède à la configuration et aux identifiants Prism de l’hôte.
 
@@ -78,7 +94,7 @@ Dans Prism, exécutez :
 !pwd
 ```
 
-La commande doit afficher `/workspace`. Les changements dans `/workspace` sont écrits dans le dossier de l’hôte monté. Supprimez le montage lié ou utilisez un montage en lecture seule si cela ne vous convient pas.
+La commande doit afficher `/workspace`. Les changements dans `/workspace` sont écrits dans le dossier de l’hôte monté. Supprimez le montage lié ou utilisez un montage en lecture seule (`:ro`) si cela ne vous convient pas.
 
 ## Exécuter Prism avec Docker Sandboxes
 

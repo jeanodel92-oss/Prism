@@ -75,7 +75,7 @@ describe("fork: models offered after a login", () => {
 
 	it("replaces the provider's entries in enabledModels, and keeps every other provider whole", () => {
 		const available = [...openai, ...anthropic];
-		expect(scopeAfterLogin(undefined, "openai", ["gpt-5.5"], available)).toEqual(["anthropic/*", "openai/gpt-5.5"]);
+		expect(scopeAfterLogin(undefined, "openai", ["gpt-5.5"], available)).toEqual(["anthropic/**", "openai/gpt-5.5"]);
 		expect(
 			scopeAfterLogin(["openai/gpt-4", "anthropic/claude-a", "*sonnet*"], "openai", ["gpt-5.5"], available),
 		).toEqual(["anthropic/claude-a", "*sonnet*", "openai/gpt-5.5"]);
@@ -178,7 +178,7 @@ describe("fork: models offered after a login", () => {
 		host.shown!.handleInput!(ENTER);
 		expect(host.shown).toBeUndefined();
 		expect(host.savePatterns).toHaveBeenCalledWith([
-			"anthropic/*",
+			"anthropic/**",
 			"openai/gpt-next",
 			"openai/gpt-6.1-sol",
 			"openai/gpt-5.5",
@@ -220,7 +220,7 @@ describe("fork: models offered after a login", () => {
 
 		// Every model is recent: no checklist, the provider joins the list whole.
 		expect(offerLoginModels(host)).toBe(false);
-		expect(host.savePatterns).toHaveBeenLastCalledWith([...patterns, "deepseek/*"]);
+		expect(host.savePatterns).toHaveBeenLastCalledWith([...patterns, "deepseek/**"]);
 		expect(scoped()).toEqual(expect.arrayContaining(["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"]));
 
 		// Escape on the checklist keeps every model of the provider, as with no list.
@@ -228,12 +228,53 @@ describe("fork: models offered after a login", () => {
 		const withOld = { ...host, available: [...host.available, model("deepseek", "deepseek-v2", "2024-05-01", true)] };
 		expect(offerLoginModels(withOld)).toBe(true);
 		withOld.shown!.handleInput!(ESC);
-		expect(host.savePatterns).toHaveBeenLastCalledWith([...patterns, "deepseek/*"]);
+		expect(host.savePatterns).toHaveBeenLastCalledWith([...patterns, "deepseek/**"]);
 
 		// A provider the list already names, or no list at all, is left alone.
 		host.savePatterns.mockClear();
 		expect(offerLoginModels({ ...host, patterns: [...patterns, "deepseek/deepseek-chat"] })).toBe(false);
 		expect(offerLoginModels({ ...host, patterns: undefined })).toBe(false);
+		expect(host.savePatterns).not.toHaveBeenCalled();
+	});
+
+	// maintainer's QA, 2026-11-22: a server added with a new local model left it out of /scoped-models.
+	it("puts a server's new models in a narrowed enabledModels", () => {
+		const host = {
+			providerId: "localai",
+			providerName: "localai",
+			patterns: ["anthropic/claude-a"],
+			keep: [],
+			show: vi.fn(),
+			savePatterns: vi.fn(),
+			setScopedModels: vi.fn<(models: ScopedModel[]) => void>(),
+			requestRender: () => {},
+		};
+		const scoped = () =>
+			host.setScopedModels.mock.calls.at(-1)![0].map((entry) => `${entry.model.provider}/${entry.model.id}`);
+
+		// A model ID with a "/", as llama.cpp and Hugging Face name them: `localai/*` matched none.
+		const slashed = [...anthropic, model("localai", "unsloth/Qwen3-27B-GGUF")];
+		expect(offerLoginModels({ ...host, available: slashed })).toBe(false);
+		expect(host.savePatterns).toHaveBeenLastCalledWith(["anthropic/claude-a", "localai/**"]);
+		expect(scoped()).toEqual(["anthropic/claude-a", "localai/unsloth/Qwen3-27B-GGUF"]);
+
+		// The same server added again, now serving a new model: the list named only the old one.
+		const served = [...anthropic, model("localai", "qwen3.8-27b"), model("localai", "org/hy4-flash")];
+		const again = { ...host, patterns: ["anthropic/claude-a", "localai/qwen3.8-27b"], available: served };
+		expect(offerLoginModels({ ...again, added: ["org/hy4-flash"] })).toBe(false);
+		expect(host.savePatterns).toHaveBeenLastCalledWith([...again.patterns, "localai/org/hy4-flash"]);
+		expect(scoped()).toEqual(["anthropic/claude-a", "localai/qwen3.8-27b", "localai/org/hy4-flash"]);
+
+		// A model the user took out of the list stays out when it is not new.
+		host.savePatterns.mockClear();
+		expect(offerLoginModels({ ...again, added: [] })).toBe(false);
+		expect(
+			offerLoginModels({
+				...again,
+				patterns: [...again.patterns, "localai/org/hy4-flash"],
+				added: ["org/hy4-flash"],
+			}),
+		).toBe(false);
 		expect(host.savePatterns).not.toHaveBeenCalled();
 	});
 });

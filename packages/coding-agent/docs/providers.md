@@ -9,13 +9,15 @@ Use `/login [provider]` to see the methods supported by a provider. Amazon Bedro
 
 ## Authenticate interactively
 
-Run `/login` and select a provider. Prism guides you through its OAuth or API-key flow and saves the resulting credential in [`auth.json`](configuration.md#agent-directory).
+Run `/login` and select a provider. Prism guides you through its OAuth or API-key flow and saves the resulting credential in your system keyring when one works, otherwise in [`auth.json`](configuration.md#agent-directory); see [Secrets](security.md#secrets). Without a session, for example on a server over SSH, `prism auth login <provider>` does the same from the shell; see [Credential commands](cli.md#credential-commands).
 
 On a remote or headless machine, an OAuth callback may not reach the local process. When prompted, paste the final redirect URL or authorization code back into Prism.
 
 Run `/logout` and select a provider to remove its stored credential. This does not unset environment variables, remove authentication from `models.json`, or revoke the credential at the provider.
 
 `auth.json` can contain API keys and OAuth tokens. Keep it private and do not commit it.
+
+**Sign in with ChatGPT** (the OpenAI subscription login) sends OpenAI a random identifier of this Prism installation, kept as `deviceId` in the global `settings.json`. See [Privacy](security.md#privacy).
 
 ## Use an API key from the environment
 

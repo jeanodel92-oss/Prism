@@ -207,6 +207,7 @@ type CopyCommandContext = {
 	ui: ReturnType<typeof createInteractiveTui>;
 	showStatus: (message: string) => void;
 	showError: (message: string) => void;
+	defaultEditor: { getSelectedText: () => string | undefined };
 };
 
 type CopyCommandOptions = { flashConfirmation?: boolean; preferSelection?: boolean };
@@ -240,6 +241,7 @@ describe("InteractiveMode copy confirmation", () => {
 			ui,
 			showStatus,
 			showError,
+			defaultEditor: { getSelectedText: () => undefined },
 		};
 		ui.addChild(new Text("alpha\nbeta\ngamma\ndelta", 0, 0));
 
@@ -282,6 +284,7 @@ describe("InteractiveMode copy confirmation", () => {
 			ui,
 			showStatus,
 			showError,
+			defaultEditor: { getSelectedText: () => undefined },
 		};
 		ui.addChild(new Text("alpha\nbeta\ngamma\ndelta", 0, 0));
 
@@ -323,6 +326,7 @@ describe("InteractiveMode copy confirmation", () => {
 			ui,
 			showStatus,
 			showError,
+			defaultEditor: { getSelectedText: () => undefined },
 		};
 
 		ui.start();
@@ -354,11 +358,39 @@ describe("InteractiveMode copy confirmation", () => {
 			ui,
 			showStatus,
 			showError,
+			defaultEditor: { getSelectedText: () => undefined },
 		};
 
 		await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true, preferSelection: true });
 
 		expect(showStatus).toHaveBeenCalledWith("Copied last agent message to clipboard");
+		expect(showError).not.toHaveBeenCalled();
+	});
+
+	// fork: ctrl+x copies the text selected with the keyboard in the prompt.
+	it("copies the prompt's keyboard selection instead of the last answer", async () => {
+		const ui = createInteractiveTui({
+			tuiMode: "regular",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal: new RecordingTerminal(),
+		});
+		const getLastAssistantText = vi.fn(() => "assistant response");
+		const showStatus = vi.fn();
+		const showError = vi.fn();
+		const context: CopyCommandContext = {
+			session: { getLastAssistantText },
+			ui,
+			showStatus,
+			showError,
+			defaultEditor: { getSelectedText: () => "selected words" },
+		};
+
+		await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true, preferSelection: true });
+
+		expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith("selected words");
+		expect(getLastAssistantText).not.toHaveBeenCalled();
+		expect(showStatus).toHaveBeenCalledWith("Copied!");
 		expect(showError).not.toHaveBeenCalled();
 	});
 });

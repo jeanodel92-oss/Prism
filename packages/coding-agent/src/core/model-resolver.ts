@@ -13,6 +13,7 @@ import {
 import chalk from "chalk";
 import { minimatch } from "minimatch";
 import { isValidThinkingLevel } from "../cli/args.ts";
+import { defaultModelFallbackMessage } from "../fork/default-model-fallback.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 
@@ -689,6 +690,9 @@ export async function findInitialModel(options: {
 
 	// 4. Try first available model with valid API key
 	const availableModels = [...modelRuntime.getAvailableSnapshot()];
+	// fork: a saved default that could not be used is said, not replaced silently.
+	const fallback = (used: Model<Api>) =>
+		defaultModelFallbackMessage(modelRuntime, defaultProvider, defaultModelId, used);
 
 	if (availableModels.length > 0) {
 		// Try to find a default model from known providers
@@ -696,12 +700,16 @@ export async function findInitialModel(options: {
 			const defaultId = defaultModelPerProvider[provider];
 			const match = availableModels.find((m) => m.provider === provider && m.id === defaultId);
 			if (match) {
-				return { model: match, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
+				return { model: match, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: fallback(match) };
 			}
 		}
 
 		// If no default found, use first available
-		return { model: availableModels[0], thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
+		return {
+			model: availableModels[0],
+			thinkingLevel: DEFAULT_THINKING_LEVEL,
+			fallbackMessage: fallback(availableModels[0]),
+		};
 	}
 
 	// 5. No model found

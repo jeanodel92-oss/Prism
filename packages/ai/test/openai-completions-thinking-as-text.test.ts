@@ -31,6 +31,7 @@ const compat = {
 	maxTokensField: "max_completion_tokens",
 	requiresToolResultName: false,
 	requiresAssistantAfterToolResult: false,
+	requiresToolsWithToolHistory: false,
 	requiresThinkingAsText: true,
 	requiresReasoningContentOnAssistantMessages: false,
 	thinkingFormat: "openai",
@@ -49,6 +50,7 @@ const compat = {
 	sendSessionAffinityHeaders: false,
 	sessionAffinityFormat: "openai",
 	supportsLongCacheRetention: true,
+	supportsImagesInToolResults: false,
 } satisfies Omit<
 	Required<OpenAICompletionsCompat>,
 	"cacheControlFormat" | "thinkingTokenBudgetField" | "vllmPriority"

@@ -25,7 +25,7 @@
 	{
 		"do": "fits",
 		"selector": ".panel.question:not(.closing) .panel-title",
-		"why": "owner's QA of 2026-11-07: the question was cut with an ellipsis"
+		"why": "maintainer's QA of 2026-11-07: the question was cut with an ellipsis"
 	},
 	{
 		"do": "fits",

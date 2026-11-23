@@ -1291,7 +1291,8 @@ dialog .dialog-actions button {
 	border-top: 1px solid var(--line);
 }
 
-/* A narrow window: the sections above the settings, on as many lines as they need. */
+/* A narrow window: the sections above the settings, on one row that scrolls sideways (audit of 2026-11-23, FIN-30: on
+   as many lines as they needed, the twelve took half of a 640 px window before the first setting). */
 @media (max-width: 760px) {
 	#settings {
 		width: calc(100vw - 1.5rem);
@@ -1327,8 +1328,19 @@ dialog .dialog-actions button {
 		border-top: 0;
 	}
 
+	/* Window, then the engine's domains beside it, scrolling. */
+	.settings-sections {
+		flex: 1 1 0;
+		flex-wrap: nowrap;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: thin;
+	}
+
 	.settings-section {
+		flex: none;
 		width: auto;
+		white-space: nowrap;
 	}
 
 	.settings-pane-title,

@@ -1,6 +1,6 @@
 // fork: /login entry for a compatible server, against a fake OpenAI-compatible
 // server. The key must reach the server, auth.json only, and nothing the model sees.
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -104,6 +104,8 @@ describe("fork: /login to a compatible server", () => {
 		expect(added).toMatchObject({ providerId: `127.0.0.1-${port}`, baseUrl: `${url}/v1`, models: ["fake-model"] });
 		// the fake server exposes no native endpoint, so nothing is confirmed.
 		expect(added.detected?.kind).toBe("generic");
+		// A server models.json did not list: no list of new models (login-models.ts adds it whole).
+		expect(added.added).toBeUndefined();
 		const modelsJson = readFileSync(modelsPath, "utf-8");
 		expect(modelsJson).not.toContain(KEY);
 		expect(JSON.parse(modelsJson).providers[added.providerId]).toEqual({
@@ -142,6 +144,62 @@ describe("fork: /login to a compatible server", () => {
 		expect(sessionFiles).toHaveLength(1);
 		expect(readFileSync(join(sessionDir, sessionFiles[0]!), "utf-8")).not.toContain(KEY);
 		session.dispose();
+	});
+
+	// maintainer's QA, 2026-11-22: the server added again under its name, serving a model models.json did not list.
+	it("reports the models a server added again lists for the first time", async () => {
+		const agentDir = join(tempDir, "agent");
+		mkdirSync(agentDir);
+		const modelsPath = join(agentDir, "models.json");
+		const providerId = `127.0.0.1-${new URL(url).port}`;
+		const old = { baseUrl: `${url}/v1`, api: "openai-completions", models: [{ id: "old-model" }] };
+		writeFileSync(modelsPath, JSON.stringify({ providers: { [providerId]: old } }));
+		const runtime = await ModelRuntime.create({
+			authPath: join(agentDir, "auth.json"),
+			modelsPath,
+			allowModelNetwork: false,
+		});
+		const again = await connectCompatibleServer(runtime, modelsPath, {
+			prompt: async (prompt) =>
+				prompt.type === "select"
+					? "openai-completions"
+					: prompt.type === "secret"
+						? KEY
+						: prompt.message === "Server URL"
+							? url
+							: "",
+			notify: () => {},
+		});
+		expect(again).toMatchObject({ providerId, models: ["fake-model"], added: ["fake-model"] });
+	});
+
+	// maintainer's QA of fork.12.2, 2026-11-23: /login again with a server added under its own name proposed its host and
+	// port, so Enter added it a second time.
+	it("proposes the name a server already has, and Enter updates that server", async () => {
+		const agentDir = join(tempDir, "agent");
+		mkdirSync(agentDir);
+		const modelsPath = join(agentDir, "models.json");
+		const old = { baseUrl: `${url}/v1/`, api: "openai-completions", models: [{ id: "old-model" }] };
+		writeFileSync(modelsPath, JSON.stringify({ providers: { maya: old } }));
+		const runtime = await ModelRuntime.create({
+			authPath: join(agentDir, "auth.json"),
+			modelsPath,
+			allowModelNetwork: false,
+		});
+		const asked: string[] = [];
+		const again = await connectCompatibleServer(runtime, modelsPath, {
+			prompt: async (prompt) => {
+				if (prompt.type === "select") return "openai-completions";
+				if (prompt.type === "secret") return KEY;
+				if (prompt.message === "Server URL") return url;
+				asked.push(prompt.message);
+				return "";
+			},
+			notify: () => {},
+		});
+		expect(asked).toEqual(["This server is already added as maya: Enter updates it, or type another name"]);
+		expect(again).toMatchObject({ providerId: "maya", models: ["fake-model"] });
+		expect(Object.keys(JSON.parse(readFileSync(modelsPath, "utf-8")).providers)).toEqual(["maya"]);
 	});
 
 	it("rejects a name that is already a built-in provider", async () => {

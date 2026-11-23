@@ -215,6 +215,8 @@ export interface BrowserSetupResult {
 		flatpak?: { app: string; hostAccess: boolean; extra: string[] };
 	}>;
 	extensionDir: string;
+	/** The Firefox copy, for Load Temporary Add-on: its manifest differs from the Chromium one. */
+	firefoxExtensionDir: string;
 }
 
 export interface BrowserSetupOptions {
@@ -306,7 +308,7 @@ const CHROMIUM_COPY = "browser-extension";
 const FIREFOX_COPY = "browser-extension-firefox";
 
 /**
- * fork.12 (AS-025): the copies of the extension `/browser setup` writes. A browser loads them again at each start,
+ * the copies of the extension `/browser setup` writes. A browser loads them again at each start,
  * outside the sandbox, with the extension's rights; the sandbox keeps them read-only for commands (`layout.ts`).
  */
 export function extensionCopies(home = homedir()): string[] {
@@ -373,6 +375,17 @@ export function writeFirefoxExtension(root = visibleExtensionRoot(), source = br
 /** The folder a browser of this family loads the extension from: a fresh copy, refreshed at each setup. */
 export function extensionDirFor(family: "chromium" | "firefox", root?: string): string {
 	return family === "firefox" ? writeFirefoxExtension(root) : writeChromiumExtension(root);
+}
+
+/**
+ * The extension's page in the add-on store of a browser family, where `/browser setup` sends the user first: accepted
+ * and published on addons.mozilla.org and the Chrome Web Store. The store install updates itself, survives a restart,
+ * and needs no folder a Flatpak browser would have to reach.
+ */
+export function extensionStorePage(family: "chromium" | "firefox"): string {
+	return family === "firefox"
+		? "https://addons.mozilla.org/addon/prism-browser/"
+		: `https://chromewebstore.google.com/detail/prism/${CHROMIUM_EXTENSION_ID}`;
 }
 
 /** The page where the user adds an unpacked or temporary extension. */
@@ -528,5 +541,10 @@ export function installNativeHosts(options: BrowserSetupOptions = {}): BrowserSe
 			...(options.permissions ? { permissions: options.permissions } : {}),
 		}),
 	);
-	return { launcher, written, extensionDir: writeChromiumExtension(join(home, "Prism")) };
+	return {
+		launcher,
+		written,
+		extensionDir: writeChromiumExtension(join(home, "Prism")),
+		firefoxExtensionDir: writeFirefoxExtension(join(home, "Prism")),
+	};
 }

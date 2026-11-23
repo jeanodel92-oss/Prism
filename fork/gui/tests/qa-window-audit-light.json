@@ -1,0 +1,15 @@
+[
+	{ "do": "log", "text": "Audit of the public release, 2026-11-23 (FIN-28): the prism's fan as restrained in daylight as on the dark page." },
+	{ "do": "wait", "selector": "#welcome:not([hidden])", "timeout": 30000 },
+	{ "do": "wait", "selector": ".composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "pref", "id": "pref-animations", "value": "off" },
+	{ "do": "click", "selector": "#toasts .toast .toast-close" },
+	{ "do": "pref", "id": "pref-theme", "value": "dark" },
+	{ "do": "scene-phase", "phase": 4 },
+	{ "do": "wait", "selector": ".scene.vector[data-art='prism']" },
+	{ "do": "shot", "name": "l1-prism-dark", "settle": 1500 },
+	{ "do": "pref", "id": "pref-theme", "value": "light" },
+	{ "do": "wait", "selector": ":root[data-appearance='light'] .scene.vector[data-art='prism']" },
+	{ "do": "shot", "name": "l2-prism-light", "settle": 1500 },
+	{ "do": "quit" }
+]

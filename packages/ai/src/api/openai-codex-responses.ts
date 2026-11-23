@@ -803,7 +803,7 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
-	// fork: split in linear time, an event bounded (same defect as AS-032).
+	// fork: split in linear time, an event bounded.
 	const events = new SseEventSplitter();
 	const onAbort = () => {
 		void reader.cancel().catch(() => {});

@@ -72,7 +72,7 @@ describe("agent desktop and the agent's commands", () => {
 		});
 	});
 
-	// Owner's choice B: launch runs outside the sandbox, so it is judged as the command it runs. With
+	// maintainer's choice B: launch runs outside the sandbox, so it is judged as the command it runs. With
 	// the sandbox on, the gate also asks in broad mode (fork-desktop-e2e.test.ts).
 	it("judges a program started with launch as the shell command it is", () => {
 		const base = mkdtempSync(join(tmpdir(), "prism-desktop-gate-"));

@@ -161,7 +161,7 @@ describe("fork: host programs", () => {
 		expect(facts.branch).toBeTruthy();
 	});
 
-	// Review of the modules the Codex review did not read: a submodule's own configuration, which a command
+	// Review of the modules the review did not read: a submodule's own configuration, which a command
 	// can write in a repository it makes, and `.gitmodules` asking Git to look inside it.
 	it("continuity runs no filter a submodule names, even with `ignore = none`", async () => {
 		const outer = join(root, "outer");
@@ -190,7 +190,7 @@ describe("fork: host programs", () => {
 		expect(facts.changes).toContain("nested");
 	});
 
-	it("names no program from a folder the sandbox writes, nor gives one to the installer's PATH (AS-021)", () => {
+	it("names no program from a folder the sandbox writes, nor gives one to the installer's PATH", () => {
 		hostilePath();
 		for (const name of NAMED) expect(hostCommand(name).startsWith(project), name).toBe(false);
 		expect(hostCommand("notify-send")).not.toBe("notify-send");
@@ -200,7 +200,7 @@ describe("fork: host programs", () => {
 
 	// fork: `spawn("rg", …)` lets the PATH choose; the list of such calls is made
 	// whole by this check, so it does not grow back. A program goes through hostCommand, hostProgram or a path.
-	it("no shipped code passes a bare program name to spawn or execFile (AS-021)", () => {
+	it("no shipped code passes a bare program name to spawn or execFile", () => {
 		const allowed = new Set([
 			// The RPC client is a library for programs that embed Prism: their PATH, their choice.
 			"src/modes/rpc/rpc-client.ts:node",

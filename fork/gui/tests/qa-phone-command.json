@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of fork.11: /phone, the terminal's way to link a phone, opens the window's own 'Link a phone' panel." },
+	{ "do": "log", "text": "maintainer's QA of fork.11: /phone, the terminal's way to link a phone, opens the window's own 'Link a phone' panel." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "type", "text": "/phone" },
 	{ "do": "send" },

@@ -23,7 +23,7 @@
 	{ "do": "shot", "name": "x1-usage" },
 
 	{ "do": "click", "selector": ".panel.context .segmented button", "text": "System prompt" },
-	{ "do": "wait", "selector": ".panel.context .ctx-text", "text": "coding" },
+	{ "do": "wait", "selector": ".panel.context .ctx-text", "text": "operating inside" },
 	{ "do": "wait", "selector": ".panel.context .panel-actions button", "text": "Copy" },
 
 	{ "do": "click", "selector": ".panel.context .segmented button", "text": "Tools" },

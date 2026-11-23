@@ -12,7 +12,7 @@
 #      changed to match it, SHA256SUMS signed with another key, a valid signature
 #      replayed for another version;
 #   4. uninstall;
-#   NOTES.md is the version's section of fork/CHANGELOG.md and listed in SHA256SUMS
+#   NOTES.md is the version's section of fork/RELEASE-NOTES.md and listed in SHA256SUMS
 #, checked on the host, as the licences in the archive;
 #   5. the update channel, on releases n and n+1 repacked from this one
 #      with install.sh trusting a throwaway key: an install made by the first
@@ -68,7 +68,7 @@ trap cleanup EXIT
 
 # Release notes: read the changelog section here independently of release.sh.
 # A canary's are the [Unreleased] section under its own "(canary)" heading.
-python3 - "$ROOT/fork/CHANGELOG.md" "$rel/releases/$version/NOTES.md" "$version" "$channel" <<'EOF'
+python3 - "$ROOT/fork/RELEASE-NOTES.md" "$rel/releases/$version/NOTES.md" "$version" "$channel" <<'EOF'
 import re, sys
 changelog, notes, version, channel = open(sys.argv[1]).read(), open(sys.argv[2]).read(), sys.argv[3], sys.argv[4]
 section = version if channel == "stable" else "Unreleased"
@@ -80,10 +80,10 @@ if match and channel == "canary":
         sys.exit("FAIL: the canary notes heading is " + heading)
     expected = heading + "\n" + expected.partition("\n")[2]
 if not match or expected != notes:
-    sys.exit("FAIL: NOTES.md is not the '## [" + section + "]' section of fork/CHANGELOG.md")
+    sys.exit("FAIL: NOTES.md is not the '## [" + section + "]' section of fork/RELEASE-NOTES.md")
 EOF
 grep -q ' NOTES.md$' "$rel/releases/$version/SHA256SUMS" || { echo "FAIL: NOTES.md is not in SHA256SUMS" >&2; exit 1; }
-echo "ok: NOTES.md is the changelog section of $version and is signed"
+echo "ok: NOTES.md is the release notes section of $version and is signed"
 # Licences: Prism's GPL, pi's MIT notice, the Rust programs' third-party licences.
 listing="$(tar -tzf "$rel/releases/$version/$archive")"
 for licence in LICENSE LICENSES/GPL-3.0-or-later.txt LICENSES/MIT.txt LICENSES/THIRD-PARTY-RUST.txt; do
@@ -336,12 +336,11 @@ install() { curl -fsSL "$base/install.sh" | PRISM_BASE_URL="$1" sh -s -- --chann
 
 ! command -v pi >/dev/null && ! command -v prism >/dev/null || fail "pi or prism already present"
 out=$(install "$base") || fail "install"
-# LIV-02: this image has no WebKitGTK; the install names the package to add.
-printf '%s\n' "$out" | grep -q "needs libraries this system does not have: .*libwebkit2gtk-4.1" ||
-	fail "install without WebKitGTK does not say so: $out"
-# and the one command for this distribution (Debian here); no terminal, so nothing is run.
-printf '%s\n' "$out" | grep -q "install WebKitGTK 4.1 with: sudo apt install libwebkit2gtk-4.1-0" ||
-	fail "install without WebKitGTK does not name the command: $out"
+# Audit REL-06: this image's glibc (2.36) is older than the window's (2.39), so the install says so instead of
+# listing WebKitGTK, which would not help.
+printf '%s\n' "$out" | grep -q "the window (prism --gui) and the phone link need glibc 2.39 or newer.*this system has 2.36" ||
+	fail "install on an old glibc does not say so: $out"
+! printf '%s\n' "$out" | grep -q "WebKitGTK" || fail "install on an old glibc asks for WebKitGTK: $out"
 # Nor bubblewrap, which the sandbox needs.
 printf '%s\n' "$out" | grep -q "the sandbox for the agent's commands needs bubblewrap: sudo apt install bubblewrap" ||
 	fail "install without bubblewrap does not name the command: $out"

@@ -8,6 +8,7 @@
  * and the other commands kept as shortcuts call `openSettings`.
  * Same pattern as the onboarding host (onboarding.ts).
  */
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { SettingItem } from "@earendil-works/pi-tui";
 
 /** What a section may ask of the open window. */
@@ -16,6 +17,14 @@ export interface SectionContext {
 	advanced(): boolean;
 	/** Draws the window again, for an answer that arrives later, such as a server's values. */
 	requestRender(): void;
+	/**
+	 * fork: the saved default model, read and changed as the Models domain's "Default model" does, so a
+	 * page that removes the default can offer another one. Undefined when the window has no Models domain.
+	 */
+	defaultModel?: {
+		get(): { provider: string; id: string } | undefined;
+		set(model: Model<Api>): void;
+	};
 }
 
 /** Settings an extension adds to one domain of `/settings`. */

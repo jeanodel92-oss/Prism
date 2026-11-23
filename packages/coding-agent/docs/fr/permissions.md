@@ -2,7 +2,7 @@
 
 Prism place une étape de confirmation avant les appels d’outils. Elle est toujours active : `--no-extensions`, `--safe` et le réglage `extensions` ne la désactivent pas. Vous seul pouvez la modifier avec `/perm` ou `--perm-mode`. Une extension installée qui enregistre `/perm`, `--perm-mode` ou `--perm-yolo` la remplace. `alt+m` change de mode.
 
-**Ce n’est pas un environnement isolé.** Les règles cherchent des motifs dans les commandes et les chemins ; elles ne forment pas une frontière de sécurité. Une commande shell que vous autorisez peut tout faire avec les permissions de votre compte, notamment lire `auth.json` et vos autres fichiers : les secrets ne sont pas isolés de l’agent. Pour une véritable isolation, consultez [Conteneuriser Prism](containerization.md).
+Cette étape décide si un appel s’exécute ; la [sandbox](sandbox.md) limite ce qu’une commande shell peut faire une fois lancée. Dans les modes `safe`, `ask` et `broad`, les commandes de l’agent s’exécutent par défaut dans la sandbox : elles ne peuvent modifier que le projet, ne lisent ni les identifiants de Prism ni vos clés, et ne joignent que les hôtes que vous autorisez. Les règles de cette page cherchent des motifs dans les commandes et les chemins ; seules, elles ne forment pas une frontière de sécurité. Hors de la sandbox (mode `unrestricted`, commandes que vous en excluez, outil `sudo`), une commande autorisée peut tout faire avec les permissions de votre compte. Pour isoler tout le processus Prism, consultez [Conteneuriser Prism](containerization.md).
 
 ## Actions contrôlées en mode `ask`
 
@@ -98,10 +98,10 @@ Chaque appel garde sa propre FIFO `SUDO_ASKPASS` à usage unique, `sudo -k -A` e
 `sudo -k` final : sudo ne garde aucun identifiant. Le mot de passe ne va jamais au
 modèle, dans la session, les logs, traces, variables d'environnement ou fichiers
 enregistrés ; la sortie le masque par `***`. Une chaîne JavaScript ne peut pas être
-effacée, seulement déréférencée. Cette fenêtre et l'accord de session sont la décision
-D11 du propriétaire (2026-11-05) : un programme du même utilisateur ne lit pas plus
-facilement la mémoire de Prism, mais un processus Prism compromis détient désormais
-le mot de passe mémorisé jusqu'à cinq minutes. Un appel encore en cours conserve
+effacée, seulement déréférencée. Le compromis de cette fenêtre et de l'accord de
+session : un programme du même utilisateur ne lit pas plus facilement la mémoire de
+Prism, mais un processus Prism compromis détient le mot de passe mémorisé jusqu'à
+cinq minutes. Un appel encore en cours conserve
 aussi sa référence locale jusqu'à son retour.
 
 ## Périmètre de tâche
@@ -121,7 +121,7 @@ Un périmètre limite les commandes lancées, les fichiers modifiés et les hôt
                              # browser or desktop use; deny rules still apply
     /perm mode unrestricted  # no dialogs at all; only your deny rules apply
 
-`broad` s’appelait `yolo` ; `yolo` reste accepté. Le mode `unrestricted` ne pose aucune question, même pour les appels dangereux et les écritures en dehors du projet. Vous l’activez une fois dans une boîte de dialogue d’avertissement (le choix est enregistré dans le `permissions.json` global sous la forme `"unrestrictedAccepted": true`) ou explicitement en ligne de commande (`--perm-mode unrestricted`). Le `permissions.json` d’un projet ne peut pas l’activer. Ce mode ne crée toujours pas d’environnement isolé : l’agent peut tout faire avec les permissions de votre compte.
+`broad` s’appelait `yolo` ; `yolo` reste accepté. Le mode `unrestricted` ne pose aucune question, même pour les appels dangereux et les écritures en dehors du projet. Vous l’activez une fois dans une boîte de dialogue d’avertissement (le choix est enregistré dans le `permissions.json` global sous la forme `"unrestrictedAccepted": true`) ou explicitement en ligne de commande (`--perm-mode unrestricted`). Le `permissions.json` d’un projet ne peut pas l’activer. Ses commandes s’exécutent hors de la sandbox, sauf si vous l’activez pour ce mode dans `/settings` › Permissions et sandbox ; hors de la sandbox, l’agent peut tout faire avec les permissions de votre compte.
 
 Vous pouvez aussi utiliser ces options pour une seule exécution : `--perm-mode safe`, `--perm-mode broad` (`--perm-yolo`). Le mode choisi avec `/perm mode` ou `alt+m` est enregistré dans la session et rétabli quand vous la reprenez ; `/perm default <mode>` définit le mode des nouvelles sessions.
 

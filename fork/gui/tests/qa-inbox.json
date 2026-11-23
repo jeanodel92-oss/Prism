@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "owner's decision, 2026-11-13: the phone's 'waiting for you' line in the PC window, under the topbar, and a dot on the waiting conversation in the side panel" },
+	{ "do": "log", "text": "maintainer's decision, 2026-11-13: the phone's 'waiting for you' line in the PC window, under the topbar, and a dot on the waiting conversation in the side panel" },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "absent", "selector": ".inbox:not([hidden])", "why": "nothing waits: no line" },
 	{ "do": "type", "text": "call write {\"path\":\"waiting.txt\",\"content\":\"inbox\"}" },

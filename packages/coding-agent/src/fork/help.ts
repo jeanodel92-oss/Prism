@@ -55,6 +55,11 @@ export function helpEntries(
 			action: "Previous messages",
 			detail: "in an empty editor",
 		},
+		{
+			key: `${key("tui.editor.selectLeft")} / ${key("tui.editor.selectRight")}`,
+			action: "Select text in the message",
+			detail: "typing replaces it",
+		},
 		// Daily.
 		{ key: key("app.model.select"), action: "Choose the model", command: "/model" },
 		feature("bg", { key: key("app.background.tasks"), action: "Show background tasks", command: "/bg" }),
@@ -157,6 +162,7 @@ export function helpEntries(
 		{ key: key("tui.editor.deleteToLineStart"), action: "Delete to the start of the line" },
 		{ key: key("tui.editor.deleteToLineEnd"), action: "Delete to the end of the line" },
 		{ key: key("tui.editor.undo"), action: "Undo in the editor" },
+		{ key: key("tui.editor.redo"), action: "Redo in the editor" },
 		{ key: key("tui.editor.yank"), action: "Paste the last deleted text" },
 		{ key: key("tui.editor.yankPop"), action: "Cycle through deleted text after pasting" },
 		{ key: key("tui.editor.jumpForward"), action: "Jump forward to a character" },

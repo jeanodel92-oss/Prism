@@ -55,6 +55,7 @@ tar -xzf "$archive" -C "$work"
 [[ -x "$work/$name/prism" ]] || die "$archive: no prism launcher at its root"
 mv "$work/$name" "$work/tree"
 cp -r "$ROOT/fork/packaging/markers" "$work/markers"
+cp -r "$ROOT/fork/packaging/share" "$work/share"
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"

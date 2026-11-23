@@ -277,7 +277,7 @@ function createEventConverter(model: Model<"pi-messages">) {
 async function* readPiMessagesEvents(stream: ReadableStream<Uint8Array>): AsyncGenerator<PiMessagesEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
-	// fork: split in linear time, an event bounded (same defect as AS-032).
+	// fork: split in linear time, an event bounded.
 	const events = new SseEventSplitter();
 
 	try {

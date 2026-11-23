@@ -27,7 +27,7 @@
 #                         before N's canaries and N+1.
 #   --canary M            a canary release, <upstream>-fork.N.canary.M: the M-th
 #                         canary after stable N. Its notes are the [Unreleased] section
-#                         of fork/CHANGELOG.md, its signed comment ends in " canary",
+#                         of fork/RELEASE-NOTES.md, its signed comment ends in " canary",
 #                         and it is listed in LATEST-canary only, never in LATEST.
 #                         Archive only: no Android app,
 #                         and the committed model catalog. Signed with the canary key,
@@ -43,14 +43,14 @@
 #
 # The archive holds the Node install of install-local.sh (Prism runs on Node)
 # , the official Node binary pinned below, the window (gui/prism-gui and its
-# icon, built by fork/gui/scripts/build.sh --package; owner's decision A3 of
+# icon, built by fork/gui/scripts/build.sh --package; maintainer's decision A3 of
 # 2026-11-05: `prism --gui` opens it, the terminal stays the fallback without
 # WebKitGTK), the desktop helpers
 # , the phone server gui/prism-remote (fork/android/server, which
 # the window's "Link a phone" starts), a relocatable `prism` launcher,
 # install.sh (run by `prism update`), and the licenses (LICENSE: GPL-3.0-or-later; LICENSES/: their texts, pi's
 # MIT notice and THIRD-PARTY-RUST.txt, the crates' of the Rust programs; Node's; the vendored plugins' under vendor/). NOTES.md is the "## [<version>]" section of
-# fork/CHANGELOG.md, which must exist. Beside the archive, the Android app
+# fork/RELEASE-NOTES.md, which must exist. Beside the archive, the Android app
 # an arm64 APK built by fork/android/scripts/build.sh and signed with the app's own key, which
 # Android requires for every update; a stable release also copies it to releases/android/, the fixed address the
 # window and the phone link to. A stable release also carries the browser extension's store packages
@@ -182,7 +182,8 @@ no_build_paths() {
 	[[ -z "$found" ]] || die "$(basename "$where") contains the build machine's home ($HOME): $(head -n 5 <<<"$found" | tr '\n' ' ')"
 }
 
-# Release notes: the version's section of fork/CHANGELOG.md, heading included,
+# Release notes: the version's section of fork/RELEASE-NOTES.md (English, for users; audit CLM-03:
+# fork/CHANGELOG.md is the French internal history), heading included,
 # up to the next version heading, without trailing blank lines. A canary takes the
 # [Unreleased] section, under its own heading.
 upstream_version="$(node -p 'require(process.argv[1]).version' "$ROOT/packages/coding-agent/package.json")"
@@ -192,17 +193,17 @@ section() {
 		index($0, h) == 1 && (length($0) == length(h) || substr($0, length(h) + 1, 1) == " ") { on = 1 }
 		on && /^## \[/ && index($0, h) != 1 { exit }
 		on { print }
-	' "$ROOT/fork/CHANGELOG.md"
+	' "$ROOT/fork/RELEASE-NOTES.md"
 }
 if [[ -n "$canary" ]]; then
 	unreleased="$(section Unreleased | tail -n +2)"
-	[[ -n "${unreleased//[[:space:]]/}" ]] || die "fork/CHANGELOG.md has nothing under [Unreleased] for this canary"
+	[[ -n "${unreleased//[[:space:]]/}" ]] || die "fork/RELEASE-NOTES.md has nothing under [Unreleased] for this canary"
 	notes="$(printf '## [%s] - %s (canary)\n%s' "$version" "$(date +%Y-%m-%d)" "$unreleased")"
 	comment="prism $version canary"
 	latest_file=LATEST-canary
 else
 	notes="$(section "$version")"
-	[[ -n "$notes" ]] || die "fork/CHANGELOG.md has no '## [$version]' section: move the [Unreleased] entries under it first"
+	[[ -n "$notes" ]] || die "fork/RELEASE-NOTES.md has no '## [$version]' section: move the [Unreleased] entries under it first (and in fork/CHANGELOG.md)"
 	comment="prism $version"
 	latest_file=LATEST
 	# The Android app's versionCode must grow with each update: N.p after N, N+1 after every N.p. f-droid.org reads it
@@ -293,6 +294,20 @@ fi
 
 root="$work/$name"
 mv "$work/install" "$root"
+# The install's manifests name the build's temporary folder (file:../../prism-build.XXXXXX/tarballs/…); keep the
+# tarball's name only (audit REL-14). Nothing reads these paths after the install; the tree is checked above.
+node -e '
+const fs = require("node:fs");
+for (const file of process.argv.slice(1)) {
+	if (!fs.existsSync(file)) continue;
+	const text = fs.readFileSync(file, "utf8").replace(/file:[^"]*?prism-build\.[^"/]+\/tarballs\//g, "file:tarballs/");
+	fs.writeFileSync(file, text.replace(/"name": "@earendil-works\/pi-coding-agent-install"/g, "\"name\": \"prism\""));
+}' "$root/package.json" "$root/package-lock.json" "$root/node_modules/.package-lock.json"
+! grep -rq "prism-build\." "$root/package.json" "$root/package-lock.json" || die "the install still names its build folder"
+# Where the corresponding source is (audit REL-15): the site's source page, which links the public repository and
+# its tags (the repository's owner name is kept out of exported files, public-export.mjs).
+printf 'Prism %s\nSource: https://prism.odelserver.space/source/ (tag prism-v%s)\nLicence: GPL-3.0-or-later (LICENSE, LICENSES/)\n' \
+	"$version" "$version" >"$root/SOURCE"
 mkdir -p "$root/node/bin"
 tar -xJf "$node_archive" -C "$work" "node-$NODE_VERSION-linux-x64/bin/node" "node-$NODE_VERSION-linux-x64/LICENSE"
 mv "$work/node-$NODE_VERSION-linux-x64/bin/node" "$root/node/bin/node"
@@ -320,7 +335,8 @@ say "writing the Rust programs' licences"
 mkdir -p "$ROOT/fork/gui/ui/vendor"
 "$ROOT/fork/scripts/rust-notices/generate.sh" "$ROOT/fork/gui/ui/vendor/THIRD-PARTY-RUST.txt" >"$work/rust-notices.log" 2>&1 ||
 	die "the Rust programs' licences were not written: $(tail -n 30 "$work/rust-notices.log")"
-cp "$ROOT/fork/gui/ui/vendor/THIRD-PARTY-RUST.txt" "$root/LICENSES/THIRD-PARTY-RUST.txt"
+# 0644 (audit REL-07): the generator writes through mktemp (0600), and a root install must stay readable.
+install -m 0644 "$ROOT/fork/gui/ui/vendor/THIRD-PARTY-RUST.txt" "$root/LICENSES/THIRD-PARTY-RUST.txt"
 
 gui_binary="$ROOT/fork/gui/src-tauri/target-package/release/prism-gui"
 if [[ -z "$skip_build" || ! -x "$gui_binary" ]]; then

@@ -118,7 +118,7 @@ function taskLines(prompt: string): string {
 export function scheduleSummary(task: ScheduledTask, next: { at: Date; normalized: string }, unitDir: string): string {
 	return [
 		t("Create this scheduled task?"),
-		// fork.12 security audit (AS-016): the prompt is the model's free text; its controls show, its lines stay.
+		// fork.12 security audit: the prompt is the model's free text; its controls show, its lines stay.
 		// After AS-017: a prompt of several lines shows as a block, which no line of it can leave.
 		taskLines(task.prompt),
 		`${t("Folder:")} ${task.cwd}`,

@@ -289,12 +289,15 @@ export function createFooterFactory(state: PrismState) {
 				const mark = compaction?.mark;
 				const level = gaugeLevel(pct ?? 0, mark);
 				const pctText = pct === null ? "?" : `${pct.toFixed(1)}%`;
-				const ctxPart =
-					`${gauge(theme, pct ?? 0, mark)} ${theme.fg(level ?? "text", pctText)}${dim(`/${formatTokens(window)}`)}` +
-					(auto ? dim(" auto") : "");
-
 				// The session's placeholder when no model is configured is not a model (as in the header).
 				const noModel = !ctx.model || (ctx.model.provider === "unknown" && ctx.model.id === "unknown");
+				// fork (audit FIN-06): without a model (or a context size) the gauge read "?/0 auto"; a dash says "none".
+				const ctxPart =
+					noModel || !window
+						? dim("–")
+						: `${gauge(theme, pct ?? 0, mark)} ${theme.fg(level ?? "text", pctText)}${dim(`/${formatTokens(window)}`)}` +
+							(auto ? dim(" auto") : "");
+
 				contextInfo = { percent: pct, window, noModel, auto, mark, threshold: compaction?.threshold };
 				state.contextSeen?.(contextInfo);
 				// fork: extension statuses as chips, on the first line when they fit beside the stats.

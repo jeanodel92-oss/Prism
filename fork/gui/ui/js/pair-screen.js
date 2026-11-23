@@ -21,6 +21,50 @@ export async function linkStatus() {
 
 const message = (error) => String(error?.message ?? error);
 
+/** The transport's `error_kind` (fork/android/phone, `ErrorKind`) and the text that says it. */
+const ERROR_TEXT = {
+	not_linked: "pairErrorNotLinked",
+	revoked: "pairErrorRevoked",
+	lost: "pairErrorLost",
+	refused: "pairErrorRefused",
+	timeout: "pairErrorTimeout",
+	unreachable: "pairErrorUnreachable",
+	code_refused: "pairErrorCodeRefused",
+	code_invalid: "pairErrorCodeInvalid",
+	other_pc: "pairErrorOtherPc",
+};
+
+/**
+ * The link's error in the user's language, the raw one ("…: Connection refused (os error 111)") folded under Details;
+ * undefined without an error. An error the transport cannot name shows as it is.
+ */
+function linkError(status, className) {
+	if (!status?.error) return undefined;
+	const key = ERROR_TEXT[status.error_kind];
+	if (!key) return h("span", { class: className, text: status.error });
+	return h(
+		"span",
+		{ class: className },
+		h("span", { text: t(key) }),
+		h("details", { class: "pair-details" }, h("summary", { text: t("pairErrorDetails") }), h("code", { text: status.error })),
+	);
+}
+
+/** The Prism mark, the site's favicon drawn in the text colour. */
+function prismMark() {
+	const SVG = "http://www.w3.org/2000/svg";
+	const svg = document.createElementNS(SVG, "svg");
+	svg.setAttribute("viewBox", "0 0 32 32");
+	svg.setAttribute("class", "pair-mark");
+	svg.setAttribute("aria-hidden", "true");
+	for (const d of ["M16 6.5 26.5 25H5.5Z", "M2.5 19.2h7.6"]) {
+		const path = document.createElementNS(SVG, "path");
+		path.setAttribute("d", d);
+		svg.append(path);
+	}
+	return svg;
+}
+
 /**
  * The camera, opened by its button only: the barcode scanner plugin draws the camera
  * behind the page, which turns transparent but for a frame, a hint and Cancel. Resolves to the QR code's text, or
@@ -81,12 +125,16 @@ function pairPanel(status, { retry } = {}) {
 		spellcheck: "false",
 		autocomplete: "off",
 		autocapitalize: "off",
+		// The keyboard otherwise "corrects" a typed code: "prism-pair: V1". The transport
+		// also drops spaces and capitals from the code (fork/android/phone, `normalize_code`).
+		autocorrect: "off",
+		inputmode: "url",
 		placeholder: "prism-pair:v1;…",
 		"aria-label": t("pairCode"),
 	});
 	const problem = h("p", { class: "pair-error", role: "alert", hidden: true });
 	const say = (text) => {
-		problem.textContent = text ?? "";
+		problem.replaceChildren(text ?? "");
 		problem.hidden = !text;
 	};
 	const link = h("button", { type: "button", class: "primary", text: t("pairLink") });
@@ -127,7 +175,8 @@ function pairPanel(status, { retry } = {}) {
 			// The window's state (engine, sessions, themes) is read once at startup: a fresh start is the simplest correct way.
 			location.reload();
 		} catch (error) {
-			say(message(error));
+			// The status holds the same error, with its kind.
+			say(linkError(await linkStatus(), "pair-error-text") ?? message(error));
 			lock(false);
 		}
 	});
@@ -149,7 +198,7 @@ function pairPanel(status, { retry } = {}) {
 				{ class: "pair-state" },
 				h("strong", { class: "pair-host", text: status.host ?? t("pairUnnamed") }),
 				h("span", { class: "pair-note", text: status.connected ? t("pairConnected") : t("pairNotConnected") }),
-				status.error && !status.connected && h("span", { class: "pair-note pair-failed", text: status.error }),
+				!status.connected && linkError(status, "pair-note pair-failed"),
 			)
 		: undefined;
 	// The other PCs this phone is paired with, one button away.
@@ -188,7 +237,7 @@ function pairPanel(status, { retry } = {}) {
 		.catch(() => {});
 
 	// A failure of the link itself (no PC yet, or the PC unreachable) is said once, whether or not a PC is paired.
-	if (!status.paired && status.error) say(status.error);
+	if (!status.paired && status.error) say(linkError(status, "pair-error-text"));
 
 	return h(
 		"div",
@@ -207,7 +256,14 @@ export function showPairScreen(status) {
 	const screen = h(
 		"div",
 		{ class: "pair-screen", id: "pair-screen", role: "dialog", "aria-modal": "true", "aria-labelledby": "pair-title" },
-		h("main", { class: "pair-card" }, h("h1", { id: "pair-title", text: t("pairTitle") }), pairPanel(status, { retry: () => location.reload() })),
+		h(
+			"main",
+			{ class: "pair-card" },
+			h("div", { class: "pair-brand" }, prismMark(), h("span", { class: "pair-brand-name", text: "Prism" })),
+			h("p", { class: "pair-tagline", text: t("pairTagline") }),
+			h("h1", { id: "pair-title", text: t("pairTitle") }),
+			pairPanel(status, { retry: () => location.reload() }),
+		),
 	);
 	document.body.append(screen);
 	screen.querySelector("textarea")?.focus({ preventScroll: true });

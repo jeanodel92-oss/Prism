@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Prism
+Comment=Free and open source coding agent for Linux
+Exec=/usr/bin/prism --gui
+Icon=prism
+Terminal=false
+Categories=Development;
+StartupNotify=true
+StartupWMClass=prism-gui

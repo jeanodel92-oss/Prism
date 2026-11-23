@@ -98,6 +98,7 @@ import { gitSshHostOf } from "./sandbox/git-ssh.ts";
 import {
 	buildLayout,
 	DEFAULT_HIDDEN_HOME_PATHS,
+	HOME_FOLDER_BLOCKED,
 	isExcludedCommand,
 	READ_ALL_HIDDEN_HOME_PATHS,
 	readSandboxSettings,
@@ -2650,7 +2651,7 @@ function afterSegment(segment: ShellSegment, ctx: BashContext): Pick<BashContext
 		for (const word of assignments) {
 			const eq = word.text.indexOf("=");
 			const name = word.text.slice(0, eq);
-			// fork (AS-006): a variable the commands inherit already, or one exported here.
+			// fork: a variable the commands inherit already, or one exported here.
 			if (exported || process.env[name] !== undefined) changedEnv ??= name;
 			const raw = word.raw.slice(word.raw.indexOf("=") + 1);
 			const value = word.expansion
@@ -2904,7 +2905,7 @@ function classifyFileTool(
 		return { tier: "allow", abs };
 	}
 	// write / edit
-	// fork.12 (security audit, AS-025): the browser extension's copies in ~/Prism, the window's folder when it opens in
+	// the browser extension's copies in ~/Prism, the window's folder when it opens in
 	// the home folder. The browser runs them again at its next start, outside the sandbox, with the extension's rights.
 	const copy = extensionCopies().find((folder) => within(abs, folder) || within(real, realPath(folder)));
 	if (copy) return { tier: "danger", detail: "protected path (Prism browser extension)", abs };
@@ -3952,11 +3953,11 @@ async function askHostOnce(
 	if (!ctx.hasUI) return "unanswered";
 	// fork: kept for the project, a host is given to the commands of one rule, not to every command.
 	const rule = networkRule(command.command, ctx.cwd, loadConfig(ctx.cwd, ctx.isProjectTrusted()));
-	// fork.12 security audit (AS-016): the command's words show their terminal controls, in the options too.
+	// fork.12 security audit: the command's words show their terminal controls, in the options too.
 	const intent = rule ? visibleText(ruleIntent(rule, ctx.cwd)) : undefined;
 	// fork: the browser's question offers every site for the session,
 	// never a port of this machine, and says in red what a page reaches without another question.
-	// fork (AS-023): nor a name at a private address.
+	// fork: nor a name at a private address.
 	const lan = privateAddressOf(host);
 	const browser = browserGrant !== undefined && localPortOf(host) === undefined && lan === undefined;
 	const options: [HostAnswer | BrowserGrant, string][] = [
@@ -4063,18 +4064,24 @@ async function saveForProject(save: () => Promise<void>): Promise<true | string>
 const brokenSandboxMessage = (mode: Mode, failure: string, hasUI: boolean) =>
 	failure.startsWith(SANDBOX_SETTINGS_ERROR_START)
 		? t(failure)
-		: [
-				fill("The sandbox is on for {0} mode but does not work: {1}", t(mode), t(failure)),
-				t("Shell commands stay blocked until it works; nothing runs outside it."),
-				hasUI
-					? t(
-							"Once it is fixed, choose Check the sandbox again in /sandbox. To go without it in this mode, turn it off there, under In modes.",
-						)
-					: fill(
-							'To go without it, turn it off for this mode in settings.json ("sandbox": { "modes": { "{0}": false } }) or choose another mode with --perm-mode.',
-							mode,
-						),
-			].join(" ");
+		: failure === HOME_FOLDER_BLOCKED
+			? // fork (audit FIN-15): two short lines and one action, not an 80-word paragraph, on a first try from ~.
+				[
+					t("Prism was opened in your home folder: shell commands stay blocked here."),
+					t("Open Prism in a project folder (cd into it first). Details: /docs sandbox."),
+				].join("\n")
+			: [
+					fill("The sandbox is on for {0} mode but does not work: {1}", t(mode), t(failure)),
+					t("Shell commands stay blocked until it works; nothing runs outside it."),
+					hasUI
+						? t(
+								"Once it is fixed, choose Check the sandbox again in /sandbox. To go without it in this mode, turn it off there, under In modes.",
+							)
+						: fill(
+								'To go without it, turn it off for this mode in settings.json ("sandbox": { "modes": { "{0}": false } }) or choose another mode with --perm-mode.',
+								mode,
+							),
+				].join(" ");
 
 const SETTINGS_OWNER = "permissions";
 
@@ -5044,7 +5051,7 @@ export default function (pi: ExtensionAPI) {
 		// fork: the rule in words; "for this project" replaces saving it in
 		// permissions.json, which stays in /settings.
 		const rule = suggested ?? tool;
-		// fork.12 security audit (AS-016, AS-017): the options repeat the call's target; its controls show.
+		// fork.12 security audit: the options repeat the call's target; its controls show.
 		const intent = visibleText(ruleIntent(rule, ctx.cwd));
 		opts.push({ label: t("Allow once"), action: "once" });
 		// fork: blocking in a task blocks it for the rest of the task.
@@ -5126,7 +5133,7 @@ export default function (pi: ExtensionAPI) {
 				? ""
 				: `\n\n${fill("Will probably connect to: {0}", visibleText(shownHosts.join(", ")))}\n${t("Allowing it lets this run connect to them; other hosts are asked about.")}`;
 		// fork: the whole command, since the answer covers all of it.
-		// fork.12 security audit (AS-016, AS-017): what comes from the call (the target, the reason that quotes it)
+		// fork.12 security audit: what comes from the call (the target, the reason that quotes it)
 		// shows its terminal controls and bidi characters instead of acting on the terminal; only a shell command
 		// keeps its line breaks.
 		const whole = visibleText(publicTmp(targetOf(tool, input, ctx.cwd), activeSandbox(ctx)?.tmp), {

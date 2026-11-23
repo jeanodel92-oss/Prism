@@ -54,7 +54,7 @@ prism --use-theme light
 prism --use-theme light/dark
 ```
 
-Consultez [Ressources CLI](../cli.md#resources) pour l’option de ligne de commande.
+Consultez [Ressources CLI](cli.md#ressources) pour l’option de ligne de commande.
 
 ## Créer un thème personnalisé
 
@@ -62,7 +62,7 @@ Pour changer quelques couleurs, ouvrez `/settings` > Apparence > Personnaliser l
 
 Pour écrire un thème à la main :
 
-Copiez l’un des [thèmes intégrés](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive/theme) ou créez un fichier JSON conforme au [schéma](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json). Les thèmes intégrés utilisent les couleurs OKHSL et des variables communes à plusieurs rôles ; vous pouvez donc ajuster directement une teinte, sa saturation ou sa luminosité.
+Copiez l’un des [thèmes intégrés](../../src/modes/interactive/theme) ou créez un fichier JSON conforme au [schéma](../../src/modes/interactive/theme/theme-schema.json). Les thèmes intégrés utilisent les couleurs OKHSL et des variables communes à plusieurs rôles ; vous pouvez donc ajuster directement une teinte, sa saturation ou sa luminosité.
 
 1. Enregistrez le fichier dans `<agent-dir>/themes/my-theme.json`. Par défaut, le dossier agent est `~/.prism/agent`.
 2. Définissez son `name` sur `my-theme`.
@@ -97,7 +97,7 @@ Les couleurs par défaut du terminal sont affichées par le terminal lui-même. 
 
 Prism résout les références de variables en chaîne. Une variable manquante ou une référence circulaire invalide le thème. Prism utilise les couleurs vraies si elles sont disponibles, convertit les valeurs OKLCH en sRGB et approxime les couleurs pour les terminaux à 256 couleurs. Les exports HTML convertissent OKHSL en hexadécimal, car CSS ne le prend pas en charge. Si des couleurs diffèrent de leurs valeurs source, vérifiez la détection des couleurs vraies et les réglages de contraste de votre terminal. Consultez [Configurer votre terminal](terminal-setup.md#remplacer-les-capacités-détectées).
 
-Consultez le [schéma JSON des thèmes](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json) pour connaître les propriétés exactes, les couleurs obligatoires et les types de valeurs acceptés.
+Consultez le [schéma JSON des thèmes](../../src/modes/interactive/theme/theme-schema.json) pour connaître les propriétés exactes, les couleurs obligatoires et les types de valeurs acceptés.
 
 Prism signale les fichiers de thème invalides au démarrage et lors de `/reload`.
 

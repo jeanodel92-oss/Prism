@@ -20,6 +20,11 @@ serde_json = "1"
 # The engines and what phones may do with them, shared with the phone server.
 prism-host = { path = "../../host" }
 
+# The window's own background, no longer painted once the page covers it (main.rs, `stop_background_paint`); the
+# version Tauri already uses.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "=0.18.2"
+
 [features]
 # Test driver for scripted visual checks (fork/gui/scripts/drive.sh); never in the normal binary.
 drive = []

@@ -1,6 +1,6 @@
 # Référence des réglages
 
-Cette référence répertorie les réglages configurables, leur type, leur valeur par défaut et leur fonction. Les réglages du projet sont prioritaires sur ceux du dossier agent, sauf ceux réservés au niveau global. Les listes de ressources sont combinées. Consultez [Configuration](configuration.md) pour connaître l’emplacement des fichiers et les règles de confiance.
+Cette référence répertorie les réglages configurables, leur type, leur valeur par défaut et leur fonction. Les réglages se trouvent dans `~/.prism/agent/settings.json` ; le `.prism/settings.json` d’un projet de confiance est prioritaire, sauf pour les réglages réservés au niveau global. Les listes de ressources sont combinées. Consultez [Configuration](configuration.md) pour connaître l’emplacement des fichiers et les règles de confiance. `/settings` modifie la plupart d’entre eux depuis Prism.
 
 ## Modèle et réflexion
 
@@ -16,6 +16,7 @@ Cette référence répertorie les réglages configurables, leur type, leur valeu
 | `enabledModels` | `string[]` | Tous les modèles disponibles | Motifs de modèles utilisés au démarrage et pour passer d’un modèle à l’autre. Même format que `--models`. |
 | `hideThinkingBlock` | boolean | `true` | Masque les blocs de réflexion dans la transcription. |
 | `showCacheMissNotices` | boolean | `false` | Affiche les avis sur les échecs de cache importants, le préchauffage réussi du cache, l’utilisation du compactage et le rétablissement du fournisseur. |
+| `showLocalCloudWarning` | boolean | `true` | Affiche une ligne d’état quand une requête part vers un point de terminaison cloud juste après une requête vers un point de terminaison local (localhost ou adresse privée). `/sent` montre la dernière requête. |
 | `cacheWarming` | `"off" \| "streaming" \| "idle"` | `"streaming"` | Garde chauds les caches de prompts admissibles du fournisseur pendant les exécutions actives ou, avec `"idle"`, entre les exécutions. Réglage réservé au niveau global. |
 
 Le préchauffage du cache s’exécute uniquement si le modèle indique une durée de cache et que Prism estime à au moins 0,05 $ le coût des échecs de cache évités. Son utilisation est comptée dans le total de la session, mais n’entre pas dans le contexte du modèle. `/session` affiche la prochaine décision ; les extensions peuvent la remplacer avec `cache_warming_decision`. Consultez [Durées de cache des prompts](models.md#prompt-cache-lifetimes).
@@ -26,7 +27,7 @@ Consultez [Choisir un modèle](models.md) pour la sélection des modèles et les
 
 | Réglage | Type | Valeur par défaut | Description |
 |---|---|---|---|
-| `steeringMode` | `"all" \| "one-at-a-time"` | `"one-at-a-time"` | Mode d’envoi des messages de guidage mis en attente. |
+| `steeringMode` | `"all" \| "one-at-a-time"` | `"all"` | Mode d’envoi des messages de guidage mis en attente. |
 | `followUpMode` | `"all" \| "one-at-a-time"` | `"one-at-a-time"` | Mode d’envoi des messages de suivi mis en attente. |
 | `replyLanguage` | string | `"auto"` | Répond dans la langue du dernier message utilisateur ou dans la langue nommée (par exemple `"French"`). Les réglages du projet peuvent le remplacer. `/settings` > Conversation > Reply language. |
 | `language` | `"auto" \| "en" \| "fr"` | `"auto"` | Langue des menus et des messages de Prism. `"auto"` suit `LC_ALL`, `LC_MESSAGES`, puis `LANG` : français pour `fr*`, anglais sinon. Les réponses du modèle suivent `replyLanguage`. `/settings` > Language. |
@@ -34,6 +35,10 @@ Consultez [Choisir un modèle](models.md) pour la sélection des modèles et les
 | `doubleEscapeAction` | `"tree" \| "fork" \| "none"` | `"tree"` | Action déclenchée par deux pressions sur Escape si l’éditeur est vide. |
 | `treeFilterMode` | `"default" \| "no-tools" \| "user-only" \| "labeled-only" \| "all"` | `"default"` | Filtre initial utilisé par `/tree`. |
 | `defaultProjectTrust` | `"ask" \| "always" \| "never"` | `"ask"` | Comportement par défaut pour la confiance accordée aux projets. **Peut être défini uniquement dans les réglages du dossier agent.** |
+| `interfaceMode` | `"simple" \| "advanced"` | `"simple"` | `simple` masque les réglages et détails techniques ; `advanced` montre tous les réglages, ainsi que la commande et la sortie de chaque action. `/settings` > Interface. |
+| `openIn` | `"terminal" \| "window"` | Aucune (demande une fois) | Où s’ouvre un simple `prism` : le terminal ou la [fenêtre de Prism](window.md). Sans valeur, le premier lancement où la fenêtre peut s’ouvrir pose la question. `--gui` et `--tui` le remplacent pour un lancement. Réglage réservé au niveau global. `/settings` > Interface > Ouvrir Prism dans. |
+| `agentInvocation` | object | Tout activé | Quand le modèle lance des agents personnalisés. `autonomous` (`true` par défaut) : de lui-même, quand une tâche s’y prête. Désactivé, seulement quand votre dernier message demande un agent (`explicitRequest`) ou contient `keywordText` (`keyword`, `"@agent"` par défaut) ; avec le seul mot-clé, Prism refuse tout autre appel. Réglage réservé au niveau global. `/agents`. |
+| `handoffReminder` | object | `{ "enabled": false, "interval": 100 }` | Avec le module `project-continuity`, rappelle au modèle de mettre à jour `project/handoff.md` tous les `interval` appels d’outils. Réglage réservé au niveau global. |
 
 ## Outils
 
@@ -57,7 +62,7 @@ La liste `["-bash", "+powershell", "+grep"]` remplace `bash` par `powershell` et
 
 `/reload` active les nouveaux outils ajoutés à `defaultTools`. Il ne désactive pas les outils retirés de la liste et ne réactive pas les outils inchangés que vous avez désactivés. `--tools`, `--no-tools` et `--no-builtin-tools` remplacent aussi `defaultTools`, y compris lors du rechargement.
 
-Les options d’outils CLI remplacent ce réglage pour une seule exécution ; `--tools` n’accepte pas `+name` ni `-name`. Consultez [Ligne de commande](../cli.md#tools).
+Les options d’outils CLI remplacent ce réglage pour une seule exécution ; `--tools` n’accepte pas `+name` ni `-name`. Consultez [Ligne de commande](cli.md#outils).
 
 ### Recherche web
 
@@ -106,12 +111,13 @@ Consultez la [référence du compactage](../compaction.md) pour le déclenchemen
 | `theme` | string | `"prism-light/prism"` | Nom d’un thème intégré ou personnalisé, ou duo clair/sombre. Le duo par défaut suit l’apparence du terminal. `system` déduit les couleurs du thème du terminal. |
 | `quietStartup` | boolean \| `"header"` | `false` | `true` masque l’en-tête de démarrage et la liste des ressources chargées. `"header"` garde l’en-tête (version et raccourcis), mais masque la ligne des modèles et la liste des ressources chargées. |
 | `animations` | boolean | `true` | Les animations de Prism : le logo qui se dessine au démarrage, la ligne d'attente, les reflets, les points qui respirent, l'ouverture des menus et l'indicateur dans le titre du terminal. `false`, ou un terminal non interactif, les fige toutes. `/settings` > Appearance > Animations. |
+| `animationStyles` | object | Styles d’origine | Un style par animation : `intro` (`default`, `off`, `wipe`, `dissolve`), `working` (`default`, `off`, `dots`, `meter`), `thinking` (`default`, `off`, `dots`, `pulse`), `tools` (`default`, `off`, `spinner`, `meter`), `menus` (`default`, `off`, `wipe`, `slide`), `title` (`default`, `off`, `dots`). `/settings` > Appearance > Animations les règle un à un ou par préréglage. |
 | `animationsOff` | string[] | `[]` | Les animations désactivées une à une, sous `animations` : `intro` (logo au démarrage), `working`, `thinking`, `tools`, `menus`, `title`. `/settings` > Appearance > Animations les liste avec un aperçu. |
 | `footerActions` | string[] | `[]` | Les commandes épinglées au pied de page, dans l'ordre, avant l'engrenage des réglages et « plus… » : `help`, `docs`, `tutorial`, `settings`, `perm`, `model`, `session`, `new`, `resume`, `tree`, `export`, `compact`. Celles qui n'y tiennent pas restent dans « plus… ». « plus… » > Boutons du pied de page… les épingle, les déplace et les retire. |
 | `tuiMode` | `"regular" \| "fullscreen"` | `"fullscreen"` | Mode de l’interface interactive du terminal. |
 | `fullscreenExitOutput` | `"transcript" \| "resume-hint"` | `"transcript"` | Texte affiché à la sortie du plein écran. |
 | `fullscreenScrollbar` | `"auto" \| "always" \| "hidden"` | `"auto"` | Comportement de la barre de défilement de la transcription en plein écran. |
-| `fullscreenCopyOnSelect` | boolean | `true` | Copie automatiquement le texte sélectionné en mode plein écran. |
+| `fullscreenCopyOnSelect` | boolean | `true` | Copie automatiquement le texte sélectionné en mode plein écran. Sous Linux, la sélection devient aussi la sélection primaire, et un clic du milieu colle la sélection primaire dans l'éditeur, comme dans un terminal. |
 | `fullscreenWheelScrollLines` | `"auto" \| number` | `"auto"` | Nombre de lignes défilées par mouvement de molette en plein écran, de 1 à 100. `"auto"` fait avancer d’une ligne par mouvement sur les terminaux macOS locaux, qui accélèrent déjà la molette et le pavé tactile ; ailleurs et par SSH, il accélère les mouvements rapides jusqu’à 6 lignes par mouvement. Alt+molette multiplie cette distance par cinq. |
 | `editorPaddingX` | number | `0` | Marge horizontale de l’éditeur, de 0 à 3 cellules. |
 | `outputPad` | `0 \| 1` | `1` | Marge horizontale de la transcription. |
@@ -176,15 +182,17 @@ Les tableaux de ressources acceptent les exclusions par motif glob avec `!patter
 
 Les extensions intégrées portent les noms suivants : `builtin:mcp`, `builtin:llama.cpp`, `builtin:codemode`, `builtin:tool-search`, `builtin:prism` (apparence Prism), `builtin:files` (explorateur de fichiers du projet, `/files`, `Alt+E`), `builtin:lsp-setup` (`/lsp-setup [all]`, suggestions de serveurs de langage), `builtin:reply-language` (consignes de langue de réponse), `builtin:machine-context` (votre système, votre matériel et votre shell, pour le modèle), `builtin:checkpoints` (`/undo`, `/checkpoints`), `builtin:background` (outil `background`, `/bg`), `builtin:memory` (`/memory`), `builtin:session-search` (outil `session_search`, qui cherche dans vos autres sessions et demande avant d'en envoyer des extraits à un modèle cloud, et `/sessions`), `builtin:notify` (notifications de bureau, `/settings` > Notifications), `builtin:web` (outils `web_fetch` et `web_search` ; la recherche utilise le [fournisseur configuré](#recherche-web)), `builtin:browser` (outil `browser` et `/browser` : l’agent utilise votre propre navigateur, dans ses propres onglets, par l’extension Prism), `builtin:desktop` (outil `desktop` et `/desktop` : l’agent utilise des programmes graphiques sur un bureau à lui, un labwc sans écran, à part du vôtre), `builtin:user-desktop` (outil `user_desktop` : l’agent utilise votre propre écran, votre pointeur et votre clavier quand vous le demandez et l’acceptez, jusqu’à ce que vous les repreniez), `builtin:append-system` (consignes génériques ajoutées après `APPEND_SYSTEM.md`), `builtin:skills` (`/skills`, le gestionnaire de skills ; les skills se chargent sans lui), `builtin:agents` (agents personnalisés, `/agents`, outil `agent`), `builtin:project-continuity` (dans un projet qui a `project/handoff.md`, le rôle de chaque document de continuité dans le prompt système ; ailleurs, un bouton `init` dans le pied de page qui lance `/init`) et les plugins tiers intégrés répertoriés dans `vendor/README.md` (`builtin:pi-lsp`, ...). Elles sont chargées par défaut, sauf `builtin:memory`, `builtin:session-search`, `builtin:browser`, `builtin:desktop` et `builtin:user-desktop`, activées par `+builtin:memory`, `+builtin:session-search`, `+builtin:browser`, `+builtin:desktop` et `+builtin:user-desktop` ; `-builtin:mcp` en désactive une. Une entrée `+builtin:<name>` ou `-builtin:<name>` dans les réglages du projet remplace le réglage utilisateur. `prism config` les répertorie sous Built-in. `--no-extensions` les désactive aussi et `-e builtin:<name>` en charge une explicitement.
 
-## Mises à jour, télémétrie et avertissements
+## Mises à jour et avertissements
 
 | Réglage | Type | Valeur par défaut | Description |
 |---|---|---|---|
-| `updateMode` | string | `"manual"` | `"manual"` : Prism ne demande rien à `https://prism.odelserver.space` tant que vous ne lancez pas `/update` ou `prism update`. `"notify"` : au démarrage, il vous prévient s’il existe une version plus récente. `"auto"` : au démarrage, il l’installe ; la nouvelle version s’ouvre au lancement suivant. Au plus une vérification par heure ; uniquement pour une installation faite avec le programme d’installation du site, et jamais avec `PI_OFFLINE`. Dans `/settings` › Autres › Mises à jour. |
+| `updateMode` | `"manual" \| "notify" \| "auto"` | `"manual"` | `"manual"` : Prism ne demande rien à `https://prism.odelserver.space` tant que vous ne lancez pas `/update` ou `prism update`. `"notify"` : au démarrage, il vous prévient s’il existe une version plus récente. `"auto"` : au démarrage, il l’installe ; la nouvelle version s’ouvre au lancement suivant. Au plus une vérification par heure ; uniquement pour une installation faite avec le programme d’installation du site, et jamais avec `PI_OFFLINE`. Dans `/settings` › Autres › Mises à jour. Consultez [Mises à jour](updates.md). |
+| `modelCatalogRefresh` | boolean | `true` | Rafraîchit depuis `https://pi.dev` le catalogue des modèles cloud des fournisseurs auxquels vous êtes connecté, au démarrage, dans `/model` et après `/login`, au plus toutes les 4 heures. `false` : seul `prism update --models` le télécharge. Réglage réservé au niveau global. `/settings` > Mettre à jour le catalogue des modèles. |
 | `collapseChangelog` | boolean | `false` | Affiche un journal des changements abrégé après une mise à jour. |
-| `enableInstallTelemetry` | boolean | `true` | Active les rapports anonymes d’installation et de mise à jour et certains en-têtes d’attribution fournisseur. Ne contrôle pas la vérification des mises à jour. |
-| `enableAnalytics` | boolean | `false` | Autorise le partage de données analytiques. Actuellement utilisé uniquement par l’assistant expérimental du premier démarrage. |
 | `warnings.anthropicExtraUsage` | boolean | `true` | Avertit si l’authentification par abonnement Anthropic peut entraîner des frais d’utilisation supplémentaires. |
+| `desktopNotifications` | object | `{ "enabled": true, "approvals": true }` | Avec le module `notify` : une notification de bureau quand le modèle a fini (`enabled`) et quand il attend votre accord (`approvals`). Réglage réservé au niveau global. `/settings` > Notifications. |
+
+Prism n’envoie aucune télémétrie. Consultez [Vie privée](security.md#vie-privée) pour les connexions qu’il fait de lui-même.
 
 ## Confidentialité et traces d'opérations
 
@@ -192,5 +200,36 @@ Les extensions intégrées portent les noms suivants : `builtin:mcp`, `builtin:l
 |---|---|---|---|
 | `traceEnabled` | booléen | `false` | Conserve une chronologie JSONL locale des appels d'outils, paramètres, décisions de permission et résultats. Les clés d'authentification enregistrées et les formats courants de secrets sont masqués. Les prompts et le texte du modèle ne sont pas enregistrés. |
 | `traceRetentionDays` | nombre | `7` | Au démarrage, supprime les fichiers de trace plus anciens que ce nombre de jours. |
+| `deviceId` | string | Aucune | Identifiant aléatoire de cette installation, créé à la première connexion « Sign in with ChatGPT » et envoyé à OpenAI pendant cette connexion ; consultez [Vie privée](security.md#vie-privée). Réglage réservé au niveau global ; le supprimer fait créer un nouvel identifiant à la connexion suivante. |
 
 `/trace` affiche la chronologie et le chemin du fichier de la session actuelle. Activez cette fonction dans `/settings`, sous Confidentialité, puis lancez `/reload` ; les changements s'appliquent au rechargement. Chaque paramètre est limité à 16 000 caractères ; sa longueur d'origine est conservée.
+
+## Permissions, sandbox et secrets
+
+Ces réglages sont réservés au niveau global : les réglages d’un projet, le modèle et `configure_prism` ne peuvent pas les modifier. `/settings` > Permissions et sandbox les affiche.
+
+| Réglage | Type | Valeur par défaut | Description |
+|---|---|---|---|
+| `sandbox.modes` | object | `safe`, `ask`, `broad` activés ; `unrestricted` désactivé | Modes de permissions dont les commandes shell s’exécutent dans la [sandbox](sandbox.md). |
+| `sandbox.read.limit` | `"project" \| "all"` | `"project"` | Ce que lisent les commandes de la sandbox : le projet, les ressources de ses outils et `sandbox.read.allow` ; ou tout, sauf les chemins masqués. |
+| `sandbox.read.allow` | string[] | `[]` | Chemins lisibles en plus (`~` est votre dossier personnel). |
+| `sandbox.allowWrite` | string[] | `[]` | Chemins inscriptibles en plus. |
+| `sandbox.hide` | string[] | `[]` | Chemins masqués en plus. |
+| `sandbox.network.askNewHosts` | boolean | `true` | Demander avant qu’une commande de la sandbox joigne un hôte non listé. |
+| `sandbox.network.allow` | string[] | `[]` | Hôtes que les commandes de la sandbox joignent sans demander (`registry.npmjs.org`, `*.github.com`, `localhost:5432`, `ssh://github.com`). |
+| `sandbox.network.deny` | string[] | `[]` | Hôtes que les commandes de la sandbox ne joignent jamais. |
+| `sandbox.userCommands` | boolean | `false` | Exécuter aussi vos propres commandes `!` dans la sandbox. |
+| `sandbox.excludedCommands` | string[] | `[]` | Commandes exécutées hors de la sandbox, comme `docker` ; elles passent quand même par l’étape de permissions. |
+| `sandbox.gitSigning` | boolean | `false` | Git, dans la sandbox, signe avec votre clé, par l’intermédiaire de Prism. |
+| `sandbox.containers` | boolean | `false` | Les commandes de la sandbox listent vos conteneurs et images, en lecture seule. |
+| `sandbox.serviceState` | boolean | `false` | Les commandes de la sandbox lisent l’état des services du système. |
+| `sandbox.sudo` | boolean | `false` | L’outil `sudo` ; consultez [Sudo contrôlé](permissions.md#sudo-contrôlé). |
+| `sandbox.sudoRememberPassword` | boolean | `false` | Garder le mot de passe sudo en mémoire 5 minutes. |
+| `secrets.passEnv` | object | `{}` | Variables transmises à des commandes précises bien qu’elles ressemblent à des secrets, sous la forme `{ "GITHUB_TOKEN": ["bash(gh *)"] }`. Consultez [Secrets](security.md#secrets). |
+| `secrets.envAllowlist` | boolean | `false` | Ne donner aux commandes de l’agent que les variables connues, celles de `secrets.allowEnv` et celles que `passEnv` transmet. |
+| `secrets.allowEnv` | string[] | `[]` | Avec `envAllowlist` : noms de variables en plus ; `*` remplace n’importe quels caractères. |
+| `injectionWarning` | boolean | `true` | L’[avertissement d’injection de prompt](permissions.md#avertissement-dinjection-de-prompt). |
+| `scopeMaxMinutes` | number | `480` | Durée maximale d’un [périmètre de tâche](permissions.md#périmètre-de-tâche), en minutes (5 ou plus). |
+| `desktopTakeBackKey` | string | `"ctrl+shift+q"` | Avec le module `user-desktop` : le raccourci qui reprend votre bureau à l’agent. |
+
+Les règles de permissions elles-mêmes se trouvent dans `permissions.json` ; consultez [Permissions](permissions.md#configuration).

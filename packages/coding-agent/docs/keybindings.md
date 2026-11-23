@@ -72,13 +72,29 @@ The dedicated history actions browse prompt history regardless of cursor positio
 |---|---|---|
 | `tui.editor.deleteCharBackward` | `backspace` | Delete character backward |
 | `tui.editor.deleteCharForward` | `delete`, `ctrl+d` | Delete character forward |
-| `tui.editor.deleteWordBackward` | `ctrl+w`, `alt+backspace` | Delete word backward |
-| `tui.editor.deleteWordForward` | `alt+d`, `alt+delete` | Delete word forward |
+| `tui.editor.deleteWordBackward` | `ctrl+w`, `alt+backspace`, `ctrl+backspace` | Delete word backward |
+| `tui.editor.deleteWordForward` | `alt+d`, `alt+delete`, `ctrl+delete` | Delete word forward |
 | `tui.editor.deleteToLineStart` | `ctrl+u` | Delete to line start |
 | `tui.editor.deleteToLineEnd` | `ctrl+k` | Delete to line end |
-| `tui.editor.yank` | `ctrl+y` | Paste most recently deleted text |
+| `tui.editor.yank` | None | Paste most recently deleted text |
 | `tui.editor.yankPop` | `alt+y` | Cycle through deleted text after yank |
-| `tui.editor.undo` | `ctrl+-` (`ctrl+z` on Windows; `alt+z` on WSL) | Undo last edit |
+| `tui.editor.undo` | `ctrl+z`, `ctrl+-` (`ctrl+z` on Windows; `alt+z` on WSL) | Undo last edit |
+| `tui.editor.redo` | `ctrl+y`, `ctrl+shift+z` | Redo the last undone edit |
+
+#### Text selection
+
+| Keybinding id | Default | Description |
+|---|---|---|
+| `tui.editor.selectLeft` | `shift+left` | Select character left |
+| `tui.editor.selectRight` | `shift+right` | Select character right |
+| `tui.editor.selectUp` | `shift+up` | Select line up (to the line start on the first line) |
+| `tui.editor.selectDown` | `shift+down` | Select line down (to the line end on the last line) |
+| `tui.editor.selectWordLeft` | `ctrl+shift+left`, `alt+shift+left` | Select word left |
+| `tui.editor.selectWordRight` | `ctrl+shift+right`, `alt+shift+right` | Select word right |
+| `tui.editor.selectLineStart` | `shift+home` | Select to line start |
+| `tui.editor.selectLineEnd` | `shift+end` | Select to line end |
+
+The selection is shown in inverse video. Typing, pasting or a new line replaces it, and the deletion keys delete it; undo restores it. `left` and `right` move the cursor to the start or end of the selection, and other cursor keys clear it. kitty uses `ctrl+shift+left` and `ctrl+shift+right` for its own tabs by default, so use `alt+shift+left` and `alt+shift+right` there. There is no select-all key: `ctrl+a` moves to the line start. `ctrl+c` does not copy the editor selection; it clears the editor (undo restores it).
 
 #### Input and selection
 
@@ -123,11 +139,11 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | `app.interrupt` | `escape` | Cancel / abort |
 | `app.clear` | `ctrl+c` | Clear editor (first) / exit (second) |
 | `app.exit` | `ctrl+d` | Exit (when editor empty) |
-| `app.suspend` | `ctrl+z` (None on Windows) | Suspend to background |
+| `app.suspend` | None (`ctrl+z` on WSL) | Suspend to background |
 | `app.editor.external` | `ctrl+g` | Open in external editor (`externalEditor`, `$VISUAL`, `$EDITOR`, Notepad on Windows, or `nano` elsewhere) |
 | `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows and WSL) | Paste files on macOS, images, or text from clipboard |
 
-On native Windows, `app.suspend` has no default because Windows terminals do not support Unix job control. If you assign it manually, Prism shows a status message instead of suspending. WSL uses the normal `ctrl+z` and `fg` behavior.
+`app.suspend` has no default outside WSL: `ctrl+z` undoes in the editor. Assign it a key in `keybindings.json` to suspend Prism and come back with `fg`. On native Windows, Windows terminals do not support Unix job control: if you assign it manually, Prism shows a status message instead of suspending. WSL keeps the normal `ctrl+z` and `fg` behavior.
 
 The built-in `files` extension adds `alt+e` to open the project file browser (`/files`).
 

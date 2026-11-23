@@ -8,6 +8,24 @@ import { findRanges } from "./search.js";
 // The page search's highlights are one registry for the whole window: the reader that set them last owns them.
 let highlightOwner;
 
+/** A heading's id, as GitHub writes it: lower case, punctuation dropped, accents kept, spaces as hyphens. */
+export function headingId(text) {
+	return text.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, "").replace(/ /g, "-");
+}
+
+/** An id with only its letters and digits, accents removed: "S'authentifier" and "s-authentifier" agree. */
+const looseId = (id) => id.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * Which of `ids` a link's `fragment` names: the same id, else the one that differs only by accents and punctuation.
+ * Audit of 2026-11-23, DOC-23: links of the French pages name some headings without their accents
+ * (#controler-lexposition-des-outils for "Contrôler l'exposition des outils") and led nowhere.
+ */
+export function anchorTarget(ids, fragment) {
+	const wanted = decodeURIComponent(fragment);
+	return ids.find((id) => id === wanted) ?? ids.find((id) => looseId(id) === looseId(wanted));
+}
+
 export async function docsScreen(view, query = "") {
 	const panel = new Panel({ title: t("docsTitle"), kind: "report docs" });
 	const page = h("div", { class: "docs-page markdown", tabindex: "0" });
@@ -86,7 +104,7 @@ export async function docsScreen(view, query = "") {
 					if (target.origin === "https://docs.local") show(decodeURIComponent(target.pathname.slice(1)), target.hash.slice(1));
 				},
 			}));
-			for (const heading of page.querySelectorAll("h1, h2, h3, h4")) heading.id = heading.textContent.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, "").replace(/ /g, "-");
+			for (const heading of page.querySelectorAll("h1, h2, h3, h4")) heading.id = headingId(heading.textContent);
 			for (const anchor of page.querySelectorAll(".raw")) {
 				const id = /^<a\s+(?:id|name)="([\w-]+)"><\/a>\s*$/.exec(anchor.textContent)?.[1];
 				if (id) { anchor.id = id; anchor.textContent = ""; }
@@ -94,7 +112,11 @@ export async function docsScreen(view, query = "") {
 			page.scrollTop = 0;
 			if (searched) carry();
 			else find();
-			if (fragment) [...page.querySelectorAll("[id]")].find((el) => el.id === decodeURIComponent(fragment))?.scrollIntoView({ block: "start" });
+			if (fragment) {
+				const targets = [...page.querySelectorAll("[id]")];
+				const id = anchorTarget(targets.map((el) => el.id), fragment);
+				targets.find((el) => el.id === id)?.scrollIntoView({ block: "start" });
+			}
 		} catch (error) {
 			if (!closed) view.app.toast(String(error?.message ?? error), "error");
 		}

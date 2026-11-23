@@ -1,6 +1,6 @@
 # Run Prism in an isolated environment
 
-Use an isolated environment to limit the files, credentials, processes, and network services that generated commands can access or affect.
+Prism's own [sandbox](sandbox.md) already confines the agent's shell commands in the `safe`, `ask` and `broad` modes. Use a container or virtual machine when you also want to confine Prism's own process, its extensions and its file tools, or to keep the whole session away from your host.
 
 You can isolate the complete Prism process or keep Prism on the host and route selected tools into an isolated environment.
 
@@ -33,13 +33,13 @@ Plain Docker provides the simplest whole-process container boundary.
 
 ### Build the image
 
-Create `Dockerfile.pi`:
+Create a `Dockerfile`:
 
 ```dockerfile
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends bash ca-certificates curl git openssl ripgrep \
+  && apt-get install -y --no-install-recommends bash bubblewrap ca-certificates curl git openssl ripgrep \
   && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://prism.odelserver.space/install.sh | sh \
   && ln -s /root/.local/bin/prism /usr/local/bin/prism
@@ -51,8 +51,10 @@ ENTRYPOINT ["prism"]
 Build it from the directory containing the file:
 
 ```bash
-docker build -t prism-sandbox -f Dockerfile.pi .
+docker build -t prism .
 ```
+
+Podman takes the same commands (`podman build`, `podman run`).
 
 ### Start Prism
 
@@ -61,12 +63,26 @@ From the working folder you want Prism to access, run:
 ```bash
 docker run --rm -it \
   -e ANTHROPIC_API_KEY \
-  -v "$PWD:/workspace" \
+  -v "$PWD:/workspace:Z" \
   -v prism-agent-home:/root/.prism/agent \
-  prism-sandbox
+  prism
 ```
 
 Replace `ANTHROPIC_API_KEY` with the credential required by your provider. The named `prism-agent-home` volume keeps container-local settings, credentials, and sessions between runs.
+
+The `:Z` suffix relabels the folder for SELinux (Fedora, RHEL and others with SELinux enforcing). Without it, the folder is mounted but Prism cannot write to it there. It has no effect on systems without SELinux.
+
+For a single task without the interface, as in CI, pass the prompt with `-p`:
+
+```bash
+docker run --rm -e ANTHROPIC_API_KEY -v "$PWD:/workspace:Z" prism -p "Run the tests and summarize the failures"
+```
+
+See [Automation](automation.md) for what permissions do without an interface.
+
+### Prism's sandbox inside the container
+
+The image installs `bubblewrap`, so Prism's own sandbox can run inside the container when the container runtime allows the user namespaces it needs. Many runtimes refuse them by default (Docker's default seccomp profile, for example). Prism then says at startup that the sandbox does not work, and the agent's shell commands stay blocked. In that case, the container is the boundary: turn Prism's sandbox off for the container in `/settings` › Permissions & sandbox › In modes. The setting is kept in the `prism-agent-home` volume, not on your host.
 
 Do not mount the host's `~/.prism/agent` unless the container should have access to your host Prism configuration and credentials.
 
@@ -78,7 +94,7 @@ Inside Prism, run:
 !pwd
 ```
 
-The command should report `/workspace`. Changes under `/workspace` write through to the mounted host folder. Remove the bind mount or use a read-only mount when that is not acceptable.
+The command should report `/workspace`. Changes under `/workspace` write through to the mounted host folder. Remove the bind mount or use a read-only mount (`:ro`) when that is not acceptable.
 
 ## Run Prism with Docker Sandboxes
 

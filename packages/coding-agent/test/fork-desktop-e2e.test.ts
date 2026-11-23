@@ -309,7 +309,7 @@ function isAlive(pid: number): boolean {
 	}
 }
 
-// Owner's choice B: the sandbox refuses Unix sockets, so sandboxed commands never reach the agent's
+// maintainer's choice B: the sandbox refuses Unix sockets, so sandboxed commands never reach the agent's
 // desktop; the desktop tool's launch action starts programs on it outside the sandbox, after the user's approval even
 // in broad mode, as a command excluded from the sandbox.
 describe.skipIf(!labwc || !findBwrap())("agent desktop and the sandbox", () => {

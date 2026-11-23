@@ -258,7 +258,7 @@ describe("fork: generated UI in a session", () => {
 		for (const block of examples) expect(validateDocument({ blocks: [block] })).toHaveProperty("document");
 	});
 
-	// Owner's QA, 2026-11-05: Qwen on llama.cpp sent charts with a unit but no labels or series, seven times in a row.
+	// maintainer's QA, 2026-11-05: Qwen on llama.cpp sent charts with a unit but no labels or series, seven times in a row.
 	// The server's grammar keeps the schema's property order: once `unit` was written, `labels` could not follow.
 	test("a chart's unit comes before its labels and series in the schema, the order models write them", () => {
 		let tool: Tool | undefined;

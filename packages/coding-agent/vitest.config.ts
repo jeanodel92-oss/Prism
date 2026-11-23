@@ -1,5 +1,6 @@
 import { defineConfig, mergeConfig } from "vitest/config";
 import baseConfig, { workspaceSourcePaths } from "../../vitest.base.ts";
+import SkipSummary from "../../fork/tools/vitest-skip-summary.ts"; // fork (audit TESTS-03)
 
 export default mergeConfig(
 	baseConfig,
@@ -12,7 +13,7 @@ export default mergeConfig(
 			// fork: no test writes to the developer's Secret Service keyring.
 			env: { PI_OFFLINE: "1", PRISM_SECRET_SERVICE: "off" },
 			unstubEnvs: true,
-			reporters: process.env.GITHUB_ACTIONS ? ["dot", "github-actions"] : ["dot"],
+			reporters: [...(process.env.GITHUB_ACTIONS ? ["dot", "github-actions"] : ["dot"]), new SkipSummary()],
 			silent: "passed-only",
 			server: {
 				deps: {

@@ -55,6 +55,8 @@ import requestInspector from "../fork/request-inspector.ts";
 import { scheduleCommand } from "../fork/schedule-command.ts";
 import { realSystemd } from "../fork/scheduled-tasks.ts";
 import secretsExtension from "../fork/secrets/extension.ts";
+// fork: the model list of each server the user added, read again at start.
+import serverModelRefresh from "../fork/server-model-refresh.ts";
 // fork: home extensions.
 import sessionSearchExtension from "../fork/session-search.ts";
 // fork: what an interrupted session left, /state.
@@ -121,6 +123,8 @@ export const builtInExtensions: InlineExtension[] = [
 	{ name: "phone-link", factory: phoneLink },
 	// fork: /model-settings, the current model's limits and sampling next to the server's; always on.
 	{ name: "model-settings", factory: modelSettings },
+	// fork: at start and on "model not found", a server's model list is read again; always on.
+	{ name: "server-model-refresh", factory: serverModelRefresh },
 	// fork: the onboarding (/onboarding), opened by itself at the first start without a model; always on.
 	{ name: "onboarding", factory: onboarding },
 	// fork: language server suggestions for coding projects (/lsp-setup); off with pi-lsp.

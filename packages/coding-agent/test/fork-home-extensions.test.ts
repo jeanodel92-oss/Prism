@@ -786,7 +786,7 @@ describe("fork: home extensions", () => {
 			expect(text(result)).toContain("[direct (200)]");
 		});
 
-		// models pass a list of URLs JSON-encoded in the string form of `urls` (owner's QA
+		// models pass a list of URLs JSON-encoded in the string form of `urls` (maintainer's QA
 		// report, 2026-10-13: '["https://…"]' gave "No usable http(s) URL").
 		it("web_fetch accepts a JSON-encoded list of URLs in a string", async () => {
 			server = createServer((request, response) => {

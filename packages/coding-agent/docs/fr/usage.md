@@ -27,7 +27,7 @@ L’en-tête de démarrage indique les consignes et ressources chargées par Pri
 
 Le mode de permission décide si Prism demande votre accord avant un appel d’outil. Dans le mode par défaut, `broad` (« large » dans l’interface), Prism travaille dans le projet sans demander, et demande avant de sortir du projet, avant `sudo` et avant les appels qu’il juge dangereux. Le mode `ask` (« demander ») demande aussi avant de modifier un fichier ou de lancer une commande qui n’est pas reconnue comme sûre, `safe` (« prudent ») limite l’agent à la lecture et aux commandes sûres, et `unrestricted` (« sans limite ») saute les questions ordinaires une fois que vous l’avez accepté. Appuyez sur `Alt+M` pour passer d’un mode à l’autre, ou utilisez `/perm mode <mode>` pour la session et `/perm default <mode>` pour les nouvelles sessions. Consultez [Permissions](permissions.md#modes).
 
-Ce contrôle des permissions n’est pas un environnement isolé. Examinez les commandes et les fichiers modifiés, et utilisez un environnement isolé pour les tâches sans surveillance ou avec du contenu auquel vous ne faites pas confiance. Consultez [Sécurité](security.md).
+Dans les modes `safe`, `ask` et `broad`, les commandes shell de l’agent s’exécutent aussi dans la [sandbox](sandbox.md) (environnement isolé des commandes), qui limite ce qu’elles peuvent écrire, lire et joindre. Les outils de fichiers, les extensions et le mode `unrestricted` n’y sont pas soumis. Examinez les commandes et les fichiers modifiés, et utilisez un conteneur pour les tâches sans surveillance ou avec du contenu auquel vous ne faites pas confiance. Consultez [Sécurité](security.md).
 
 ## Réorienter le travail
 

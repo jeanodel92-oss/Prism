@@ -256,7 +256,8 @@ async function group(session, tab) {
 			groupId = await api.tabs.group({ tabIds: [tab] });
 		}
 		groups.set(session, groupId);
-		await api.tabGroups?.update(groupId, { title: "Prism", color: "purple" });
+		// The group colours are a fixed browser palette: grey is the closest to Prism's near-achromatic chart (audit FIN-12).
+		await api.tabGroups?.update(groupId, { title: "Prism", color: "grey" });
 	} catch {
 		// Tab groups are a visual aid only.
 	}
@@ -593,7 +594,7 @@ function showPointer(ref, x, y, click) {
 			width: "28px",
 			height: "28px",
 			"border-radius": "50%",
-			border: "2px solid #8b5cf6",
+			border: "2px solid #f0f0ee",
 			"box-sizing": "border-box",
 			opacity: "0",
 		});
@@ -606,8 +607,9 @@ function showPointer(ref, x, y, click) {
 		const arrow = document.createElementNS(ns, "path");
 		for (const [name, value] of Object.entries({
 			d: "M1.5 1.5 L1.5 19 L6 14.6 L9.2 22 L12.4 20.6 L9.3 13.4 L15.6 13.4 Z",
-			fill: "#8b5cf6",
-			stroke: "#fff",
+			// Prism's ink on a dark outline, not a Tailwind violet (audit FIN-12): visible on light and dark pages.
+			fill: "#f0f0ee",
+			stroke: "#050505",
 			"stroke-width": "1.6",
 			"stroke-linejoin": "round",
 		})) {

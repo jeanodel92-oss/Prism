@@ -56,6 +56,8 @@ export class Input implements Component, Focusable {
 
 	// Undo support
 	private undoStack = new UndoStack<InputState>();
+	// fork: edits that undo took back, for redo. A new edit drops them.
+	private redoStack = new UndoStack<InputState>();
 
 	constructor(options: InputOptions = {}) {
 		this.prompt = options.prompt ?? "> ";
@@ -139,6 +141,10 @@ export class Input implements Component, Focusable {
 		// Undo
 		if (kb.matches(data, "tui.editor.undo")) {
 			this.undo();
+			return;
+		}
+		if (kb.matches(data, "tui.editor.redo")) {
+			this.redo();
 			return;
 		}
 
@@ -401,11 +407,24 @@ export class Input implements Component, Focusable {
 
 	private pushUndo(): void {
 		this.undoStack.push({ value: this.value, cursor: this.cursor });
+		this.redoStack.clear();
 	}
 
 	private undo(): void {
 		const snapshot = this.undoStack.pop();
 		if (!snapshot) return;
+		this.redoStack.push({ value: this.value, cursor: this.cursor });
+		this.restoreSnapshot(snapshot);
+	}
+
+	private redo(): void {
+		const snapshot = this.redoStack.pop();
+		if (!snapshot) return;
+		this.undoStack.push({ value: this.value, cursor: this.cursor });
+		this.restoreSnapshot(snapshot);
+	}
+
+	private restoreSnapshot(snapshot: InputState): void {
 		this.value = snapshot.value;
 		this.cursor = snapshot.cursor;
 		this.lastAction = null;

@@ -1,4 +1,4 @@
-// A sub-agent's full transcript (fork.11, owner's plan of 2026-11-08: "subagents (quand y'en a, transcript complet)").
+// A sub-agent's full transcript (fork.11, maintainer's plan of 2026-11-08: "subagents (quand y'en a, transcript complet)").
 // The engine reads the agent's own session (agent_transcript): its task, replies, thinking and tool calls with their
 // output, in order. A running agent's transcript is read again on demand; Stop ends it, after a second click.
 

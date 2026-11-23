@@ -149,8 +149,12 @@ export class SettingsDialog {
 
 	/** Opens the dialog on `section` (the window's, or an engine domain once the engine has drawn it). */
 	open(section = "window") {
-		if (!this.el.open) this.el.showModal();
+		const opening = !this.el.open;
+		if (opening) this.el.showModal();
 		this.show(section);
+		// Audit of 2026-11-23, UX-12: opened with the keyboard in none of its controls, WebKitGTK let Escape do nothing.
+		// The keyboard starts on the section shown (app.js also closes the dialog on Escape wherever the keyboard is).
+		if (opening) this.#currentButton()?.focus({ preventScroll: true });
 		void this.#start(section === "window" ? undefined : section);
 	}
 
@@ -225,6 +229,12 @@ export class SettingsDialog {
 		for (const el of [this.windowButton, ...this.nav.children]) {
 			el.setAttribute("aria-current", String(el.dataset.section === this.shown));
 		}
+		// A narrow window lists the sections on one scrolling row (da.css, FIN-30): the one shown stays in view.
+		this.#currentButton()?.scrollIntoView({ block: "nearest", inline: "nearest" });
+	}
+
+	#currentButton() {
+		return [this.windowButton, ...this.nav.children].find((el) => el.dataset.section === this.shown);
 	}
 
 	/** The engine's /settings for the active session, once the ones closed a moment ago have ended. */

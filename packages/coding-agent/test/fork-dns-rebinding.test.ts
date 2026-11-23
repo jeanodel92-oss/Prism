@@ -267,7 +267,7 @@ describe("guarded network paths", () => {
 
 	it("connects the proxy to the checked IP instead of resolving the name again", async () => {
 		const resolver = vi.fn(async () => [networkAddress]);
-		// fork (AS-023): a name's private address is allowed explicitly, questions off or not.
+		// fork: a name's private address is allowed explicitly, questions off or not.
 		const settings = { askNewHosts: false, allow: ["self.invalid@127.0.0.2"], deny: [] };
 		const policy = new HostPolicy(() => settings, undefined, undefined, new DnsGuard(resolver));
 		const target = await listen(

@@ -63,7 +63,7 @@ describe("npm guard: direct install parsing", () => {
 		],
 		["npm i --cache /tmp/cache --tag latest react", ["react"]],
 		["env FOO=x /usr/bin/npm i react", ["react"]],
-		// Hardening review, point 4: every alias that installs named packages, and the usual prefixes.
+		// review, point 4: every alias that installs named packages, and the usual prefixes.
 		["pnpm install react", ["react"]],
 		["pnpm i -D react", ["react"]],
 		["bun i react", ["react"]],
@@ -344,7 +344,7 @@ describe("npm guard: registries, locks and privacy", () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
-	// Hardening review, point 1: npm reads the .npmrc of a workspace root or of a parent folder too.
+	// review, point 1: npm reads the .npmrc of a workspace root or of a parent folder too.
 	it.each([
 		["a workspace root", { workspaces: ["project"] }],
 		["a parent folder", undefined],
@@ -658,7 +658,7 @@ describe("npm guard: permission extension", () => {
 	});
 });
 
-// Hardening review, point 1: the registry a project names is a destination of the network policy, not an
+// review, point 1: the registry a project names is a destination of the network policy, not an
 // authorization. These tests run a fake registry on this machine and count what reaches it.
 describe("npm guard: network policy", () => {
 	let root: string;

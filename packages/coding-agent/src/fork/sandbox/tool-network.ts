@@ -117,7 +117,7 @@ const refusal = (url: URL, name: string) => {
 /**
  * Checks `url` as the sandbox proxy checks a command's connection: its host (or this machine's port) first,
  * before any DNS query; then, for a name leading to this machine, its port too; for a name leading to a private
- * network (AS-023), that name at those addresses.
+ * network, that name at those addresses.
  */
 export async function checkDestination(
 	url: URL,

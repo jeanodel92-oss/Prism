@@ -103,7 +103,7 @@ const builtins = {
 			view.app.toast(t("nothingToFork"), "warning");
 			return;
 		}
-		// The owner's decision of 2026-11-05: /clone is the last entry of /fork, as in the terminal.
+		// The maintainer's decision of 2026-11-05: /clone is the last entry of /fork, as in the terminal.
 		const whole = "prism:fork-whole-conversation";
 		const entryId = await view.app.choose(view, "fork", t("forkTitle"), [
 			...messages.map((m) => ({ value: m.entryId, label: m.text })),

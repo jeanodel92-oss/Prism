@@ -134,12 +134,13 @@ describe("fork: reading a server's model list again", () => {
 		expect(await syncCompatibleServer(path, "home", undefined)).toEqual({
 			added: ["qwen-4-coder"],
 			removed: ["qwen-3.8-27b"],
+			updated: [],
 		});
 		const home = providers(path).home;
 		expect(home.models.map((model: { id: string }) => model.id)).toEqual(["qwen-3.8-flash-next", "qwen-4-coder"]);
 		expect(home.models[0].contextWindow).toBe(4096);
 		expect(home.modelOverrides).toBeUndefined();
-		expect(await syncCompatibleServer(path, "home", undefined)).toEqual({ added: [], removed: [] });
+		expect(await syncCompatibleServer(path, "home", undefined)).toEqual({ added: [], removed: [], updated: [] });
 		await expect(syncCompatibleServer(path, "anthropic", undefined)).rejects.toThrow("not a server");
 	});
 });

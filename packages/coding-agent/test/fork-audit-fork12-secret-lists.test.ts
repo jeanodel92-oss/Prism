@@ -1,6 +1,6 @@
 // fork: the lists that keep secrets from the model.
-// AS-020: the project's secret files the gate protects; AS-012: the home folder's credentials hidden when commands
-// read everything; AS-009: jq and awk programs that read the whole environment.
+// the project's secret files the gate protects; the home folder's credentials hidden when commands
+// read everything; jq and awk programs that read the whole environment.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

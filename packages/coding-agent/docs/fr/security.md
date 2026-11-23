@@ -1,26 +1,55 @@
 # Utiliser Prism en toute sécurité
 
-Considérez les commandes et le code générés par un modèle comme non fiables. Prism peut lire, modifier et exécuter des fichiers avec les permissions du compte qui l’a lancé. Dans le [mode de permission](permissions.md#modes) par défaut, `broad`, il travaille dans le projet sans demander, et demande avant de sortir du projet, avant `sudo` et avant les appels qu’il juge dangereux. À moins qu’une limite du système d’exploitation ou de virtualisation ne les restreigne, les extensions, installateurs de packages, serveurs de langage et autres processus enfants disposent des mêmes permissions.
+Traitez les commandes et le code générés par le modèle comme non fiables. Prism lit, modifie et exécute des fichiers pour le compte qui l’a lancé. Deux protections limitent ce qu’une action générée peut faire :
 
-Les fichiers, commentaires, consignes, résultats de commandes et réponses du modèle peuvent orienter celui-ci par injection de prompt. La confiance accordée au projet détermine quelles ressources de projet sont chargées au démarrage ; elle ne rend ni leur contenu ni les actions qui en découlent sûrs.
+- L’[étape de permissions](permissions.md) décide si chaque appel d’outil s’exécute. Dans le [mode](permissions.md#modes) par défaut, `broad`, l’agent travaille dans le projet sans demander, et demande avant de sortir du projet, avant `sudo` et avant les appels qu’il détecte comme dangereux.
+- La [sandbox](sandbox.md) (environnement isolé des commandes) enferme les commandes shell de l’agent dans les modes `safe`, `ask` et `broad` : elles ne peuvent modifier que le projet, ne voient ni les identifiants de Prism ni vos clés, et ne joignent que les hôtes réseau que vous autorisez.
 
-La sécurité repose sur la limitation des fichiers, identifiants, processus et services réseau que Prism peut consulter et affecter si une action générée est erronée ou hostile. Surveiller la transcription, faire confiance au projet et examiner les modifications ne créent pas de frontière de sécurité.
+Les fichiers, commentaires, consignes, sorties de commandes, pages web et réponses du modèle peuvent orienter le modèle par injection de prompt. L’[avertissement d’injection](permissions.md#avertissement-dinjection-de-prompt) de Prism met l’agent en pause sur un résultat d’outil suspect ; il réduit le risque sans le supprimer. La confiance accordée au projet détermine quelles ressources du projet se chargent au démarrage, mais elle ne rend ni ce contenu ni les actions qui en découlent sûrs.
+
+## Ce que les protections ne couvrent pas
+
+- **Le processus de Prism lui-même.** Les extensions, les serveurs MCP, les serveurs de langage et les outils de fichiers s’exécutent avec les permissions de votre compte, hors de la sandbox. Les règles de chemins de l’étape de permissions cherchent des motifs : ce n’est pas une isolation.
+- **Le mode `unrestricted`.** Il ne demande rien, et ses commandes s’exécutent hors de la sandbox, sauf si vous l’activez pour ce mode.
+- **Ce que vous autorisez.** Une commande que vous excluez de la sandbox, l’outil `sudo`, un hôte que vous autorisez ou une action que vous approuvez fait ce qu’il fait.
 
 ## Choisir comment exécuter Prism
 
-Les différentes façons d’exécuter Prism limitent différemment l’accès des commandes générées :
-
-| Exécution de Prism | Éléments qui restent protégés |
+| Comment Prism s’exécute | Ce qui reste protégé |
 |---|---|
-| Directement, avec les permissions de son utilisateur dans le système d’exploitation | Tout ce à quoi cet utilisateur n’a pas accès. Un compte réservé à Prism peut réduire ces permissions, mais Prism partage toujours le système d’exploitation et le réseau avec les autres utilisateurs. |
-| Entièrement dans un conteneur, une machine virtuelle ou un environnement isolé | Les fichiers et processus de l’hôte que vous n’exposez pas à l’environnement. Les identifiants et services réseau restent accessibles si vous les y rendez disponibles. C’est généralement l’option pratique la plus sûre. |
-| À l’extérieur de l’environnement isolé, avec seulement ses outils intégrés qui s’y exécutent | Les ressources de l’hôte sont protégées contre les actions réalisées par ces outils. Prism et les autres extensions restent hors de la frontière ; l’isolation est donc plus limitée. |
+| Directement, avec la sandbox (par défaut en `safe`, `ask` et `broad`) | Les commandes shell de l’agent ne peuvent ni modifier des fichiers hors du projet et de ses caches, ni lire les chemins masqués, et ne joignent que les hôtes autorisés. Prism lui-même, ses extensions et les outils de fichiers gardent les permissions de votre compte. |
+| Directement, sans la sandbox | Seulement ce à quoi votre utilisateur système n’a pas accès. Un compte dédié peut réduire ces permissions. |
+| Entièrement dans un conteneur ou une machine virtuelle | Les fichiers et processus de l’hôte que vous n’exposez pas. Les identifiants et services réseau restent accessibles si vous les y rendez disponibles. Cela enferme aussi le processus de Prism et ses extensions. |
 
-Le dossier de travail détermine où Prism trouve les ressources et où les outils travaillent par défaut. Il n’empêche pas les commandes d’accéder aux autres chemins auxquels le processus Prism a accès.
+Le dossier de travail détermine la découverte des ressources et l’emplacement par défaut des outils. Sans la sandbox, il n’empêche pas les commandes d’atteindre d’autres chemins accessibles au processus Prism.
 
-Quelle que soit l’option choisie, ne fournissez que les fichiers et services nécessaires à la tâche. Dans la mesure du possible, gardez les identifiants à l’extérieur de l’environnement ou utilisez des identifiants temporaires aux permissions limitées. Restreignez le réseau si les commandes n’en ont pas besoin.
+Quelle que soit l’option, ne fournissez que les fichiers et services nécessaires à la tâche, préférez des identifiants à portée réduite et de courte durée, et n’autorisez que les hôtes réseau dont une tâche a besoin. Pour les conteneurs et machines virtuelles, consultez [Conteneuriser Prism](containerization.md).
 
-Pour savoir comment configurer les méthodes d’isolation et quelles sont leurs limites, consultez [Exécuter Prism dans un environnement isolé](containerization.md).
+<a id="secrets"></a>
+
+## Secrets
+
+- **Où sont gardés les identifiants.** Un identifiant que vous ajoutez avec `/login` va dans le trousseau du système (Secret Service, par l’outil `secret-tool` de libsecret) quand il fonctionne ; `auth.json` n’en garde alors qu’un repère. Sans trousseau, il va dans `~/.prism/agent/auth.json` (mode `0600`), avec un avertissement, et `/doctor` le signale. Un trousseau verrouillé n’est pas traité comme absent : rien n’est écrit, et Prism vous demande de le déverrouiller. `PRISM_SECRET_SERVICE=off` désactive le trousseau. Les clés déjà en clair dans `auth.json` y restent jusqu’à ce que vous les déplaciez avec **Déplacer les identifiants vers le trousseau** dans `/settings`.
+- **Ce que voient les commandes de l’agent.** Les variables d’environnement qui ressemblent à des clés, jetons ou mots de passe, les sockets d’agents d’identité comme `SSH_AUTH_SOCK`, et toute variable qui contient une clé gardée par Prism sont retirées des commandes de l’agent, dans la sandbox ou non ; leurs valeurs ne sont jamais affichées. Vos propres commandes `!` gardent votre environnement. Pour transmettre une variable à une commande, ajoutez une règle dans **Variables cachées aux commandes** de `/settings` (`"secrets": { "passEnv": { "GITHUB_TOKEN": ["bash(gh *)"] } }` dans le `settings.json` global). Le réglage `secrets.envAllowlist` va plus loin : les commandes ne reçoivent alors que les variables connues et sans risque, et celles que vous listez dans `secrets.allowEnv`.
+- **Ce qui sort de Prism.** Les clés gardées par Prism sont masquées sous la forme `[secret hidden: …]` dans ce qu’il envoie au modèle, dans les sessions, exports, partages, traces et `/doctor export`.
+- **Ce que la sandbox masque.** Les commandes de la sandbox ne peuvent lire ni `~/.prism` (identifiants, permissions, confiance), ni les emplacements habituels des identifiants ; consultez [La sandbox](sandbox.md#ce-quune-commande-peut-faire-dans-la-sandbox).
+
+Le modèle ne peut jamais modifier le mode de permissions, les règles de permissions, les décisions de confiance, les réglages `sandbox` et `secrets` ni les identifiants enregistrés, quel que soit le mode.
+
+<a id="privacy"></a>
+
+## Vie privée
+
+Prism n’envoie aucune télémétrie : ni rapport d’installation, de mise à jour ou d’usage, ni mesure d’audience. De lui-même, il ne se connecte qu’à :
+
+- les fournisseurs et serveurs de modèles que vous configurez, pour chaque requête ;
+- `https://pi.dev`, pour rafraîchir le catalogue des modèles cloud des fournisseurs auxquels vous êtes connecté, au plus toutes les 4 heures (désactivez-le avec **Mettre à jour le catalogue des modèles** dans `/settings`, ou `"modelCatalogRefresh": false`) ;
+- `https://prism.odelserver.space`, seulement quand vous lancez `/update` ou `prism update`, ou quand le réglage `updateMode` lui demande de vérifier au démarrage (désactivé par défaut) ;
+- GitHub, pour télécharger `fd` ou `rg` la première fois qu’un outil en a besoin et qu’ils ne sont pas installés.
+
+Les autres connexions suivent une action de votre part : `/login`, outils web, serveurs MCP, installation de paquets, `/share`, lien avec le téléphone. `--offline` (ou `PI_OFFLINE=1`) coupe les connexions automatiques.
+
+**Sign in with ChatGPT** (la connexion par abonnement ChatGPT) envoie à OpenAI un identifiant aléatoire de cette installation (`deviceId`, un UUID gardé dans le `settings.json` global et créé à la première connexion de ce type), comme paramètre `ext_agent_host_id` de l’adresse d’autorisation. Il relie les connexions ChatGPT faites depuis la même installation. Il n’est envoyé ni avec les requêtes au modèle ni au renouvellement des jetons. Supprimer `deviceId` de `settings.json` fait créer un nouvel identifiant à la connexion suivante.
 
 <a id="project-trust"></a>
 
@@ -94,6 +123,8 @@ Ces pratiques ne remplacent pas l’isolation, mais elles réduisent les risques
 
 ## Signaler un problème de sécurité
 
-Suivez la [politique de sécurité](https://github.com/earendil-works/pi/blob/main/SECURITY.md) du dépôt. Ne publiez pas de problème de sécurité dans une issue publique.
+Signalez une faille en privé, avec le bouton **Report a vulnerability** de l’onglet Security du dépôt de Prism, comme le dit sa [politique de sécurité](../../../../SECURITY.md) (`SECURITY.md` à la racine du dépôt, en anglais). La page [Code source](https://prism.odelserver.space/fr/source/) du site de Prism mène au dépôt. Ne publiez pas de problème de sécurité dans une issue publique.
 
-Le comportement attendu d’un agent local, l’injection de prompt depuis du contenu non fiable, l’absence d’environnement isolé intégré et le comportement d’extensions ou de skills installés par l’utilisateur ne font généralement pas partie de la frontière de sécurité, sauf si le signalement démontre un contournement de limite de privilège ou un accès que l’utilisateur local n’avait pas déjà.
+La politique liste ce que Prism garantit (sandbox, permissions, secrets, règles réseau, rendu, confiance des dossiers, lien avec le téléphone, extension de navigateur et bureau, mises à jour signées) et ce qui est hors périmètre : le mode `unrestricted` et les actions que vous avez approuvées, l’injection de prompt qui reste dans ce que le mode en cours permet, les extensions et paquets que vous installez, et le comportement des fournisseurs de modèles.
+
+Pour les autres défauts, consultez [Signaler un problème](doctor.md#signaler-un-problème).

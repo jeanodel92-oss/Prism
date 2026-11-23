@@ -312,7 +312,7 @@ describe("fork: operation trace through the real CLI", () => {
 			"permission:write:denied",
 			"result:write:error",
 		]);
-		// fork (Codex review lot 2, F-H3 (a)): the key in the prompt never reaches the model, which writes its label;
+		// fork (review lot 2, F-H3 (a)): the key in the prompt never reaches the model, which writes its label;
 		// Prism puts the key back in at the write, after a yes, and the trace still holds only the label.
 		expect(readFileSync(join(cwd, "granted.txt"), "utf8")).toBe(secret);
 	}, 70_000);

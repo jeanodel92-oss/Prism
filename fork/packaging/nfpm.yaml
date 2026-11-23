@@ -24,6 +24,20 @@ contents:
   - src: /opt/prism/prism
     dst: /usr/bin/prism
     type: symlink
+  # A real package's menu entry, icon and copyright (audit REL-18). The window's own first-run entry has the same id
+  # (prism.desktop) in ~/.local/share/applications, so it overrides this one instead of doubling it.
+  - src: ./share/prism.desktop
+    dst: /usr/share/applications/prism.desktop
+    file_info:
+      mode: 0644
+  - src: ./tree/gui/prism.png
+    dst: /usr/share/icons/hicolor/512x512/apps/prism.png
+    file_info:
+      mode: 0644
+  - src: ./share/copyright
+    dst: /usr/share/doc/prism/copyright
+    file_info:
+      mode: 0644
   # Tells Prism which package manager updates it, so it never updates itself (src/fork/self-update.ts).
   - src: ./markers/apt
     dst: /opt/prism/.prism-package
@@ -35,15 +49,22 @@ contents:
 overrides:
   deb:
     depends:
+      # The terminal needs glibc 2.28 (bundled Node); the window and the phone link need 2.39 and say so when it
+      # is older (audit REL-06): Debian 12 and Ubuntu 22.04 keep the terminal.
+      - libc6 (>= 2.28)
       - bubblewrap
       # The window (prism --gui); the terminal works without it.
       - libwebkit2gtk-4.1-0
     recommends:
       # The agent's own desktop (off by default).
       - labwc
+      # secret-tool: keys go to the system keyring; without it, to auth.json (audit CLM-02).
+      - libsecret-tools
   rpm:
     depends:
+      - glibc >= 2.28
       - bubblewrap
       - webkit2gtk4.1
     recommends:
       - labwc
+      - libsecret

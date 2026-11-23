@@ -56,7 +56,8 @@ export function redactJsonValue(value: unknown): unknown {
 }
 
 function redactSettings(settings: Settings): Settings {
-	const { trackingId: _trackingId, deviceId: _deviceId, ...rest } = settings;
+	// fork: a settings file written by pi may still hold its analytics `trackingId`.
+	const { trackingId: _trackingId, deviceId: _deviceId, ...rest } = settings as Settings & { trackingId?: string };
 	return redactJsonValue(rest) as Settings;
 }
 

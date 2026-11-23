@@ -424,7 +424,7 @@ async function navigate(session: AgentSession, id: string, summarize: boolean, i
 
 // ------------------------------------------------------------------------------------------ /model-settings
 
-const BOOL_ROWS = new Set<RowKey>(["vision", "reasoning", "tools"]);
+const BOOL_ROWS = new Set<RowKey>(["vision", "toolImages", "reasoning", "tools"]);
 const rowType = (key: RowKey) =>
 	BOOL_ROWS.has(key) ? "bool" : key === "name" ? "text" : key === "extra" ? "json" : "number";
 

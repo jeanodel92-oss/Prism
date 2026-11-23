@@ -1,7 +1,7 @@
 // fork: the browser module.
-// AS-025: the extension copies /browser setup writes in ~/Prism, the window's folder when it opens in the home folder,
+// the extension copies /browser setup writes in ~/Prism, the window's folder when it opens in the home folder,
 // are read-only for sandboxed commands; a browser runs them outside the sandbox.
-// AS-034: a page the agent opens that redirects to a host the rule would have asked about (a port of this machine)
+// a page the agent opens that redirects to a host the rule would have asked about (a port of this machine)
 // gets the question; refused, the tab is closed before it is read.
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";

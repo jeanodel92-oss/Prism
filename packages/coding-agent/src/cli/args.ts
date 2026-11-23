@@ -8,6 +8,7 @@ import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../co
 import type { ExtensionFlag } from "../core/extensions/types.ts";
 import type { TuiMode } from "../core/settings-manager.ts";
 import { BRANDED_UPDATE_COMMAND_LINE, IS_BRANDED_BUILD } from "../fork/brand.ts";
+import { brandHelpText } from "../fork/branded-cli.ts";
 import { recordAbsorbedValue } from "../fork/cli-flag-values.ts";
 import { applySafeMode } from "../fork/safe-mode.ts";
 
@@ -281,7 +282,7 @@ export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 					})
 					.join("\n")}\n`
 			: "";
-	console.log(`${chalk.bold(APP_NAME)} - AI coding assistant with read, bash, edit, write tools
+	const helpText = `${chalk.bold(APP_NAME)} - AI coding assistant with read, bash, edit, write tools
 
 ${chalk.bold("Usage:")}
   ${APP_NAME} [options] [--] [@files...] [messages...]
@@ -293,7 +294,7 @@ ${chalk.bold("Commands:")}
   ${IS_BRANDED_BUILD ? BRANDED_UPDATE_COMMAND_LINE : `${APP_NAME} update [source|self|pi]   Update pi, extensions, or model catalogs`}
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
-  ${APP_NAME} auth <command>            Print credentials or check provider readiness
+  ${APP_NAME} auth <command>            Log in or out, print credentials, or check provider readiness
   ${APP_NAME} mcp <command>             Check MCP servers, sign in to or out of OAuth servers
   ${APP_NAME} doctor [details]          Check the local setup without starting the interface
   ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/config/auth/mcp/doctor
@@ -472,5 +473,7 @@ ${chalk.bold("Built-in Tool Names:")}
   grep       - Search file contents (read-only, off by default)
   find       - Find files by glob pattern (read-only, off by default)
   ls         - List directory contents (read-only, off by default)
-`);
+`;
+	// fork (FIN-04): a branded build rewrites upstream's help (src/fork/branded-cli.ts).
+	console.log(IS_BRANDED_BUILD ? brandHelpText(helpText, APP_NAME) : helpText);
 }

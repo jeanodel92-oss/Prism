@@ -12,7 +12,7 @@ Provider API-key variables are documented separately in [Providers](providers.md
 
 The CLI and RPC entry points set two process markers:
 
-- `AI_AGENT=pi` is a generic marker that lets tooling identify Prism as the agent that launched the process.
+- `AI_AGENT=pi` is a generic marker that lets tooling identify Prism as the agent that launched the process. It keeps the value `pi`, the name of the agent Prism is built on, so tools that already recognize pi recognize Prism.
 - `PI_CODING_AGENT=true` is Prism-specific and lets child processes detect that they run inside Prism.
 
 Child processes inherit both markers. They are not session-specific and are not set automatically when Prism is embedded through the SDK.
@@ -74,19 +74,23 @@ When disabled, Prism removes inherited values for these variables so nested Pris
 
 ## Prism Process Configuration
 
-These variables are read by Prism itself:
+These variables are read by Prism itself. Most keep the `PI_` prefix of pi, the agent Prism is built on, so scripts written for pi keep working. The two directory variables take the command's name: `PRISM_CODING_AGENT_DIR` for the `prism` command, `PI_CODING_AGENT_DIR` when Prism runs from its sources as `pi`.
 
 | Variable | Description |
 |----------|-------------|
 | `PRISM_CODING_AGENT_DIR` | Override the config directory; default is `~/.prism/agent` |
 | `PRISM_CODING_AGENT_SESSION_DIR` | Override session storage; overridden by `--session-dir` |
 | `PI_PACKAGE_DIR` | Override the package directory, useful for Nix/Guix store paths |
-| `PI_OFFLINE` | Disable automatic network activity, including model catalog refreshes |
-| `PI_SKIP_VERSION_CHECK` | Disable the `pi.dev` latest-version request |
-| `PI_TELEMETRY` | Override install/update telemetry and provider attribution headers: `1`/`true`/`yes` or `0`/`false`/`no` |
+| `PI_OFFLINE` | Disable automatic network activity, including model catalog refreshes and update checks |
 | `PI_CACHE_RETENTION` | Set to `long` for extended provider prompt caching where supported |
-| `PI_SHARE_VIEWER_URL` | Override the base URL used by `/share` |
-| `PI_RADIUS_GATEWAY` | Override the Radius gateway origin used by `/bug` uploads and Radius relay connections |
+| `PI_SHARE_VIEWER_URL` | Override the base URL of the session viewer `/share` links to |
+| `PI_RADIUS_GATEWAY` | Override the Radius gateway origin used by Radius relay connections (Radius is pi's own service; Prism's `/login` does not offer it) |
+| `PRISM_SECRET_SERVICE` | Set to `off` to keep credentials out of the system keyring: they go to `auth.json`. See [Secrets](security.md#secrets) |
+| `PRISM_BASE_URL` | Site the update check reads releases from; default `https://prism.odelserver.space`. The installer (`install.sh`) reads it too |
+| `PRISM_REMOTE_DIR` | Folder of the phone link's keys and paired phones; default `~/.prism/remote`. See [Prism on Your Phone](phone.md) |
+| `PRISM_GUI_BINARY` | Window program to start instead of the release's own, for development builds. See [Prism's Window](window.md) |
+| `PI_EXPERIMENTAL` | Set to `1` to tell extensions that experimental features are on (`areExperimentalFeaturesEnabled()` in the SDK); the footer then shows `xp` |
+| `PI_MANAGED_INSTALL_ROOT` | Used by pi's own managed installations; Prism's installer does not set it |
 | `PI_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor; see [Terminal setup](terminal-setup.md) |
 | `PI_HYPERLINKS` | Override OSC 8 hyperlink detection with `1`, `0`, or `auto` |
 | `PI_IMAGE_PROTOCOL` | Override inline image detection with `kitty`, `iterm2`, `none`, or `auto` |
@@ -96,3 +100,5 @@ These variables are read by Prism itself:
 | `HTTP_PROXY`, `HTTPS_PROXY` | Proxy outbound HTTP requests |
 
 Provider credentials such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and provider-specific configuration are listed in [Providers](providers.md#use-an-api-key-from-the-environment).
+
+Other `PI_*` and `PRISM_*` variables found in the code are used by Prism's own tests and measurements.

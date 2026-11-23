@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "owner's decision, 2026-11-13: 'Link a phone' in the PC window, a welcome step and a settings button; the window starts the phone server and shows its code as a QR image and as text, with the addresses the phone tries" },
+	{ "do": "log", "text": "maintainer's decision, 2026-11-13: 'Link a phone' in the PC window, a welcome step and a settings button; the window starts the phone server and shows its code as a QR image and as text, with the addresses the phone tries" },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "wait", "selector": "#welcome-phone:not([hidden]) button", "text": "Link a phone", "why": "no phone linked yet: the welcome offers it" },
 	{ "do": "wait", "selector": "#welcome-phone .welcome-phone-app img.link-phone-qr", "why": "the app's download as a QR code for the phone's camera" },

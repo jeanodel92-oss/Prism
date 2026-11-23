@@ -12,8 +12,11 @@ prism uninstall <source> [options]
 prism update [target] [options]
 prism list
 prism config [options]
+prism auth login <provider> [--api-key [<key>]] [--no-browser]
+prism auth logout <provider>
 prism auth <check|print-api-key|print-bearer-token> [options]
-prism mcp <list|login|logout> [options]
+prism mcp <add|remove|list|login|logout> [options]
+prism doctor [details|export <file>]
 ```
 
 <a id="modes"></a>
@@ -62,6 +65,21 @@ The built-in budget extension accepts optional per-session limits in every mode:
 | `--budget-cost <amount>` | Reported cost in USD; accepted only when the selected model has non-zero price metadata |
 
 `/budget` shows usage and uncertainty. `/budget time 30`, `/budget tools 50`, `/budget tokens 200000`, and `/budget cost 2` set limits; `/budget off [kind]` clears one or all. Only a user-entered command can change a limit. At a cap, Prism blocks further tool calls and model requests, aborts the active agent operation, and reports detached background tasks as still running.
+
+<a id="permission-options"></a>
+
+### Permissions
+
+The [permission gate](permissions.md) is always loaded, in every mode, including `--no-extensions` and `--safe`:
+
+| Option | Behavior |
+|---|---|
+| `--perm-mode <mode>` | Permission mode for this run: `ask`, `safe`, `broad` (default) or `unrestricted`. `unrestricted` asks nothing; its commands run outside the [sandbox](sandbox.md) unless you turned it on for that mode |
+| `--perm-yolo` | Same as `--perm-mode broad` (`broad` was called `yolo`) |
+| `--perm-deny <rules>` | Deny rules for this session, as a JSON array such as `'["bash(git push*)"]'`; Prism passes its own to the agents it starts |
+| `--scheduled <name>` | Run a [scheduled task](scheduled-tasks.md). Its systemd timer passes this option; you do not use it yourself |
+
+Without an interactive UI (`--print`, `--mode json`), a call that would ask is refused, unless an allow rule matches or the mode is `broad` or `unrestricted`. See [Automation](automation.md#permissions-without-a-user-interface).
 
 <a id="model-options"></a>
 
@@ -237,6 +255,8 @@ See [Configuration](configuration.md) for saved configuration, [Security](securi
   Opens Prism's window, or the terminal interface, for this launch. A plain `prism` follows **/settings › Interface › Open Prism in**; the first launch where the window can open asks once. Without a graphical display, or when the window cannot start (WebKitGTK missing), Prism says why and opens in the terminal.
 - `--verbose`<br>
   Shows verbose interactive startup information, overriding `quietStartup`.
+- `--safe`<br>
+  Starts without discovered extensions, skills, prompt templates, themes or context files, with verbose startup, when one of them prevents Prism from starting. Paths given explicitly still load, and the permission gate stays on. See [Diagnostics](doctor.md).
 - `-a`, `--approve`<br>
   Trusts project-local configuration and resources for this process.
 - `-na`, `--no-approve`<br>
@@ -277,7 +297,7 @@ Add `--local` or `-l` to `install`, `remove`, `uninstall`, or `config` to use pr
 curl -fsSL https://prism.odelserver.space/install.sh | sh
 ```
 
-Inside Prism, `/update` does the same from the terminal or the window: it checks, then installs on request, switches channel or goes back to the previous version; the new version opens at the next start. Prism checks on its own only when the `updateMode` setting asks for it (see [Settings](settings.md#updates-telemetry-and-warnings)).
+Inside Prism, `/update` does the same from the terminal or the window: it checks, then installs on request, switches channel or goes back to the previous version; the new version opens at the next start. Prism checks on its own only when the `updateMode` setting asks for it (see [Updates](updates.md)).
 
 | Task | Command |
 |---|---|
@@ -288,6 +308,9 @@ Inside Prism, `/update` does the same from the terminal or the window: it checks
 | Update one installed package | `prism update <source>` |
 | Refresh model catalogs | `prism update --models` |
 | Update Prism and all installed packages | `prism update --all` |
+| Switch to the canary or stable channel, then update | `prism update --channel canary`, `prism update --channel stable` |
+
+See [Updates and Channels](updates.md) for channels, automatic checks and installations made by a package manager.
 
 ### Aliases and command options
 
@@ -299,11 +322,25 @@ Inside Prism, `/update` does the same from the terminal or the window: it checks
 
 ## Credential commands
 
+`prism auth login <provider>` signs in to a provider from the shell and exits, without starting a session, for example on a server over SSH. It offers the same providers as `/login` and saves the credential in the same place. It signs in with an account and opens the browser when the provider has account sign-in; otherwise it saves an API key. The provider is named by its ID or its name, as in `/login <provider>`. Providers added by extensions, such as Claude Code or llama.cpp, are not loaded by this command: use `/login` for them.
+
+| Option | Description |
+|---|---|
+| `--api-key [<key>]` | Save an API key instead of signing in with an account. Without a value, the key is asked for without echoing it; with a value, no terminal is needed, but the key stays in your shell history |
+| `--no-browser` | Do not open a browser; use the provider's other sign-in method, such as a device code, or print the sign-in URL and ask for the code. Not allowed with `--api-key` |
+
+Account sign-in and a key typed at the prompt need an interactive terminal. Signing in to Anthropic with a Claude subscription shows the same warning as `/login` first.
+
+`prism auth logout <provider>` removes the credentials that `prism auth login` or `/login` stored, like `/logout`. Environment variables and `models.json` config are unchanged. It exits with status `0` when nothing is stored, so it is safe to repeat.
+
 ```sh
+prism auth login openai-codex --no-browser
+prism auth login openai --api-key
+prism auth logout openai
 prism auth check --provider openai --json
 ```
 
-Authentication commands require `--provider <provider>` or `--model <model>`. See [Providers](providers.md) for supported methods.
+The other authentication commands require `--provider <provider>` or `--model <model>`. See [Providers](providers.md) for supported methods.
 
 | Command | Description |
 |---|---|
@@ -338,3 +375,17 @@ These commands work outside a session, so agents can run them through `bash`. Se
 `add` and `remove` change `~/.prism/agent/mcp.json`, or `.prism/mcp.json` in the current directory with `--local` (`-l`). `add` also takes `--exposure <mode>` (see [Exposure](mcp.md#control-tool-exposure)) and `--description <text>` and does not connect; run `prism mcp list` to check the server.
 
 Project `.prism/mcp.json` files are only read for projects that are already trusted.
+
+## Diagnostics
+
+```sh
+prism doctor
+```
+
+| Command | Description |
+|---|---|
+| `prism doctor` | Check settings, models, permissions, crashes and folders without starting the interface; exit with `1` when a problem is found |
+| `prism doctor details` | Add the technical detail of each check |
+| `prism doctor export <file>` | Save the report as JSON, with recognized secrets and your home folder masked (mode `0600`) |
+
+`/doctor` runs the same checks inside Prism. See [Diagnostics](doctor.md).

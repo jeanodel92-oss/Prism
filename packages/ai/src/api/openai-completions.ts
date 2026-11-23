@@ -170,6 +170,7 @@ type ResolvedOpenAICompletionsCompat = Omit<
 	| "supportsMidConvoSystemMessages"
 	| "supportsMidConvoToolAdditions"
 	| "vllmPriority"
+	| "supportsImagesInToolResults"
 > & {
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 	supportsThinkingTokenBudget?: OpenAICompletionsCompat["supportsThinkingTokenBudget"];
@@ -177,6 +178,7 @@ type ResolvedOpenAICompletionsCompat = Omit<
 	supportsMidConvoSystemMessages?: OpenAICompletionsCompat["supportsMidConvoSystemMessages"];
 	supportsMidConvoToolAdditions?: OpenAICompletionsCompat["supportsMidConvoToolAdditions"];
 	vllmPriority?: OpenAICompletionsCompat["vllmPriority"];
+	supportsImagesInToolResults?: OpenAICompletionsCompat["supportsImagesInToolResults"];
 };
 
 type ResolvedChatTemplateKwargValue = string | number | boolean | null;
@@ -854,8 +856,7 @@ function buildParams(
 		if (compat.zaiToolStream) {
 			(params as any).tool_stream = true;
 		}
-	} else if (hasToolHistory(context.messages)) {
-		// Anthropic (via LiteLLM/proxy) requires tools param when conversation has tool_calls/tool_results
+	} else if (compat.requiresToolsWithToolHistory && hasToolHistory(context.messages)) {
 		params.tools = [];
 	}
 
@@ -1434,12 +1435,12 @@ export function convertMessages(
 				if (compat.requiresToolResultName && toolMsg.toolName) {
 					(toolResultMsg as any).name = toolMsg.toolName;
 				}
-				params.push(toolResultMsg);
 
 				if (hasImages && model.input.includes("image")) {
+					const toolImages: ChatCompletionContentPartImage[] = [];
 					for (const block of toolMsg.content) {
 						if (isImageContentBlock(block)) {
-							imageBlocks.push({
+							toolImages.push({
 								type: "image_url",
 								image_url: {
 									url: `data:${block.mimeType};base64,${block.data}`,
@@ -1447,7 +1448,15 @@ export function convertMessages(
 							});
 						}
 					}
+					if (compat.supportsImagesInToolResults) {
+						// The SDK types tool content as text parts only; servers that set this flag accept images here.
+						const parts: ChatCompletionContentPart[] = [{ type: "text", text: toolResultMsg.content as string }];
+						toolResultMsg.content = [...parts, ...toolImages] as ChatCompletionToolMessageParam["content"];
+					} else {
+						for (const image of toolImages) imageBlocks.push(image);
+					}
 				}
+				params.push(toolResultMsg);
 			}
 
 			i = j - 1;
@@ -1656,6 +1665,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
 		requiresToolResultName: false,
 		requiresAssistantAfterToolResult: false,
+		requiresToolsWithToolHistory: false,
 		requiresThinkingAsText: false,
 		requiresReasoningContentOnAssistantMessages: isDeepSeek,
 		thinkingFormat: isDeepSeek
@@ -1712,6 +1722,7 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 		requiresToolResultName: model.compat.requiresToolResultName ?? detected.requiresToolResultName,
 		requiresAssistantAfterToolResult:
 			model.compat.requiresAssistantAfterToolResult ?? detected.requiresAssistantAfterToolResult,
+		requiresToolsWithToolHistory: model.compat.requiresToolsWithToolHistory ?? detected.requiresToolsWithToolHistory,
 		requiresThinkingAsText: model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
 		requiresReasoningContentOnAssistantMessages:
 			model.compat.requiresReasoningContentOnAssistantMessages ??
@@ -1735,5 +1746,6 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 		sessionAffinityFormat: model.compat.sessionAffinityFormat ?? detected.sessionAffinityFormat,
 		supportsLongCacheRetention: model.compat.supportsLongCacheRetention ?? detected.supportsLongCacheRetention,
 		vllmPriority: model.compat.vllmPriority,
+		supportsImagesInToolResults: model.compat.supportsImagesInToolResults,
 	};
 }

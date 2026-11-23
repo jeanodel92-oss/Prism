@@ -513,9 +513,9 @@ export interface FinishOptions {
 	 * apply them. Without it, they are refused.
 	 */
 	askGitConfig?: (question: GitConfigQuestion) => Promise<boolean | undefined>;
-	/** fork (AS-018): repositories the command made whose hooks or configuration run programs (`nested-git.ts`). */
+	/** fork: repositories the command made whose hooks or configuration run programs (`nested-git.ts`). */
 	newRepositories?: string[];
-	/** fork (AS-026): the repositories whose hooks or configuration run programs now (`riskyRepositories`). */
+	/** fork: the repositories whose hooks or configuration run programs now (`riskyRepositories`). */
 	riskyRepositories?: () => string[];
 }
 
@@ -760,7 +760,7 @@ export async function finishGitCopy(copy: GitCopy, options: FinishOptions): Prom
 	return flags ? `${flags}\n${worktrees}` : worktrees;
 }
 
-/** fork (AS-022): whether a configuration (the repository's, before the command) turns `core.sparseCheckout` on. */
+/** fork: whether a configuration (the repository's, before the command) turns `core.sparseCheckout` on. */
 function sparseCheckout(config: Buffer | undefined): boolean {
 	const entries = config ? parseGitConfig(config) : undefined;
 	const value = entries?.findLast((entry) => entry.key.toLowerCase() === "core.sparsecheckout")?.value;

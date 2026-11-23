@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Prism
+Upstream-Contact: prism@odelserver.space
+Source: https://prism.odelserver.space/source/
+
+Files: *
+Copyright: 2026 odel
+           2025-2026 Mario Zechner and the pi contributors (pi, on which Prism is built)
+License: GPL-3.0-or-later AND MIT
+Comment: Prism's own code is GPL-3.0-or-later; the pi code it is built on is MIT. The full texts, and the
+ licences of every bundled dependency (Node.js, npm packages, Rust crates), are in /opt/prism/LICENSE and
+ /opt/prism/LICENSES/. On Debian systems, the GPL is also in /usr/share/common-licenses/GPL-3.

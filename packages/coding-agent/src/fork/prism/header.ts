@@ -13,11 +13,11 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import { APP_NAME, VERSION } from "../../config.ts";
+import { VERSION } from "../../config.ts";
 import { keyText } from "../../modes/interactive/components/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { AnimationStyle } from "../animations.ts";
-import { APP_DISPLAY_NAME } from "../brand.ts";
+import { APP_DISPLAY_NAME, displayVersion } from "../brand.ts";
 import { t as translate } from "../i18n/index.ts";
 import { pasteTargets } from "../paste-hint.ts";
 import { homeRelative } from "../path-within.ts";
@@ -233,7 +233,8 @@ class PrismHeader {
 		// fork: model id, folder and branch come from outside Prism.
 		const ink2 = (s: string) => theme.fg("thinkingText", sanitizeTerminalLabel(s));
 		const dot = theme.fg("dim", " · ");
-		const title = `${paint(tok(theme, "text"), APP_NAME, { bold: true })}${theme.fg("dim", `  ${VERSION}`)}`;
+		// fork (audit FIN-07, FIN-18): "Prism 12.1", the product's name and short version; --version keeps the full one.
+		const title = `${paint(tok(theme, "text"), APP_DISPLAY_NAME, { bold: true })}${theme.fg("dim", `  ${displayVersion(VERSION)}`)}`;
 		let modelLine = ink2(model?.id ?? translate("no model"));
 		if (model?.provider) modelLine += dot + theme.fg("dim", sanitizeTerminalLabel(model.provider));
 		if (model?.reasoning) modelLine += dot + theme.fg("dim", translate(this.state.thinkingLevel || "off"));
@@ -264,7 +265,8 @@ class PrismHeader {
 			[k("app.clear"), "to clear"],
 			[`${k("app.clear")} ${translate("twice")}`, "to exit"],
 			[k("app.exit"), "to exit (empty)"],
-			[k("app.suspend"), "to suspend"],
+			// maintainer's QA, 2026-11-23: suspending has no default key (ctrl+z undoes); no row without one.
+			...(k("app.suspend") ? [[k("app.suspend"), "to suspend"] as [string, string]] : []),
 			[k("tui.editor.deleteToLineEnd"), "to delete to end"],
 			[k("app.thinking.cycle"), "to change thinking level"],
 			[`${k("app.model.cycleForward")}/${k("app.model.cycleBackward")}`, "to cycle models"],

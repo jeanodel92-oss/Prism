@@ -250,7 +250,7 @@ const confinedArgs = (work: string, mounts: string[]) => [
  * whose hooks or configuration run programs, committed it as a submodule and then removed it from the index left a
  * commit that a checkout outside Prism turns back into an index that lists it, and `git status` then runs them.
  * Read by a confined Git, from the command's objects and the repository's, as {@link verifyLooseObjects} does.
- * With `added` (AS-026), only the submodules a commit adds: absent from its first parent, or there as another type.
+ * With `added`, only the submodules a commit adds: absent from its first parent, or there as another type.
  */
 export async function submodulesInCommits(input: {
 	sandbox: PackSandbox;

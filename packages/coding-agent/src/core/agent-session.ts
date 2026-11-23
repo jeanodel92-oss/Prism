@@ -3507,6 +3507,10 @@ export class AgentSession {
 			{
 				getModel: () => this.model,
 				getScopedModels: () => this._scopedModels,
+				// fork: a server's new models join a narrowed scope (server-model-refresh.ts).
+				addToScope: (models) => {
+					for (const model of models) this._addPersistedDefaultToNonEmptyScope(model);
+				},
 				isIdle: () => this.isIdle,
 				isProjectTrusted: () => this.settingsManager.isProjectTrusted(),
 				getSignal: () => this.agent.signal,

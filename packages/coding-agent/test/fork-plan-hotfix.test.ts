@@ -71,7 +71,7 @@ describe("plan-mode bash policy", () => {
 		}
 	});
 
-	// Review of the modules the Codex review did not read: each of these wrote a file or ran a program
+	// Review of the modules the review did not read: each of these wrote a file or ran a program
 	// when tried in a throwaway folder, and the policy let it through.
 	it("blocks writes and programs hidden in option clusters, abbreviations and sed -e", () => {
 		for (const command of [

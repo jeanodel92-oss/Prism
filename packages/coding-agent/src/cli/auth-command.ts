@@ -37,12 +37,20 @@ export function isAuthCommandHelp(args: string[]): boolean {
 }
 
 export function printAuthCommandHelp(): void {
+	// fork (audit PB-22): login and logout (src/fork/auth-login-cli.ts).
 	console.log(`Usage:
+  ${APP_NAME} auth login <provider> [--api-key [<key>]] [--no-browser]
+  ${APP_NAME} auth logout <provider>
   ${APP_NAME} auth print-api-key [--provider <provider>] [--model <model>]
   ${APP_NAME} auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
   ${APP_NAME} auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]
 
-Auth commands require at least one of --provider or --model. Checks refresh expired OAuth credentials by default; --no-refresh prevents this. --credentials emits the credential, or includes it in JSON output.`);
+login signs in to a provider with an account (opening the browser), or saves its API key with --api-key, then exits.
+--api-key without a value asks for the key without echoing it. --no-browser does not open a browser and uses the
+provider's other sign-in method, such as a device code, for example over SSH. logout removes the credentials that login
+or /login stored; environment variables and models.json are unchanged.
+
+The other auth commands require at least one of --provider or --model. Checks refresh expired OAuth credentials by default; --no-refresh prevents this. --credentials emits the credential, or includes it in JSON output.`);
 }
 
 export function parseAuthCommand(args: string[]): AuthCommand | undefined {
@@ -58,7 +66,7 @@ export function parseAuthCommand(args: string[]): AuthCommand | undefined {
 					: undefined;
 	if (!kind) {
 		throw new AuthCommandError(
-			`Unknown auth command "${args[1] ?? ""}". Use "${APP_NAME} auth print-api-key", "${APP_NAME} auth print-bearer-token", or "${APP_NAME} auth check".`,
+			`Unknown auth command "${args[1] ?? ""}". Use "${APP_NAME} auth login", "${APP_NAME} auth logout", "${APP_NAME} auth print-api-key", "${APP_NAME} auth print-bearer-token", or "${APP_NAME} auth check".`,
 		);
 	}
 

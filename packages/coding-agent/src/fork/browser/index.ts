@@ -26,6 +26,7 @@ import {
 	detectBrowsers,
 	extensionBuild,
 	extensionDirFor,
+	extensionStorePage,
 	type FoundBrowser,
 	grantFlatpakHostAccess,
 	installNativeHosts,
@@ -231,8 +232,12 @@ export function extensionMismatch(
 	};
 }
 
-/** The start warning for a browser whose extension differs. */
-function mismatchWarning(name: string, mismatch: ExtensionMismatch): string {
+/**
+ * The start warning for a browser whose extension differs, or undefined. An older store install gets none
+ * the store publishes a new version after Prism ships it and updates the browser on its own, so a warning
+ * at every start would only say "wait"; /browser still notes it.
+ */
+function mismatchWarning(name: string, mismatch: ExtensionMismatch): string | undefined {
 	if (mismatch.kind === "copy")
 		return fill("The Prism extension in {0} comes from another version of Prism: /browser setup updates it.", name);
 	if (mismatch.kind === "newer")
@@ -242,12 +247,7 @@ function mismatchWarning(name: string, mismatch: ExtensionMismatch): string {
 			mismatch.version,
 			mismatch.expected,
 		);
-	return fill(
-		"The Prism extension in {0} is version {1}; this Prism comes with {2}. The browser's add-on store updates it; until then, some actions may fail.",
-		name,
-		mismatch.version || "?",
-		mismatch.expected,
-	);
+	return undefined;
 }
 
 /** The same, as a note after the browser in /browser. */
@@ -296,7 +296,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 	}
 
 	/**
-	 * fork.12 (AS-034): the host rule's answer for the URL a tab ended on after `open` or `navigate`, when it differs
+	 * the host rule's answer for the URL a tab ended on after `open` or `navigate`, when it differs
 	 * from the one asked for. Only http(s) pages reach a host; an error page or about:blank does not.
 	 */
 	async function redirectRefusal(
@@ -405,7 +405,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			}
 			used.set(session, host.path);
 			const tab = typeof result.tab === "number" ? result.tab : undefined;
-			// fork.12 (AS-034): a redirect takes the tab where the server chose, a port of this machine for example. The
+			// a redirect takes the tab where the server chose, a port of this machine for example. The
 			// page the tab ended on passes the host rule too; refused, the tab is closed before anything of it is read.
 			if (asked && tab !== undefined && typeof result.url === "string") {
 				const refused = await redirectRefusal(toolCallId, action, asked, result.url);
@@ -443,11 +443,11 @@ export default function browserExtension(pi: ExtensionAPI): void {
 		declare: (browser) => declareHost(browser),
 		grantFlatpak: grantFlatpakHostAccess,
 		extensionDir: (browser) => extensionDirFor(browser.family),
-		openBrowser: (browser) => {
+		openBrowser: (browser, url) => {
 			const command = browserCommand(browser, (program) => onPath(program));
 			if (!command) return fill("Prism did not find {0}'s program: open it yourself.", browser.name);
 			try {
-				const child = spawn(hostCommand(command[0]!), command.slice(1), {
+				const child = spawn(hostCommand(command[0]!), [...command.slice(1), ...(url ? [url] : [])], {
 					detached: true,
 					stdio: "ignore",
 					env: commandEnv(process.env, "browser", command.join(" ")).env,
@@ -511,7 +511,8 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			checkedBuilds = true;
 			for (const host of available) {
 				const mismatch = host.info && extensionMismatch(host.info);
-				if (host.info && mismatch) ctx.ui.notify(mismatchWarning(host.info.name, mismatch), "warning");
+				const warning = host.info && mismatch && mismatchWarning(host.info.name, mismatch);
+				if (warning) ctx.ui.notify(warning, "warning");
 			}
 		}
 		// One atomic claim: processes starting together (two engines of the window) must not all see "not offered yet".
@@ -579,12 +580,21 @@ export default function browserExtension(pi: ExtensionAPI): void {
 						: t(
 								"No supported browser found in your home folder (Chromium, Chrome, Brave, Vivaldi, Edge, Helium, Firefox, Zen, or one of them in Flatpak).",
 							),
-					fill("Extension folder: {0}", setup.extensionDir),
-					t(
-						"Chromium, Chrome, Brave, Helium: open chrome://extensions, turn on Developer mode, choose Load unpacked and select the extension folder.",
+					fill(
+						"Chrome, Chromium, Brave, Vivaldi, Edge: install the Prism extension from the Chrome Web Store: {0}",
+						extensionStorePage("chromium"),
 					),
-					t(
-						"Firefox, Zen: open about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select manifest.json in the extension folder (until the signed version).",
+					fill(
+						"Firefox, Zen and other Firefox-based browsers: install the Prism extension from addons.mozilla.org: {0}",
+						extensionStorePage("firefox"),
+					),
+					fill(
+						"Without the store, Chromium family: open chrome://extensions, turn on Developer mode, choose Load unpacked and select {0}.",
+						setup.extensionDir,
+					),
+					fill(
+						"Without the store, Firefox family: open about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select manifest.json in {0} (removed at each restart).",
+						setup.firefoxExtensionDir,
 					),
 				];
 				// A Flatpak browser starts the host through flatpak-spawn --host, which its sandbox refuses by default.

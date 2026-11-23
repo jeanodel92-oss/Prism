@@ -252,7 +252,7 @@ describe.skipIf(!bwrap)("fork: Git repositories nested in the project", () => {
 		});
 	});
 
-	// Review of the modules the Codex review did not read: after each command, the Produced tab of /files
+	// Review of the modules the review did not read: after each command, the Produced tab of /files
 	// runs `git status` on the host. Git checks a submodule's working tree with that submodule's own configuration,
 	// which a command can write in a repository it makes; `.gitmodules` (`ignore = none`) overrides a configured
 	// `diff.ignoreSubmodules`, so only the command-line option keeps Git out of it.
@@ -364,7 +364,7 @@ describe.skipIf(!bwrap)("fork: Git repositories nested in the project", () => {
 			expect(checkNewRepositories(first.repositories!)?.note).toBeUndefined();
 		});
 
-		it("does not look into a Git folder outside the project that a .git file names (owner's option 2)", () => {
+		it("does not look into a Git folder outside the project that a .git file names (maintainer's option 2)", () => {
 			const outside = join(root, "outside");
 			git(root, "init", "-q", outside);
 			git(outside, "config", "core.fsmonitor", "/bin/secret-name");

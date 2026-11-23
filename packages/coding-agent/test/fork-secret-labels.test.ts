@@ -244,7 +244,7 @@ describe("fork: a hidden key used without being read", () => {
 			expect(asked[0]!.title).toContain("config.env");
 			expect(asked[0]!.options).toEqual(["Yes, this time", "Yes, for this file until the end of the session", "No"]);
 
-			// fork.12 (AS-014): the file is hidden from the model's reads; it edits it with the label it wrote.
+			// the file is hidden from the model's reads; it edits it with the label it wrote.
 			expect(await call(harness, "read", { path: "config.env" })).toContain("hidden from you");
 			await call(harness, "edit", {
 				path: "config.env",

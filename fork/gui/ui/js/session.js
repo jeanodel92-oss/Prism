@@ -5,6 +5,7 @@
 import { promptWith, sentChips, splitFiles } from "./attachments.js";
 import { builtin, screen } from "./builtins.js";
 import { ListBox, Panel } from "./components.js";
+import { closestCommand } from "./completion.js";
 import { agentStepCount, agentStepLines, customText } from "./custom-message.js";
 import { clear, copyText, formatDuration, h, stripAnsi } from "./dom.js";
 import { Engine } from "./engine.js";
@@ -55,6 +56,7 @@ export class SessionView {
 		this.statuses = new Map();
 		this.widgets = new Map();
 		this.dialogs = new Map();
+		this.heldNotices = []; // information said before the conversation shows anything (showHeldNotices)
 		this.views = new Map(); // views of the engine (view.js), in opening order
 		this.interactions = new Interactions(this); // what shows on the interaction surface (surface.js)
 		this.tools = new Map();
@@ -109,6 +111,12 @@ export class SessionView {
 	}
 
 	// Engine notices name their conversation when it is not the one on screen.
+	/** The information held while the conversation was empty, once it shows something (app.js render). */
+	showHeldNotices() {
+		if (this.el.childElementCount === 0) return;
+		for (const notice of this.heldNotices.splice(0)) this.toast(...notice);
+	}
+
 	toast(text, kind, options) {
 		if (this.closed) return;
 		this.app.toast(this.app.active === this || !text ? text : `${this.title} — ${text}`, kind, options);
@@ -481,7 +489,7 @@ export class SessionView {
 		// Built-in terminal commands are not commands of the engine: sent as a prompt, they would go to
 		// the model as text. Only commands the engine lists are sent.
 		if (command && !this.commands.some((c) => c.name === command)) {
-			this.toast(t("terminalOnly", command), "warning");
+			await this.#refuseCommand(command);
 			return false;
 		}
 		// Until the engine accepted a message, the next one waits in the composer: two prompts sent before the
@@ -510,6 +518,22 @@ export class SessionView {
 			if (!command) this.sending = false;
 		}
 		return true;
+	}
+
+	/**
+	 * A command the window does not run: one of the terminal's, or one that does not exist. Audit of 2026-11-23
+	 * a typo such as /zzz was said to be "available in the terminal only".
+	 */
+	async #refuseCommand(command) {
+		if (HIDDEN_COMMANDS.has(command)) return this.toast(t("terminalOnly", command), "warning");
+		// Every command the "/" list offers (the engine's completion, the terminal's built-ins included): one listed here
+		// that the window cannot run is the terminal's; anything else does not exist.
+		const listed = await this.engine
+			.request({ type: "complete", text: "/", cursor: 1, open: "regular" })
+			.then((data) => (data?.items ?? []).map((item) => item.value), () => []);
+		if (listed.includes(command)) return this.toast(t("terminalOnly", command), "warning");
+		const near = closestCommand(command, [...listed, ...this.commands.map((c) => c.name)]);
+		this.toast(near ? t("unknownCommandNear", command, near) : t("unknownCommand", command), "warning");
 	}
 
 	async #runBash(command, excluded) {
@@ -1121,7 +1145,12 @@ export class SessionView {
 				// A notice of several lines is a set of instructions to follow (/browser setup): it stays until closed,
 				// rather than going after a few seconds.
 				const message = stripAnsi(request.message);
-				this.toast(message, request.notifyType ?? "info", { sticky: message.includes("\n") });
+				const notice = [message, request.notifyType ?? "info", { sticky: message.includes("\n") }];
+				// Audit of 2026-11-23, FIN-19 (owner): nothing floats over the welcome. Information sent while the
+				// conversation shows nothing yet (the engine's start-up notes) waits for its first message; a warning
+				// or an error shows at once.
+				if (notice[1] === "info" && this.el.childElementCount === 0) this.heldNotices.push(notice);
+				else this.toast(...notice);
 				break;
 			}
 			case "setStatus":

@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of 2026-11-13: a conversation started on the phone did not show in the window's list until a reload. One is started here by another engine, in the background, after a 3 s delay; the list must show it within the 20 s re-read, nothing clicked." },
+	{ "do": "log", "text": "maintainer's QA of 2026-11-13: a conversation started on the phone did not show in the window's list until a reload. One is started here by another engine, in the background, after a 3 s delay; the list must show it within the 20 s re-read, nothing clicked." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "type", "text": "md" },
 	{ "do": "send" },

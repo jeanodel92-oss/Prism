@@ -35,8 +35,14 @@ hyprctl dispatch 'hl.workspace_rule({ workspace = "name:prismdrive", monitor = "
 # , and a test window moved there would join and retile their windows. Hand each such
 # workspace back to the monitor it was on until the test output shows a workspace of its own.
 for _ in $(seq 10); do
-	taken="$(hyprctl monitors -j | python3 -c 'import json,sys; print([m for m in json.load(sys.stdin) if m["name"]=="PRISMTEST"][0]["activeWorkspace"]["id"])')"
-	origin="$(python3 -c 'import json,sys; print(next((w["monitor"] for w in json.loads(sys.argv[1]) if w["id"]==int(sys.argv[2])), ""))' "$existing" "$taken")"
+	# A named workspace left by an earlier run (name:prismdrive) has no "id" in the JSON of every Hyprland version
+	# (KeyError on the second run): it is the test output's own, nothing to hand back.
+	taken="$(hyprctl monitors -j | python3 -c 'import json,sys; print([m for m in json.load(sys.stdin) if m["name"]=="PRISMTEST"][0]["activeWorkspace"].get("id", ""))')"
+	if [[ -z "$taken" ]]; then
+		origin=""
+		break
+	fi
+	origin="$(python3 -c 'import json,sys; print(next((w["monitor"] for w in json.loads(sys.argv[1]) if w.get("id")==int(sys.argv[2])), ""))' "$existing" "$taken")"
 	# Already the test output's own (left by an earlier run): nothing to hand back.
 	[[ "$origin" == PRISMTEST ]] && origin=""
 	[[ -z "$origin" ]] && break
@@ -49,7 +55,7 @@ fi
 # hl.monitor applies the mode; hyprctl reports an error because it is not a dispatcher.
 hyprctl dispatch "hl.monitor({ output = \"PRISMTEST\", mode = \"$mode@60\", position = \"8000x0\", scale = $scale })" >/dev/null 2>&1 || true
 # A named workspace has a negative id, which a move would read as relative: name it instead.
-workspace="$(hyprctl monitors -j | python3 -c 'import json,sys; w=[m for m in json.load(sys.stdin) if m["name"]=="PRISMTEST"][0]["activeWorkspace"]; print(w["id"] if w["id"] > 0 else "name:" + w["name"])')"
+workspace="$(hyprctl monitors -j | python3 -c 'import json,sys; w=[m for m in json.load(sys.stdin) if m["name"]=="PRISMTEST"][0]["activeWorkspace"]; print(w["id"] if w.get("id", 0) > 0 else "name:" + w["name"])')"
 
 export PRISM_GUI_BIN="$GUI/src-tauri/target-drive/release/prism-gui"
 export PRISM_GUI_DRIVE="$scenario" PRISM_GUI_DRIVE_SHOTS="$shots" PRISM_GUI_DRIVE_OUTPUT=PRISMTEST

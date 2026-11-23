@@ -443,3 +443,29 @@ test("an opening that fails keeps no event", async () => {
 	await assert.rejects(view.open(), /no engine/);
 	assert.equal(view.held, undefined);
 });
+
+// Audit of 2026-11-23, FIN-19 (owner): nothing floats over the welcome. The engine's start-up information waits for
+// the conversation's first message; a warning shows at once.
+test("an information said before the conversation shows anything waits for its first message", async () => {
+	const toasts = [];
+	const saved = app.toast;
+	app.toast = (text, kind) => toasts.push(`${kind}: ${text}`);
+	try {
+		const { view, engine } = await open({ messages: [] });
+		app.active = view;
+		const notify = (id, message, notifyType) => engine.onEvent({ type: "extension_ui_request", id, method: "notify", message, notifyType });
+		notify("n1", "Commands and file tools now read only the project", "info");
+		notify("n2", "Permission mode: unrestricted.", "warning");
+		assert.deepEqual(toasts, ["warning: Permission mode: unrestricted."]);
+		view.showHeldNotices();
+		assert.equal(toasts.length, 1, "still empty: still held");
+		engine.onEvent({ type: "message_start", message: user("hello", 10) });
+		view.showHeldNotices();
+		assert.deepEqual(toasts, ["warning: Permission mode: unrestricted.", "info: Commands and file tools now read only the project"]);
+		notify("n3", "Saved.", "info");
+		assert.equal(toasts.at(-1), "info: Saved.", "once the conversation shows something, at once");
+	} finally {
+		app.toast = saved;
+		app.active = undefined;
+	}
+});

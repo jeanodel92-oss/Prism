@@ -58,6 +58,14 @@ body {
 	border-radius: var(--radius);
 }
 
+/* Audit of 2026-11-23, UX-14: a button reached with Tab shows the same ring when WebKitGTK does not count its focus as
+   visible (app.js sets data-keyboard on Tab and drops it on a press of the pointer). */
+:root[data-keyboard] :is(button, a[href], summary, [role="button"]):focus:not(:focus-visible) {
+	outline: 2px solid var(--ink);
+	outline-offset: 3px;
+	border-radius: var(--radius);
+}
+
 .offscreen {
 	position: absolute;
 	width: 1px;
@@ -786,10 +794,11 @@ body.sidebar-collapsed .side-panel {
 	padding: 0 1rem;
 }
 
+/* The transcript's end scrolls clear of the notices shown over it (app.js fitToasts, FIN-19). */
 .scroller > .column {
 	position: relative;
 	padding-top: 1.5rem;
-	padding-bottom: 2rem;
+	padding-bottom: calc(2rem + var(--toasts-room, 0px));
 }
 
 /* ------------------------------------------------------------ welcome scene */
@@ -2515,7 +2524,11 @@ dialog .dialog-actions {
 	z-index: 10;
 }
 
+/* Each toast has its × (FIN-19); one that stays (a path, a link) can also be selected and copied. */
 .toast {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
 	padding: 0.5rem 0.8rem;
 	border: 1px solid var(--line-strong);
 	border-radius: var(--radius);
@@ -2524,16 +2537,12 @@ dialog .dialog-actions {
 	white-space: pre-wrap;
 }
 
-/* A toast that stays (a path, a link): its text can be selected and copied, a × closes it. */
 .toast.sticky {
-	display: flex;
-	align-items: flex-start;
-	gap: 0.5rem;
 	-webkit-user-select: text;
 	user-select: text;
 }
 
-.toast.sticky .toast-text {
+.toast .toast-text {
 	flex: 1;
 	min-width: 0;
 	overflow-wrap: anywhere;
@@ -4060,6 +4069,17 @@ dialog .dialog-actions {
 
 .link-phone-qr.small {
 	width: min(7rem, 100%);
+}
+
+/* Audit of 2026-11-23, FIN-20: on the dark welcome the app's QR was the only pure white of the screen, brighter than
+   the prism. Dimmed, it keeps its contrast for a camera (dark modules on a light grey). */
+:root:not([data-appearance="light"]) .welcome-phone .link-phone-qr {
+	filter: brightness(0.78);
+}
+
+/* The phone app has its own text size (the system's); the window's zoom is for the PC. */
+:root[data-device="phone"] #pref-zoom-row {
+	display: none;
 }
 
 /* The app's download in the welcome's phone step: its QR beside one line. */

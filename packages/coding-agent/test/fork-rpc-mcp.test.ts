@@ -210,7 +210,9 @@ describe("fork: native /mcp", () => {
 		const exposure = e.menu();
 		expect(exposure.initialItemId).toBe(exposure.items?.find((item) => item.label.endsWith("codemode"))?.id);
 		e.activate("  direct");
-		await vi.waitFor(() => expect(e.menu().title).toBe("MCP server docs"));
+		// Saving to mcp.json and reconnecting can take more than waitFor's default second under the full suite: the CI
+		// saw "Exposure of docs" still shown on 2026-11-17 and 2026-11-20 (audit TESTS-08).
+		await vi.waitFor(() => expect(e.menu().title).toBe("MCP server docs"), { timeout: 10_000 });
 		expect(e.saved()).toMatchObject({ exposure: "direct" });
 		// A click from the exposure screen, sent after it closed, is refused.
 		const stale = exposure.items?.[0]?.id;

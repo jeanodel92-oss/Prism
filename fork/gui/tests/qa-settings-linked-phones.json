@@ -1,5 +1,5 @@
 [
-	{ "do": "log", "text": "Owner's QA of 2026-11-13 (R8): the settings' 'Link a phone' section lists the linked phones directly, each with a Revoke button, and the list follows a removal. Needs a prism-remote answering 'devices' with two fingerprints and 'revoke' (PRISM_REMOTE_BIN: a test double); with none, only the empty line can be checked." },
+	{ "do": "log", "text": "maintainer's QA of 2026-11-13 (R8): the settings' 'Link a phone' section lists the linked phones directly, each with a Revoke button, and the list follows a removal. Needs a prism-remote answering 'devices' with two fingerprints and 'revoke' (PRISM_REMOTE_BIN: a test double); with none, only the empty line can be checked." },
 	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
 	{ "do": "click", "selector": "#settings-button", "sidebar": true },
 	{ "do": "click", "selector": ".settings-section[data-section='window']" },

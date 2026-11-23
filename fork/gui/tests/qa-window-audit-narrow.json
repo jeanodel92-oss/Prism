@@ -1,0 +1,23 @@
+[
+	{ "do": "log", "text": "Audit of the public release, 2026-11-23, at 640 px: the notice's band, the welcome's QR, the settings' sections on one row." },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "pref", "id": "pref-theme", "value": "dark" },
+	{ "do": "wait", "selector": "#toasts .toast", "text": "read only the project" },
+	{ "do": "apart", "selector": "#toasts .toast", "from": "#composer" },
+	{ "do": "shot", "name": "n1-welcome-notice", "settle": 800 },
+	{ "do": "click", "selector": "#toasts .toast .toast-close" },
+	{ "do": "wait", "selector": "#welcome-phone .link-phone-qr" },
+	{ "do": "style", "selector": "#welcome-phone .link-phone-qr", "property": "filter", "value": "brightness(0.78)", "why": "FIN-20: the QR is no longer the only pure white of the dark welcome" },
+	{ "do": "shot", "name": "n2-welcome-qr", "settle": 800 },
+	{ "do": "click", "selector": "#settings-button", "sidebar": true },
+	{ "do": "wait", "selector": "#settings[open] .settings-section", "text": "Appearance" },
+	{ "do": "size", "selector": "#settings .settings-sections", "maxHeight": 60, "why": "FIN-30: the sections on one row that scrolls" },
+	{ "do": "size", "selector": "#settings .settings-nav", "maxHeight": 240, "why": "FIN-30: they took half of the window before the first setting" },
+	{ "do": "shot", "name": "n3-settings" },
+	{ "do": "click", "selector": "#settings .settings-section", "text": "Servers", "why": "a section at the end of the row: it scrolls into view (shot)" },
+	{ "do": "wait", "selector": "#settings .settings-section[aria-current='true']", "text": "Servers" },
+	{ "do": "shot", "name": "n4-settings-last" },
+	{ "do": "key", "key": "Escape" },
+	{ "do": "wait", "selector": "#settings[open]", "gone": true, "timeout": 2000 },
+	{ "do": "quit" }
+]
