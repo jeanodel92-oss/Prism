@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	codeLines,
 	engineEnv,
+	firewallLines,
 	isTailscale,
 	PhoneServer,
 	remoteProgram,
@@ -78,6 +79,18 @@ describe("/phone", () => {
 		expect(
 			codeLines({ code: "c", qr: "", hosts: ["100.101.2.3"], port: 1 }).some((line) => line.includes("Tailscale")),
 		).toBe(false);
+	});
+
+	// Field report of 2026-11-24: ufw, on by default on CachyOS, dropped the phone at home and nothing said so.
+	it("says which firewall blocks the port, and how to open it", () => {
+		const firewall = { name: "ufw", certain: true, command: "sudo ufw allow 47392/tcp" };
+		const lines = codeLines({ code: "c", qr: "", hosts: ["192.168.2.214"], port: 47392, firewall });
+		expect(lines).toContain("  sudo ufw allow 47392/tcp");
+		expect(lines.some((line) => line.includes("ufw") && line.includes("47392"))).toBe(true);
+		expect(firewallLines({ ...firewall, certain: false }, 47392)[0]).toContain("may block");
+		expect(codeLines({ code: "c", qr: "", hosts: ["192.168.2.214"], port: 47392, firewall: null })).not.toContain(
+			"  sudo ufw allow 47392/tcp",
+		);
 	});
 
 	// The real server, when this checkout has built it (fork/android/server: cargo build --release).

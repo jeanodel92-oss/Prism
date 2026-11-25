@@ -4889,6 +4889,10 @@ export const FR_PATTERNS: Record<string, string> = {
 	"It will have to be paired again with a new code.": "Il devra être appairé de nouveau avec un nouveau code.",
 	"Without Tailscale, the phone reaches this PC on the same network only.":
 		"Sans Tailscale, le téléphone ne joint ce PC que sur le même réseau.",
+	"The {0} firewall blocks port {1} on the local network: the phone can only come through Tailscale. To open it:":
+		"Le pare-feu {0} bloque le port {1} sur le réseau local : le téléphone ne peut passer que par Tailscale. Pour l'ouvrir :",
+	"The {0} firewall is on and may block port {1} on the local network. If the phone cannot connect at home, open it:":
+		"Le pare-feu {0} est actif et bloque peut-être le port {1} sur le réseau local. Si le téléphone ne se connecte pas à la maison, ouvrez-le :",
 	"Widen the terminal to show the QR code.": "Élargissez le terminal pour voir le QR code.",
 	// fork: the onboarding's computer use step (onboarding.ts).
 	"The agent can use your browser, a desktop of its own, or yours. Enter turns each on or off; at the end, Prism says what to install, if anything. Every one is in /settings › Computer use.":

@@ -23,7 +23,12 @@ import {
 	LineReader,
 	NativeReader,
 } from "../src/fork/browser/protocol.ts";
-import { flatpakExtraGrants, hostLauncherScript, installNativeHosts } from "../src/fork/browser/setup.ts";
+import {
+	detectBrowsers,
+	flatpakExtraGrants,
+	hostLauncherScript,
+	installNativeHosts,
+} from "../src/fork/browser/setup.ts";
 import { DEFAULT_NETWORK_SETTINGS, isDenied, localPortName } from "../src/fork/sandbox/proxy.ts";
 
 const dirs: string[] = [];
@@ -236,6 +241,22 @@ describe("browser setup", () => {
 		expect(chromiumManifest.allowed_origins).toEqual([`chrome-extension://${CHROMIUM_EXTENSION_ID}/`]);
 		// The launcher outside any sandbox stays a plain one.
 		expect(readFileSync(result.launcher, "utf8")).not.toContain("flatpak-spawn");
+	});
+
+	// Field report of 2026-11-24 (CachyOS, zen-browser-bin 1.24.3b): Zen kept its profiles under ~/.config/zen, Prism
+	// looked for ~/.zen and did not see it. Measured: with ~/.mozilla present, that Zen reads ~/.mozilla's hosts.
+	it("finds Zen under ~/.config/zen and declares it where it reads, once even with an older ~/.zen", () => {
+		const home = tempDir();
+		for (const dir of [".config/zen", ".zen", ".mozilla"]) mkdirSync(join(home, dir), { recursive: true });
+		const zen = detectBrowsers(home).filter((browser) => browser.name === "Zen");
+		expect(zen).toEqual([
+			{ name: "Zen", family: "firefox", hostsDir: join(home, ".mozilla", "native-messaging-hosts") },
+		]);
+		const older = tempDir();
+		mkdirSync(join(older, ".zen"), { recursive: true });
+		expect(detectBrowsers(older).find((browser) => browser.name === "Zen")?.hostsDir).toBe(
+			join(older, ".zen", "native-messaging-hosts"),
+		);
 	});
 
 	it("declares LibreWolf, Waterfox, Opera and Ungoogled Chromium in the folders they read", () => {

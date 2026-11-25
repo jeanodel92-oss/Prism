@@ -302,11 +302,21 @@ static int send_keymap(void) {
 	char *text = NULL;
 	FILE *f = open_memstream(&text, &size);
 	if (!f) return -1;
-	fprintf(f, "xkb_keymap {\nxkb_keycodes \"prism\" {\nminimum = 8;\nmaximum = %d;\n", 9 + MAX_KEYS);
+	/* fork: Xwayland drops a keymap that binds no virtual modifier and falls back to its
+	 * default one, so X11 windows read the codes in a US layout ("hello" typed "1223"). The modifier keys below,
+	 * after the typed ones, give it those bindings, and X11 programs the modifiers the helper sends. The group name
+	 * is what Hyprland and desktop shells show as the layout while the helper types. */
+	fprintf(f, "xkb_keymap {\nxkb_keycodes \"prism\" {\nminimum = 8;\nmaximum = 255;\n");
 	for (int i = 0; i < key_count; i++) fprintf(f, "<K%d> = %d;\n", i, i + 9);
+	fprintf(f, "<LFSH> = 250;\n<LCTL> = 251;\n<LALT> = 252;\n<LWIN> = 253;\n<NMLK> = 254;\n");
 	fprintf(f, "};\nxkb_types \"prism\" { include \"complete\" };\n");
 	fprintf(f, "xkb_compatibility \"prism\" { include \"complete\" };\nxkb_symbols \"prism\" {\n");
+	fprintf(f, "name[Group1] = \"Prism\";\n");
 	for (int i = 0; i < key_count; i++) fprintf(f, "key <K%d> {[ 0x%x ]};\n", i, keysyms[i]);
+	fprintf(f, "key <LFSH> {[ Shift_L ]};\nkey <LCTL> {[ Control_L ]};\nkey <LALT> {[ Alt_L ]};\n");
+	fprintf(f, "key <LWIN> {[ Super_L ]};\nkey <NMLK> {[ Num_Lock ]};\n");
+	fprintf(f, "modifier_map Shift { <LFSH> };\nmodifier_map Control { <LCTL> };\nmodifier_map Mod1 { <LALT> };\n");
+	fprintf(f, "modifier_map Mod4 { <LWIN> };\nmodifier_map Mod2 { <NMLK> };\n");
 	fprintf(f, "};\n};\n");
 	fclose(f);
 	int fd = shared_memory("prism-keymap");

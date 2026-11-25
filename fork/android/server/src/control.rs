@@ -28,7 +28,9 @@ pub fn bind(path: &Path) -> Result<UnixListener, String> {
 }
 
 /// Answers `invite` (a new code, its QR as an image and as terminal text, and the addresses) and `status` until the process ends.
+/// Both say which firewall may block the port on the local network (`firewall.rs`), null when none.
 pub fn serve(listener: UnixListener, server: &Arc<Server>, hosts: &[String], port: u16) {
+    let firewall = crate::firewall::watch(port);
     for stream in listener.incoming().flatten() {
         let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
         let mut request = String::new();
@@ -38,9 +40,9 @@ pub fn serve(listener: UnixListener, server: &Arc<Server>, hosts: &[String], por
         let answer = match request.trim() {
             "invite" => server
                 .invite(hosts.to_vec(), port)
-                .and_then(|invitation| Ok(json!({ "code": invitation.encode(), "svg": invitation.svg()?, "qr": invitation.qr()?, "hosts": hosts, "port": port })))
+                .and_then(|invitation| Ok(json!({ "code": invitation.encode(), "svg": invitation.svg()?, "qr": invitation.qr()?, "hosts": hosts, "port": port, "firewall": firewall.lock().unwrap().clone() })))
                 .unwrap_or_else(|error| json!({ "error": error })),
-            "status" => json!({ "hosts": hosts, "port": port, "pid": std::process::id(), "paired": server.paired() }),
+            "status" => json!({ "hosts": hosts, "port": port, "pid": std::process::id(), "paired": server.paired(), "firewall": firewall.lock().unwrap().clone() }),
             other => json!({ "error": format!("unknown request {other:?}") }),
         };
         let _ = (&stream).write_all(format!("{answer}\n").as_bytes());

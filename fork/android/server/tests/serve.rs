@@ -1221,3 +1221,37 @@ fn pair_or_connect(pc: &Pc) -> (Phone, Client) {
     let lines = client.connect(&pc.invitation).unwrap();
     (Phone::new(lines), client)
 }
+
+// fork: a window's server outlived its window, kept the port and cut every phone off. With
+// `--hub`, the server stops once the process that started it is gone; the test's shell plays the window.
+#[test]
+fn a_windows_server_stops_when_its_window_is_gone() {
+    let root = temp("window-gone");
+    let (dir, cwd) = (root.join("pc"), root.join("work"));
+    std::fs::create_dir_all(&cwd).unwrap();
+    let output = Command::new("sh")
+        .args([
+            "-c",
+            // The window starts the server, lives a moment, and dies without stopping it.
+            r#""$0" serve --port 0 --host 127.0.0.1 --dir "$1" --cwd "$2" --hub "$3" >/dev/null 2>&1 &
+echo $!; sleep 2"#,
+        ])
+        .arg(env!("CARGO_BIN_EXE_prism-remote"))
+        .arg(&dir)
+        .arg(&cwd)
+        .arg(root.join("hub.sock"))
+        .output()
+        .unwrap();
+    let pid: u64 = String::from_utf8_lossy(&output.stdout).trim().parse().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(pid) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if alive(pid) {
+        let _ = Command::new("kill").arg(pid.to_string()).status();
+        panic!("the server of a window that is gone is still running");
+    }
+    // Its folder is free again: nothing answers there, so the next server can take it.
+    assert!(control(&dir, "status").is_err());
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -32,6 +32,10 @@ export const CHROMIUM_BROWSERS: ReadonlyArray<{ name: string; dir: string; hosts
 export const FIREFOX_BROWSERS: ReadonlyArray<{ name: string; found: readonly string[]; hosts: string }> = [
 	// Firefox reads ~/.mozilla; recent versions keep their profiles under ~/.config/mozilla.
 	{ name: "Firefox", found: [".mozilla", ".config/mozilla"], hosts: ".mozilla/native-messaging-hosts" },
+	// fork: Zen 1.24 keeps its profiles under ~/.config/zen and, like Firefox, reads
+	// ~/.mozilla (measured with zen-browser-bin 1.24.3b and ~/.mozilla present). Older versions use ~/.zen. The first
+	// entry that matches a name wins.
+	{ name: "Zen", found: [".config/zen"], hosts: ".mozilla/native-messaging-hosts" },
 	{ name: "Zen", found: [".zen"], hosts: ".zen/native-messaging-hosts" },
 	// fork: the folders a real LibreWolf and Waterfox read, probed in their Flatpak builds.
 	{ name: "LibreWolf", found: [".librewolf"], hosts: ".librewolf/native-messaging-hosts" },
@@ -260,6 +264,7 @@ export function detectBrowsers(home = homedir()): FoundBrowser[] {
 		}
 	}
 	for (const browser of FIREFOX_BROWSERS) {
+		if (found.some((other) => other.name === browser.name)) continue;
 		if (browser.found.some((dir) => existsSync(join(home, dir)))) {
 			found.push({ name: browser.name, family: "firefox", hostsDir: join(home, browser.hosts) });
 		}

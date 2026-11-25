@@ -64,9 +64,19 @@ const defaultRun: Run = (program, args) => {
 	}
 };
 
+/** A firewall that may block the server's port on the local network (fork/android/server/src/firewall.rs). */
+export interface FirewallBlock {
+	name: string;
+	/** False when its rules could not be read: it may block the port. */
+	certain: boolean;
+	/** What opens the port, for the user to run. */
+	command: string;
+}
+
 export interface ServerStatus {
 	hosts: string[];
 	port: number;
+	firewall?: FirewallBlock | null;
 }
 
 export interface Invitation {
@@ -74,6 +84,25 @@ export interface Invitation {
 	qr: string;
 	hosts: string[];
 	port: number;
+	firewall?: FirewallBlock | null;
+}
+
+/**
+ * fork: ufw, on by default on CachyOS, dropped the phone at home and nothing said so. What
+ * the server found, for the user; none without a firewall in the way.
+ */
+export function firewallLines(firewall: FirewallBlock | null | undefined, port: number): string[] {
+	if (!firewall) return [];
+	return [
+		fill(
+			firewall.certain
+				? "The {0} firewall blocks port {1} on the local network: the phone can only come through Tailscale. To open it:"
+				: "The {0} firewall is on and may block port {1} on the local network. If the phone cannot connect at home, open it:",
+			firewall.name,
+			String(port),
+		),
+		`  ${firewall.command}`,
+	];
 }
 
 /** What the phone server answers; each call runs `prism-remote` once. */
@@ -211,6 +240,7 @@ export function codeLines(invitation: Invitation): string[] {
 		...(invitation.hosts.some(isTailscale)
 			? []
 			: [t("Without Tailscale, the phone reaches this PC on the same network only.")]),
+		...firewallLines(invitation.firewall, invitation.port),
 		fill("The Android app: {0}", ANDROID_APP_URL),
 		"",
 		t("Enter or Esc closes."),
@@ -283,7 +313,8 @@ export default function phoneLink(pi: ExtensionAPI): void {
 							String(running.port),
 						)
 					: t("The phone server is stopped: no phone can reach this PC.");
-				const title = `${where} ${phones.length ? fill("Linked phones: {0}.", String(phones.length)) : t("No phone linked yet.")}`;
+				const blocked = running ? firewallLines(running.firewall, running.port).join(" ") : "";
+				const title = `${where} ${phones.length ? fill("Linked phones: {0}.", String(phones.length)) : t("No phone linked yet.")}${blocked ? ` ${blocked}` : ""}`;
 				const choices = new Map<string, () => Promise<boolean>>();
 				if (running) {
 					choices.set(t("Show a pairing code"), async () => {

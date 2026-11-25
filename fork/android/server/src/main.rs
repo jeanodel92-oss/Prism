@@ -21,6 +21,7 @@
 
 mod bridge;
 mod control;
+mod firewall;
 
 use std::io::IsTerminal;
 use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
@@ -28,6 +29,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use prism_host::connection::{self, Shared};
 use prism_host::engine::{EngineCommand, Hub};
@@ -241,6 +243,20 @@ fn serve(dir: &std::path::Path, options: &Options) -> Result<(), String> {
         .hub
         .clone()
         .or_else(|| std::env::var_os("PRISM_REMOTE_HUB").map(PathBuf::from));
+    // fork: a window's server lived on after its window died without its exit event. It
+    // kept the port and handed every phone to a socket nobody listened on, so the phone was cut off at once, in a loop,
+    // and the next window's server and the user service could not start ("a server already runs"). It serves that
+    // window only: once the window is gone (this process has another parent), it stops.
+    if bridge_to.is_some() {
+        let parent = std::os::unix::process::parent_id();
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_millis(500));
+            if std::os::unix::process::parent_id() != parent {
+                eprintln!("prism-remote: the window that started this server is gone; stopping");
+                std::process::exit(0);
+            }
+        });
+    }
     let control = control::bind(&dir.join(CONTROL))?;
     let (listeners, port) = listen(&hosts, port)?;
     std::fs::write(dir.join("port"), format!("{port}\n")).map_err(|e| e.to_string())?;

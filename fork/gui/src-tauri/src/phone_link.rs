@@ -17,6 +17,8 @@ use prism_host::engine::EngineCommand;
 use prism_host::lines;
 
 const SERVICE: &str = "prism-remote.service";
+/// How much of the window's server's error output `server.log` keeps.
+const LOG_LIMIT: u64 = 1 << 20;
 
 /// The window's own server, while it runs one.
 #[derive(Default)]
@@ -90,9 +92,18 @@ impl PhoneLink {
         let end = Instant::now() + Duration::from_secs(5);
         while Instant::now() < end {
             if status().is_some() {
-                // Running: what it writes later is not read, so it must not fill a pipe nobody empties.
+                // Running: what it writes later must not fill a pipe nobody empties. fork
+                // it went nowhere, so a phone refused in a loop left no trace; it goes to `server.log` in the server's
+                // folder now, started again with each server and bounded, the rest dropped.
                 if let Some(mut stderr) = child.stderr.take() {
-                    std::thread::spawn(move || std::io::copy(&mut stderr, &mut std::io::sink()));
+                    let log = dir().and_then(|dir| std::fs::File::create(dir.join("server.log")).ok());
+                    std::thread::spawn(move || {
+                        use std::io::Read;
+                        if let Some(mut log) = log {
+                            let _ = std::io::copy(&mut (&mut stderr).take(LOG_LIMIT), &mut log);
+                        }
+                        std::io::copy(&mut stderr, &mut std::io::sink())
+                    });
                 }
                 *self.child.lock().unwrap() = Some(child);
                 return Ok(());

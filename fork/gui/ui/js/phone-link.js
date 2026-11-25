@@ -103,7 +103,12 @@ export async function phoneLinkScreen(view) {
 			: !tailscale.address
 				? h("p", { class: "panel-text", text: t("phoneLinkTailscaleDown") })
 				: undefined;
-		return [h("h3", { class: "link-phone-heading", text: t("phoneLinkNetwork") }), lines.length ? h("ul", { class: "link-phone-hosts" }, ...lines) : undefined, hint];
+		// fork: ufw, on by default on CachyOS, dropped the phone at home and nothing said so.
+		const firewall = state?.server?.firewall;
+		const blocked = firewall
+			? h("div", { class: "panel-text", role: "note" }, h("p", { text: t(firewall.certain ? "phoneLinkFirewall" : "phoneLinkFirewallMaybe", firewall.name, state.server.port) }), h("code", { class: "link-phone-host", text: firewall.command }))
+			: undefined;
+		return [h("h3", { class: "link-phone-heading", text: t("phoneLinkNetwork") }), lines.length ? h("ul", { class: "link-phone-hosts" }, ...lines) : undefined, hint, blocked];
 	};
 
 	const codePart = () => {

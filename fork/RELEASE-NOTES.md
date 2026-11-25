@@ -5,6 +5,14 @@ site show these notes. Earlier versions (before 1.0.0-fork.12) were private prev
 
 ## [Unreleased]
 
+## [1.0.0-fork.12.6] - 2026-11-25
+
+### Fixed
+- On your desktop, text the agent types into X11 programs (OnlyOffice, Wine apps) is no longer garbled.
+- A linked phone could no longer connect after the Prism window closed unexpectedly; the window's phone server now stops with it.
+- `/browser setup` finds recent Zen versions, which keep their profiles under `~/.config/zen`.
+- Linking a phone now warns when a firewall (ufw, firewalld) blocks the phone on your local network, and shows the command that opens it.
+
 ## [1.0.0-fork.12.5] - 2026-11-24
 
 ### Changed
