@@ -372,4 +372,22 @@ describe("fork: folder trust", () => {
 		expect(await resolveProjectTrusted({ cwd, trustStore, projectTrustContext: context })).toBe(false);
 		expect(asked).toBe(true);
 	});
+
+	// upstream 31ade0e0d: a saved "Do not trust" was ignored for a folder without project resources.
+	it("keeps a saved refusal for a folder without project resources", async () => {
+		const root = mkdtempSync(join(tmpdir(), "prism-folder-refused-"));
+		dirs.push(root);
+		const cwd = join(root, "project");
+		const agentDir = join(root, "agent");
+		mkdirSync(cwd, { recursive: true });
+		mkdirSync(agentDir, { recursive: true });
+		expect(hasTrustRequiringProjectResources(cwd)).toBe(false);
+		const trustStore = new ProjectTrustStore(agentDir);
+		const context = projectTrustContext(cwd, async () => {
+			throw new Error("no question expected");
+		});
+		expect(await resolveProjectTrusted({ cwd, trustStore, projectTrustContext: context })).toBe(true);
+		trustStore.set(cwd, false);
+		expect(await resolveProjectTrusted({ cwd, trustStore, projectTrustContext: context })).toBe(false);
+	});
 });

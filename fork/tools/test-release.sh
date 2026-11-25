@@ -19,7 +19,8 @@
 #      installer (no versions/) replaced by this one, `prism update --check`, a tampered archive
 #      and a tampered SHA256SUMS refused, an unreachable server reported, update
 #      n -> n+1 printing its release notes, tampered notes refused, an older
-#      LATEST refused, rollback and its undo;
+#      LATEST refused, rollback and its undo; with the site down, check and update from
+#      the mirror laid out as GitHub releases, a tampered archive there refused;
 #   6. the release channels, on stable and canary releases repacked from this
 #      one and signed with throwaway keys, one per channel: a stable installation ignores
 #      LATEST-canary, refuses a canary listed in LATEST, a stable release signed
@@ -215,6 +216,16 @@ printf -- '- forged\n' >>"$srv/newnotes/releases/$next/NOTES.md"
 site newsums "$next"
 cp --remove-destination "$work/repacked/$next/SHA256SUMS" "$srv/newsums/releases/$next/"
 sed -i "s/^[0-9a-f]*/$(printf "%064d" 0)/" "$srv/newsums/releases/$next/SHA256SUMS"
+# mirror <name> <LATEST>: laid out as GitHub releases (latest/download/LATEST, download/prism-v<version>/).
+mirror() {
+	mkdir -p "$srv/$1/latest/download" "$srv/$1/download"
+	printf '%s\n' "$2" >"$srv/$1/latest/download/LATEST"
+	cp -al "$work/repacked/$2" "$srv/$1/download/prism-v$2"
+}
+mirror mirror "$next"
+mirror mirrorbad "$next"
+cp --remove-destination "$work/repacked/$next/prism-$next-linux-x64.tar.gz" "$srv/mirrorbad/download/prism-v$next/"
+flip_byte "$srv/mirrorbad/download/prism-v$next/prism-$next-linux-x64.tar.gz"
 
 # Release channels: stable S1 < canaries C1 < C2 < stable S2 (the next fork number).
 s1=$stable
@@ -439,6 +450,21 @@ prism update --rollback >/dev/null && [ "$(v)" = "$OLD" ] || fail "rollback"
 prism update --rollback >/dev/null && [ "$(v)" = "$NEW" ] || fail "undo the rollback"
 [ "$(ls "$HOME/.local/share/prism/versions" | wc -l)" = 2 ] || fail "releases kept: $(ls "$HOME/.local/share/prism/versions")"
 ok "rollback and undo, two releases kept"
+
+# the site does not answer; the mirror serves the release, checked the same way. A test site given by
+# PRISM_BASE_URL gets no mirror unless PRISM_MIRROR_URL names one ("unreachable server" above).
+down=https://localhost:1
+prism update --rollback >/dev/null && [ "$(v)" = "$OLD" ] || fail "rollback before the mirror"
+before=$(v)
+if out=$(PRISM_BASE_URL=$down PRISM_MIRROR_URL=$base/mirrorbad prism update 2>&1); then fail "tampered archive on the mirror: update succeeded"; fi
+[ "$(v)" = "$before" ] || fail "tampered archive on the mirror changed the version"
+ok "tampered archive on the mirror refused: $(printf '%s\n' "$out" | tail -n 1)"
+PRISM_BASE_URL=$down PRISM_MIRROR_URL=$base/mirror prism update --check | grep -q "$NEW is available" || fail "check from the mirror"
+out=$(PRISM_BASE_URL=$down PRISM_MIRROR_URL=$base/mirror prism update) || fail "update from the mirror: $out"
+[ "$(v)" = "$NEW" ] || fail "update from the mirror: $(v)"
+printf '%s\n' "$out" | grep -q "does not answer; downloading from the copy at $base/mirror" || fail "mirror not announced: $out"
+printf '%s\n' "$out" | grep -qx -- "- notes for $NEW" || fail "notes not shown from the mirror: $out"
+ok "site down: check and update $OLD -> $NEW from the mirror, notes shown"
 EOF
 
 # The release channels, inside the container.
@@ -488,6 +514,11 @@ out=$(PRISM_BASE_URL=$base/chan1 prism update --channel canary) || fail "switch 
 printf '%s\n' "$out" | grep -qx -- "- notes for $C1" || fail "canary notes not shown: $out"
 printf '%s\n' "$out" | grep -q "canary channel: experimental" || fail "canary warning not shown: $out"
 ok "switched to canary $C1, notes and warning shown"
+if out=$(PRISM_BASE_URL=https://localhost:1 PRISM_MIRROR_URL=$base/mirror prism update 2>&1); then
+	fail "a canary installation updated from the mirror"
+fi
+[ "$(v)" = "$C1" ] || fail "the mirror changed a canary installation"
+ok "canary: no mirror when the site does not answer: $(printf '%s\n' "$out" | tail -n 1)"
 refused canaryasstable "a canary signed as stable"
 refused canarybystablekey "a canary signed with the stable key"
 PRISM_BASE_URL=$base/chan2 prism update >/dev/null && [ "$(v)" = "$C2" ] || fail "canary update to $C2"

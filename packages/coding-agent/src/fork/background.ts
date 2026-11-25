@@ -352,6 +352,15 @@ export function backgroundTasks(): BackgroundTask[] | undefined {
 	return loadedTasks && [...loadedTasks.values()];
 }
 
+/**
+ * the tasks of one session, by its id, whichever extension was
+ * loaded last in the process: the browser opens a task's server only for the session that started it.
+ */
+const tasksBySession = new Map<string, Map<string, Task>>();
+export function sessionBackgroundTasks(sessionId: string): BackgroundTask[] {
+	return [...(tasksBySession.get(sessionId)?.values() ?? [])];
+}
+
 /** what a client's own task screen can do (rpc-builtins.ts, bg_*); undefined while the extension is off. */
 export interface BackgroundControl {
 	/** Asks the task to stop, as /bg does; why it could not, otherwise. */
@@ -396,12 +405,16 @@ export default function (pi: ExtensionAPI) {
 	let owner = { current: sink };
 	pi.on("session_shutdown", (event, ctx) => {
 		closed = true;
+		const id = sessionIdOf(ctx);
+		if (id !== undefined && tasksBySession.get(id) === tasks) tasksBySession.delete(id);
 		// fork: the same session goes on after a /reload; its running tasks stay its own.
 		if (event.reason !== "reload") return;
 		held = [];
 		reloadHandover = { sessionId: sessionIdOf(ctx), tasks: [...tasks.values()], counter, owner, held };
 	});
 	pi.on("session_start", (event, ctx) => {
+		const id = sessionIdOf(ctx);
+		if (id !== undefined) tasksBySession.set(id, tasks);
 		const handover = reloadHandover;
 		reloadHandover = undefined;
 		if (!handover || event.reason !== "reload" || handover.sessionId !== sessionIdOf(ctx)) return;

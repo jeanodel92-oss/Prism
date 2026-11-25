@@ -175,29 +175,54 @@ export function getSelfUpdateRequest(args: string[]): SelfUpdateRequest | undefi
 }
 
 /**
+ * the copy of the stable releases in the public repository's GitHub releases, used when the site does
+ * not answer. Same rule as install.sh: only for the real site, unless PRISM_MIRROR_URL names one (empty: none).
+ */
+export const MIRROR_URL = "https://github.com/jeanodel92-oss/Prism/releases";
+
+function mirrorUrl(): string | undefined {
+	const named = process.env.PRISM_MIRROR_URL;
+	if (named !== undefined) return named || undefined;
+	return process.env.PRISM_BASE_URL ? undefined : MIRROR_URL;
+}
+
+/** The first line of a release list; undefined when the server does not answer with one. */
+async function fetchReleaseList(fetchImpl: typeof fetch, url: string): Promise<string | undefined> {
+	try {
+		const response = await fetchImpl(url, { signal: AbortSignal.timeout(5000) });
+		return response.ok ? (await response.text()).split("\n")[0].trim() : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * The latest version the site offers on the installation's channel (canary: the newer of the canary and stable
- * lists); undefined when the site cannot be reached or lists nothing valid. `prism update` checks signatures.
+ * lists); on the stable channel, the mirror's when the site does not answer; undefined when neither answers or
+ * they list nothing valid. `prism update` checks signatures.
  */
 export async function latestPrismRelease(
 	install: ReleaseInstall,
 	fetchImpl: typeof fetch = fetch,
 ): Promise<string | undefined> {
 	if (process.env.PI_OFFLINE) return undefined;
-	try {
-		const baseUrl = process.env.PRISM_BASE_URL || SITE_URL;
-		const lists = readReleaseChannel(install) === "canary" ? ["LATEST", "LATEST-canary"] : ["LATEST"];
-		let newest: string | undefined;
-		for (const list of lists) {
-			const response = await fetchImpl(`${baseUrl}/releases/${list}`, { signal: AbortSignal.timeout(5000) });
-			if (!response.ok) continue;
-			const latest = (await response.text()).split("\n")[0].trim();
-			if (!/^[0-9A-Za-z.+-]+$/.test(latest) || (list === "LATEST" && isCanaryVersion(latest))) continue;
-			if (!newest || isNewerPackageVersion(latest, newest)) newest = latest;
-		}
-		return newest;
-	} catch {
-		return undefined;
+	const baseUrl = process.env.PRISM_BASE_URL || SITE_URL;
+	const canary = readReleaseChannel(install) === "canary";
+	let newest: string | undefined;
+	let answered = false;
+	for (const list of canary ? ["LATEST", "LATEST-canary"] : ["LATEST"]) {
+		const latest = await fetchReleaseList(fetchImpl, `${baseUrl}/releases/${list}`);
+		if (latest === undefined) continue;
+		answered = true;
+		if (!/^[0-9A-Za-z.+-]+$/.test(latest) || (list === "LATEST" && isCanaryVersion(latest))) continue;
+		if (!newest || isNewerPackageVersion(latest, newest)) newest = latest;
 	}
+	const mirror = mirrorUrl();
+	if (!answered && !canary && mirror) {
+		const latest = await fetchReleaseList(fetchImpl, `${mirror}/latest/download/LATEST`);
+		if (latest && /^[0-9A-Za-z.+-]+$/.test(latest) && !isCanaryVersion(latest)) newest = latest;
+	}
+	return newest;
 }
 
 /** The newer version the site offers on the installation's channel, if any. Silent on any failure. */

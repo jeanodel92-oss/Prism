@@ -1716,7 +1716,11 @@ class App {
 				$("toggle-sidebar").setAttribute("aria-expanded", "false");
 			}
 		});
-		$("settings-button").addEventListener("click", () => this.settingsDialog.open());
+		// on a phone the side menu folds, rather than wait behind the settings.
+		$("settings-button").addEventListener("click", () => {
+			this.sideMenu.makeRoom();
+			this.settingsDialog.open();
+		});
 		$("toggle-sidebar").addEventListener("click", () => this.sideMenu.fold(!this.sideMenu.shown));
 		$("session-title").addEventListener("click", () => this.editTitle());
 		$("model-button").addEventListener("click", () => this.#openPicker("model"));
@@ -1791,6 +1795,7 @@ class App {
 				this.openSession(undefined);
 			} else if (mod && event.key === ",") {
 				event.preventDefault();
+				this.sideMenu.makeRoom();
 				this.settingsDialog.open();
 			}
 		});

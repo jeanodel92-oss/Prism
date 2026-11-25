@@ -4,6 +4,7 @@
 
 import { performance } from "node:perf_hooks";
 import { hideImagesUnderOverlays } from "./fork/overlay-images.ts";
+import { lazyMouseLayout, RenderPrefix } from "./fork/render-prefix.ts";
 import { isKeyRelease, matchesKey } from "./keys.ts";
 import type { Terminal } from "./terminal.ts";
 import {
@@ -347,6 +348,8 @@ type OverlayFocusRestorePolicy = "clear" | "preserve";
  */
 export class Container implements Component {
 	children: Component[] = [];
+	/** fork: reuses the unchanged leading lines of the last render. */
+	readonly renderPrefix = new RenderPrefix(Container.prototype.render);
 	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
 
 	addChild(component: Component): void {
@@ -398,16 +401,9 @@ export class Container implements Component {
 	}
 
 	render(width: number): string[] {
-		const lines: string[] = [];
-		const mouseChildren: Array<{ component: Component; height: number }> = [];
-		for (const child of this.children) {
-			const childLines = child.render(width);
-			mouseChildren.push({ component: child, height: childLines.length });
-			for (const line of childLines) {
-				lines.push(line);
-			}
-		}
-		this.mouseLayout = { width, children: mouseChildren };
+		// fork: rebuilt from the first changed child, see fork/render-prefix.ts.
+		const { lines, heights } = this.renderPrefix.render(this.children, width);
+		this.mouseLayout = lazyMouseLayout(width, this.children.slice(), heights.slice());
 		return lines;
 	}
 }

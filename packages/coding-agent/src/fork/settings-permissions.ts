@@ -477,7 +477,7 @@ export function permissionsSection(deps: PermissionSettingsDeps): SettingsSectio
 					id: "sandbox-state",
 					label: "Sandbox",
 					description:
-						"Where shell commands run: in the sandbox, they write only to the project and caches, see no keys or credentials, and reach only the hosts you allow (also /sandbox).",
+						"Where commands run: in the sandbox, they write only to the project and caches, see no keys or credentials, and reach only the sites you allow (also /sandbox).",
 					currentValue: state.label,
 					...paged((_value, done) => ({ kind: "text", title: "Sandbox", lines: state.lines, done: () => done() })),
 				},

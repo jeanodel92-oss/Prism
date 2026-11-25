@@ -73,11 +73,23 @@ describe("fork branding", () => {
 			.filter((line) => /^ {2}[A-Z_]+ +- /.test(line))
 			.map((line) => line.indexOf(" - "));
 		expect(new Set(columns).size).toBe(1);
+		// The Commands block only: the examples run `prism update` too.
 		const commandColumns = help
+			.slice(help.indexOf("Commands:"), help.indexOf("Options:"))
 			.split("\n")
 			.filter((line) => /^ {2}prism (install|remove|update|list) /.test(line))
 			.map((line) => line.search(/ {2}[A-Z]/));
 		expect(new Set(commandColumns).size).toBe(1);
+	});
+
+	test("gives --help Prism's own examples, with no provider or model named", async () => {
+		const help = await captureLog(() => printHelp());
+		const examples = help.slice(help.indexOf("Examples:"), help.indexOf("Environment Variables:"));
+		expect(examples).toContain("prism --model <provider>/<model>:high");
+		expect(examples).toContain("prism update --rollback");
+		expect(examples).not.toMatch(/openai|gpt-|sonnet|haiku|copilot|codex|claude/i);
+		expect(help).not.toMatch(/plan-mode extension|formerly yolo|perm-yolo/);
+		expect(help).not.toContain("Extensions can register additional flags");
 	});
 
 	test("reads PRISM_* aliases of the PI_* variables (audit FIN-04)", () => {

@@ -35,7 +35,7 @@
  * do anything the user can, including reading auth.json.
  */
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -471,10 +471,6 @@ interface Decision {
 	/** fork: the real path a read-only file tool reaches outside what the agent may read. */
 	readOutside?: string;
 }
-
-/** fork: the line shown once when reading is limited to the project. */
-export const READ_LIMIT_NOTICE =
-	"Commands and file tools now read only the project and what its tools need, not the rest of your home folder. To widen it: /settings › Permissions & sandbox › What the agent reads. MCP and LSP servers and your browser are not limited.";
 
 // ---------------------------------------------------------------------------
 // Config loading
@@ -4410,7 +4406,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerFlag("perm-mode", {
 		description:
-			"Permission mode: ask (confirms writes and non-safe commands, 3 min timeout), safe (read-only), broad (default: asks only for dangerous calls; formerly yolo) or unrestricted (asks nothing; not a sandbox)",
+			"Permission mode: ask (confirms writes and non-safe commands, 3 min timeout), safe (read-only), broad (the default: asks only for dangerous calls) or unrestricted (asks nothing; not a sandbox)",
 		type: "string",
 		default: "",
 	});
@@ -4423,11 +4419,6 @@ export default function (pi: ExtensionAPI) {
 		description: "Run a scheduled task (started by its systemd timer; see /schedule)",
 		type: "string",
 		default: "",
-	});
-	pi.registerFlag("perm-yolo", {
-		description: "Broad permission mode, formerly yolo (sugar for --perm-mode broad)",
-		type: "boolean",
-		default: false,
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -4493,8 +4484,7 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 		const cfg = loadConfig(ctx.cwd, ctx.isProjectTrusted());
-		const flagMode: Mode | undefined =
-			parseMode(pi.getFlag("perm-mode")) ?? (pi.getFlag("perm-yolo") === true ? "broad" : undefined);
+		const flagMode: Mode | undefined = parseMode(pi.getFlag("perm-mode"));
 
 		// A saved or configured "unrestricted" counts only once its warning was accepted;
 		// the command line selects it explicitly.
@@ -4568,18 +4558,6 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (state.mode === "unrestricted") {
 			ctx.ui.notify(fill("Permission mode: unrestricted. {0}", t(UNRESTRICTED_WARNING)), "warning");
-		}
-		// fork: once, the first time reading is limited, say so and where to widen it.
-		// The mark lives beside the rules, not in permissions.json, which stays the user's.
-		const noticed = join(getAgentDir(), "sandbox", "read-limit-noticed");
-		if (ctx.hasUI && readLimited(ctx) && !existsSync(noticed)) {
-			ctx.ui.notify(t(READ_LIMIT_NOTICE), "info");
-			try {
-				mkdirSync(dirname(noticed), { recursive: true });
-				writeFileSync(noticed, "");
-			} catch {
-				// An agent dir that cannot be written: the line comes back next time.
-			}
 		}
 	});
 

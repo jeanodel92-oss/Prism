@@ -18,7 +18,7 @@ Some commands belong to a built-in module: they exist only while that module is 
 | `/llama` | Manage models on the configured llama.cpp router |
 | `/web-key [exa\|brave\|tavily\|firecrawl\|searxng] [remove]` | Save or remove a web search API key or SearXNG URL; defaults to the selected provider. Choose the provider in `/settings` > Web search; see [Web search settings](settings.md#web-search) |
 | `/budget` | Show this session's execution limits and usage; `/budget time 30`, `/budget tools 50`, `/budget tokens 200000`, `/budget cost 2`, `/budget off [time\|tools\|tokens\|cost]` set or clear them |
-| `/onboarding` | Go through the first-start choices again: language, theme, permissions, modules, model |
+| `/onboarding` | Go through the first-start choices again: language, theme, permissions, modules, privacy, model |
 | `/tutorial` | Learn Prism in nine short modules, each with an exercise Prism checks without calling the model; progress is kept |
 
 ## Permissions and safety
@@ -59,7 +59,7 @@ Some commands belong to a built-in module: they exist only while that module is 
 | `/checkpoints` | List file checkpoints and go back to one |
 | `/bg` | Show and manage background tasks (`Alt+J`) |
 | `/bg-clear` | Forget finished background tasks |
-| `/agents` | Create and manage custom agents, which the model runs with the `agent` tool |
+| `/agents` | Create and manage custom agents, which the model runs with the `agent` tool; see this session's agent runs, stop one, send a finished one a message (it keeps its context), run one yourself; turn the advanced agent mode on. `/agents fork <task>` (advanced mode) runs an agent on a copy of this conversation |
 | `/plan` | Enter or manage Plan mode: the model plans and only reads files until you approve (`Alt+P`) |
 | `/goal [--tokens 100k] <goal>` | Give the model a goal it keeps working towards across turns |
 | `/schedule` | Create, pause or remove [scheduled tasks](scheduled-tasks.md) |

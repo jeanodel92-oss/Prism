@@ -5,7 +5,7 @@
 /** Exact texts. */
 export const FR: Record<string, string> = {
 	// fork: possible prompt injection in tool results.
-	"Prompt injection warning": "Avertissement d’injection de prompt",
+	"Hidden instructions alert": "Alerte sur les instructions cachées",
 	"Desktop take-back shortcut": "Raccourci de reprise du bureau",
 	"In the address bar of {1}, paste {0} (the buttons below open {1} and copy the address).":
 		"Dans la barre d’adresse de {1}, collez {0} (les boutons ci-dessous ouvrent {1} et copient l’adresse).",
@@ -27,10 +27,10 @@ export const FR: Record<string, string> = {
 		"Les touches qui reprennent votre bureau à l'agent sous Hyprland ; bouger la souris environ 2 secondes le fait aussi. S'applique la prochaine fois que l'agent prend votre bureau.",
 	"{0} A modifier (ctrl, shift, alt or super) and a letter, a digit or F1 to F12, such as ctrl+shift+q. Empty: back to the default.":
 		"{0} Un modificateur (ctrl, shift, alt ou super) et une lettre, un chiffre ou F1 à F12, par exemple ctrl+shift+q. Vide : retour au défaut.",
-	"Warns when a tool result looks like a prompt injection: stops the agent and asks whether to continue. A safety net, not the main protection.":
-		"Avertit quand un résultat d’outil ressemble à une injection de prompt : arrête l’agent et demande s’il faut continuer. Un filet de sécurité, pas la protection principale.",
-	"Pause on likely instructions hidden in tool results. A risk reduction, not a guarantee; content is never changed.":
-		"Suspend les résultats d’outils contenant des instructions suspectes. Une réduction du risque, sans garantie ; le contenu reste inchangé.",
+	"Stops the agent when something it reads holds instructions that seem meant for it, and asks whether to continue. A safety net, not the main protection.":
+		"Arrête l’agent quand ce qu’il lit contient des instructions qui semblent lui être adressées, et demande s’il faut continuer. Un filet de sécurité, pas la protection principale.",
+	"Stops the agent when something it reads (a page, a file, a command's output) holds instructions that seem meant for it, and asks whether to continue. A risk reduction, not a guarantee; the content is never changed.":
+		"Arrête l’agent quand ce qu’il lit (une page, un fichier, la sortie d’une commande) contient des instructions qui semblent lui être adressées, et demande s’il faut continuer. Une réduction du risque, sans garantie ; le contenu reste inchangé.",
 	WARNING: "AVERTISSEMENT",
 	"The content was not changed.": "Le contenu n’a pas été modifié.",
 	"Continue, and don't ask again for this source in this session":
@@ -431,8 +431,8 @@ export const FR: Record<string, string> = {
 		"L’option extended-keys de tmux est désactivée. Les combinaisons avec Entrée peuvent ne pas fonctionner. Ajoutez `set -g extended-keys on` dans ~/.tmux.conf et redémarrez tmux.",
 	// fork: the dedicated configuration tool and its always-on guard.
 	"Configure Prism": "Configurer Prism",
-	"Works in the project without asking. Still asks for what leaves the project, sudo and the first use of a browser or a desktop. Configuration uses configure_prism; security settings are user-only.":
-		"Travaille dans le projet sans demander. Demande encore pour ce qui sort du projet, sudo et la première utilisation d'un navigateur ou d'un bureau. La configuration passe par configure_prism ; la sécurité reste réservée à l'utilisateur.",
+	"Works in the project without asking. Still asks for what leaves the project, sudo and the first use of a browser or a desktop.":
+		"Travaille dans le projet sans demander. Demande encore pour ce qui sort du projet, sudo et la première utilisation d'un navigateur ou d'un bureau.",
 	"Skips ordinary questions. Configuration uses configure_prism; security settings are user-only. Keep it for a throwaway machine or container.":
 		"Saute les questions ordinaires. La configuration passe par configure_prism ; la sécurité reste réservée à l'utilisateur. À réserver à une machine ou un conteneur jetable.",
 	"works in the project without asking; asks for what leaves the project, sudo and the first use of a browser or a desktop; configuration uses configure_prism (default)":
@@ -546,6 +546,73 @@ export const FR: Record<string, string> = {
 	"When the model may run an agent…": "Quand le modèle peut lancer un agent…",
 	"When the model may run an agent": "Quand le modèle peut lancer un agent",
 	"Turn agents off": "Désactiver les agents",
+	// the advanced agent mode.
+	"Wait for agents": "Attendre les agents",
+	answered: "a répondu",
+	Tool: "Outil",
+	"{0} agents are already running, the most you allow at once.":
+		"{0} agents tournent déjà, le maximum que vous autorisez en même temps.",
+	"No finished agent run {0} in this session.": "Aucun agent terminé {0} dans cette session.",
+	"with this transcript": "avec ce transcript",
+	"{0} ({1}) kept no context to continue.": "{0} ({1}) n'a pas gardé de contexte à reprendre.",
+	"{0} ({1}) is already running again: wait for its answer.":
+		"{0} ({1}) tourne déjà de nouveau : attendez sa réponse.",
+	"{0} is no longer offered: it was removed or turned off.":
+		"{0} n'est plus proposé : il a été supprimé ou désactivé.",
+	"Write the agent's task.": "Écrivez la tâche de l'agent.",
+	"Write your message to the agent.": "Écrivez votre message à l'agent.",
+	"Agent runs of this session": "Agents lancés dans cette session",
+	"Agent runs of this session ({0})…": "Agents lancés dans cette session ({0})…",
+	"Run an agent…": "Lancer un agent…",
+	"Run which agent?": "Quel agent lancer ?",
+	"Task for the agent that takes this conversation": "Tâche pour l'agent qui reprend cette conversation",
+	"Run an agent on a copy of this conversation": "Lancer un agent sur une copie de cette conversation",
+	"Run an agent on a copy of this conversation…": "Lancer un agent sur une copie de cette conversation…",
+	"Turn the advanced agent mode on first (/agents).": "Activez d'abord le mode avancé des agents (/agents).",
+	"Wait for the end of the current turn: the agent starts from the conversation as it is.":
+		"Attendez la fin du tour en cours : l'agent part de la conversation telle qu'elle est.",
+	"This conversation is not saved yet: send a first message, or open a saved session.":
+		"Cette conversation n'est pas encore enregistrée : envoyez un premier message, ou ouvrez une session enregistrée.",
+	"A copy of this session, with its conversation so far, for one task.":
+		"Une copie de cette session, avec sa conversation jusqu'ici, pour une tâche.",
+	"Task for {0}": "Tâche pour {0}",
+	"{0} started ({1}): its answer will follow.": "{0} est lancé ({1}) : sa réponse suivra.",
+	"Stop it": "L'arrêter",
+	"Send it a message…": "Lui envoyer un message…",
+	"Message to {0}": "Message pour {0}",
+	"{0} continues ({1}): its answer will follow.": "{0} reprend ({1}) : sa réponse suivra.",
+	"… {0} earlier lines": "… {0} lignes plus haut",
+	"Nothing written yet.": "Rien d'écrit pour l'instant.",
+	"This run kept no transcript.": "Ce lancement n'a pas gardé de transcript.",
+	"Preconfigured agents ({0} on)…": "Agents préconfigurés (actifs : {0})…",
+	"Preconfigured agents": "Agents préconfigurés",
+	"Enter turns each one on or off. They run on the session's model unless a call chooses another.":
+		"Entrée active ou désactive chacun. Ils tournent sur le modèle de la session, sauf si un appel en choisit un autre.",
+	"A general-purpose agent for any task: research, reading code, edits and commands.":
+		"Un agent généraliste pour toute tâche : recherche, lecture de code, modifications et commandes.",
+	"Explores the project to answer a question: finds files, reads code, explains how it works. Read only.":
+		"Explore le projet pour répondre à une question : trouve les fichiers, lit le code, explique son fonctionnement. Lecture seule.",
+	"Designs a plan for a change: the steps, the files to touch, the risks. Read only.":
+		"Conçoit le plan d'un changement : les étapes, les fichiers à toucher, les risques. Lecture seule.",
+	"Reviews a change (a diff, files or a commit) and reports its defects and risks. Read only.":
+		"Relit un changement (un diff, des fichiers ou un commit) et signale ses défauts et ses risques. Lecture seule.",
+	"Carries out a well-defined change: edits files and runs commands, within the session's permissions.":
+		"Réalise un changement bien défini : modifie des fichiers et lance des commandes, dans les permissions de la session.",
+	"Advanced mode: on (turn it off)": "Mode avancé : activé (le désactiver)",
+	"Advanced mode on: the general agent and the preconfigured agents you turned on are added to yours. When the model may run an agent applies to them too.":
+		"Mode avancé activé : l'agent généraliste et les agents préconfigurés activés s'ajoutent aux vôtres. « Quand le modèle peut lancer un agent » s'applique aussi à eux.",
+	"built-in": "intégré",
+	Effort: "Effort",
+	"The model's default": "Par défaut du modèle",
+	"Advanced mode: off (turn it on)…": "Mode avancé : désactivé (l'activer)…",
+	"Agents at once: {0}": "Agents en même temps : {0}",
+	"Turn the advanced agent mode on?": "Activer le mode avancé des agents ?",
+	"Adds a general agent you do not need to create, a model chosen for each call from your selected list, agent_wait, and a limit on agents at once. Your own agents stay as they are.":
+		"Ajoute un agent généraliste à ne pas créer, un modèle choisi à chaque appel dans votre liste de modèles sélectionnés, agent_wait, et une limite d'agents en même temps. Vos propres agents restent tels quels.",
+	"The model can start agents without you creating them, on another model of your selected list (Ctrl+P), and give them a summary of this conversation or files you name. What an agent receives goes to the provider of its model: with a cloud model, parts of this conversation leave your machine even when this session uses a local model. Several agents can run at once, each a full Prism process.":
+		"Le modèle peut lancer des agents sans que vous les créiez, sur un autre modèle de votre liste de modèles sélectionnés (Ctrl+P), et leur donner un résumé de cette conversation ou des fichiers que vous nommez. Ce qu'un agent reçoit part chez le fournisseur de son modèle : avec un modèle cloud, des parties de cette conversation quittent votre machine même quand cette session utilise un modèle local. Plusieurs agents peuvent tourner en même temps, chacun étant un processus Prism complet.",
+	"Agents at once (1 to {0})": "Agents en même temps (de 1 à {0})",
+	"Type a whole number from 1 to {0}.": "Tapez un nombre entier de 1 à {0}.",
 	"Turn agents off?": "Désactiver les agents ?",
 	"The agent tool and /agents stop until you turn them back on in /settings › Modules. Your agents are kept.":
 		"L’outil agent et /agents s’arrêtent jusqu’à leur réactivation dans /settings › Modules. Vos agents sont conservés.",
@@ -1006,8 +1073,8 @@ export const FR: Record<string, string> = {
 	"Terminal progress": "Progression dans le terminal",
 
 	// /settings: descriptions (settings-descriptions.ts, settings-selector.ts)
-	"Where web_search sends your searches: Exa works without a key; Brave, Tavily and Firecrawl need a key; SearXNG uses your own instance. Changing this closes Settings and reloads the tools.":
-		"Où web_search envoie vos recherches : Exa fonctionne sans clé ; Brave, Tavily et Firecrawl demandent une clé ; SearXNG utilise votre propre instance. Changer ce choix ferme les réglages et recharge les outils.",
+	"Where the model's searches go: Exa works without a key; Brave, Tavily and Firecrawl need a key; SearXNG uses your own instance. Changing this closes Settings and reloads the tools.":
+		"Où vont les recherches du modèle : Exa fonctionne sans clé ; Brave, Tavily et Firecrawl demandent une clé ; SearXNG utilise votre propre instance. Changer ce choix ferme les réglages et recharge les outils.",
 	"Without an API key (an access key from Exa), web_search uses Exa's public service with request limits. A key uses your Exa account's limits. Saved keys are stored in auth.json.":
 		"Sans clé d'API (une clé d'accès fournie par Exa), web_search utilise le service public d'Exa, avec un nombre de requêtes limité. Avec une clé, ce sont les limites de votre compte Exa. Les clés enregistrées sont dans auth.json.",
 	"Save or remove this provider's API key. Searches need a key for this provider. Environment keys take precedence; remove them from your environment to stop using them.":
@@ -1470,8 +1537,8 @@ export const FR: Record<string, string> = {
 		"La langue de l'interface de Prism. Le modèle répond dans la langue où vous écrivez.",
 	"The onboarding needs the interactive interface.": "L'accueil guidé demande l'interface interactive.",
 	"Welcome to Prism": "Bienvenue dans Prism",
-	"What the model may do without asking you first. Change it later with /perm or alt+m.":
-		"Ce que le modèle peut faire sans vous demander. Modifiable ensuite avec /perm ou alt+m.",
+	"What the model may do without asking you first. Except in Unrestricted, the commands it runs are shut in a sandbox, an enclosure that keeps them in the project and away from your other files. Change it later with /perm or alt+m.":
+		"Ce que le modèle peut faire sans vous demander. Sauf en mode Sans limite, les commandes qu'il lance sont enfermées dans une sandbox, un enclos qui les garde dans le projet, loin de vos autres fichiers. Modifiable ensuite avec /perm ou alt+m.",
 	back: "retour",
 	"code diagnostics from the servers installed for a project":
 		"diagnostics du code par les serveurs installés pour un projet",
@@ -1499,6 +1566,12 @@ export const FR: Record<string, string> = {
 	"the model plans and only reads until you approve": "le modèle planifie et ne fait que lire jusqu’à votre accord",
 	"Goal mode": "Mode Objectif",
 	"a goal the model keeps working towards across turns": "un objectif que le modèle poursuit d’un tour à l’autre",
+	"A language server is a program that knows one programming language, such as Python or TypeScript. When one is installed for the project, the model sees the errors it finds while editing the code.":
+		"Un serveur de langage est un programme qui connaît un langage de programmation, comme Python ou TypeScript. Quand il y en a un d'installé pour le projet, le modèle voit les erreurs qu'il trouve pendant qu'il modifie le code.",
+	"MCP is a common way of giving an AI more tools: a server can connect it to a service such as GitHub or a database. Prism uses only the servers you add, with /mcp add or in mcp.json; with none, the model gets no extra tool.":
+		"MCP est une façon courante de donner plus d'outils à une IA : un serveur peut la relier à un service comme GitHub ou une base de données. Prism n'utilise que les serveurs que vous ajoutez, avec /mcp add ou dans mcp.json ; sans eux, le modèle n'a aucun outil en plus.",
+	"Give a goal with /goal followed by what you want: the model keeps working on it, turn after turn, without you writing again, until it is reached. /goal pause stops it.":
+		"Donnez un objectif avec /goal suivi de ce que vous voulez : le modèle y travaille tour après tour, sans que vous ayez à réécrire, jusqu'à ce qu'il soit atteint. /goal pause l'arrête.",
 	Checkpoints: "Points de restauration",
 	"file snapshots before edits, to roll back": "copies des fichiers avant modification, pour revenir en arrière",
 	"when the model finishes or waits for you": "quand le modèle a fini ou vous attend",
@@ -2323,8 +2396,8 @@ export const FR: Record<string, string> = {
 		"Un chemin ou un glob, relatif au projet : * dans un dossier, ** à travers les dossiers.",
 	"A path or a glob, such as secrets/** or *.sqlite": "Un chemin ou un glob, comme secrets/** ou *.sqlite",
 	Sandbox: "Sandbox",
-	"Where shell commands run: in the sandbox, they write only to the project and caches, see no keys or credentials, and reach only the hosts you allow (also /sandbox).":
-		"Où tournent les commandes shell : dans la sandbox, elles n'écrivent que dans le projet et les caches, ne voient ni clés ni identifiants, et ne joignent que les hôtes que vous autorisez (aussi /sandbox).",
+	"Where commands run: in the sandbox, they write only to the project and caches, see no keys or credentials, and reach only the sites you allow (also /sandbox).":
+		"Où tournent les commandes : dans la sandbox, elles n'écrivent que dans le projet et les caches, ne voient ni clés ni identifiants, et ne joignent que les sites que vous autorisez (aussi /sandbox).",
 	"on in this mode": "active dans ce mode",
 	"off in this mode": "inactive dans ce mode",
 	"not working": "ne fonctionne pas",
@@ -2384,6 +2457,8 @@ export const FR: Record<string, string> = {
 		"Prism est ouvert dans votre dossier personnel et la lecture est limitée au projet : ici, le projet serait tout le dossier personnel.",
 	"Commands do not run until you choose where to work.":
 		"Les commandes ne tournent pas tant que vous n'avez pas choisi où travailler.",
+	"Work in ~/Prism, the window's folder (created if missing)":
+		"Travailler dans ~/Prism, le dossier de la fenêtre (créé s'il manque)",
 	"Work in a new folder in /tmp (kept after the session)":
 		"Travailler dans un nouveau dossier de /tmp (gardé après la session)",
 	"Stay here and let the agent read the whole home folder until Prism exits (keys and credentials stay hidden)":
@@ -2508,8 +2583,6 @@ export const FR: Record<string, string> = {
 		"Chemins cachés aux commandes dans la sandbox en plus des clés, des identifiants et des profils de navigateur. ~ est votre dossier personnel.",
 	"A path, such as ~/Documents/private": "Un chemin, comme ~/Documents/private",
 	"What the agent reads": "Ce que l'agent lit",
-	"Commands and file tools now read only the project and what its tools need, not the rest of your home folder. To widen it: /settings › Permissions & sandbox › What the agent reads. MCP and LSP servers and your browser are not limited.":
-		"Les commandes et les outils de fichiers ne lisent plus que le projet et ce dont ses outils ont besoin, et non le reste de votre dossier personnel. Pour élargir : /settings › Permissions et sandbox › Ce que l'agent lit. Les serveurs MCP et LSP et votre navigateur ne sont pas limités.",
 	"Prism: nsenter (util-linux) was not found, so the commands of this session do not share localhost: a server a command or a background task starts is not reachable from the next command. Install nsenter to share it.":
 		"Prism : nsenter (util-linux) est introuvable, donc les commandes de cette session ne partagent pas localhost : un serveur lancé par une commande ou une tâche de fond n'est pas joignable par la commande suivante. Installez nsenter pour le partager.",
 	"Prism: this system refused the session's network namespace, so the commands of this session do not share localhost: a server a command or a background task starts is not reachable from the next command.":
@@ -3684,6 +3757,10 @@ export const FR: Record<string, string> = {
 		"Entrez les numéros de toutes les réponses qui conviennent, séparés par des virgules (par exemple « 1,3 »), ou écrivez votre propre réponse.",
 	"Type your answer:": "Votre réponse :",
 	"--- {n}. {option} preview ---": "--- Aperçu de {n}. {option} ---",
+	// going back, and the review, in the window's questions.
+	"← Previous question": "← Question précédente",
+	"Change {n}. {question}": "Modifier {n}. {question}",
+	"(no answer)": "(sans réponse)",
 	// pi-lsp activity status.
 	fix: "correction",
 	// engine errors shown in the window (O06).
@@ -4184,8 +4261,8 @@ export const FR_PATTERNS: Record<string, string> = {
 	// fork: /settings > Notifications (notify.ts) and Servers (settings-servers.ts).
 	"A desktop notification when a run of more than {0} s ends, and when the agent waits for your approval; none while the Prism window is in front.":
 		"Une notification de bureau quand un travail de plus de {0} s se termine, et quand l'agent attend votre accord ; aucune tant que la fenêtre de Prism est au premier plan.",
-	"A desktop notification when a tool call has waited {0} s for your approval, at most one per {1} s.":
-		"Une notification de bureau quand un appel d'outil attend votre accord depuis {0} s, au plus une toutes les {1} s.",
+	"A desktop notification when the agent has waited {0} s for your approval, at most one per {1} s.":
+		"Une notification de bureau quand l'agent attend votre accord depuis {0} s, au plus une toutes les {1} s.",
 	"MCP server {0} ({1}): {2}. Off, it is not started and its tools are gone.":
 		"Serveur MCP {0} ({1}) : {2}. Désactivé, il n'est pas lancé et ses outils disparaissent.",
 	"MCP {0} · exposure": "MCP {0} · exposition",
@@ -4830,6 +4907,20 @@ export const FR_PATTERNS: Record<string, string> = {
 	"Needs a Wayland session: Hyprland, GNOME or KDE.": "Il faut une session Wayland : Hyprland, GNOME ou KDE.",
 	"{0}: install Prism's extension with /browser setup.": "{0} : installez l’extension Prism avec /browser setup.",
 	"To finish setting up computer use:": "Pour finir de préparer l’utilisation de l’ordinateur :",
+	// the privacy step of the onboarding.
+	Privacy: "Confidentialité",
+	"Besides the model you connect, Prism contacts these services. Enter turns each on or off; they stay in /settings › Network & web.":
+		"En plus du modèle que vous connectez, Prism contacte ces services. Entrée allume ou éteint chacun ; ils restent dans /settings › Réseau et web.",
+	"Model list from pi.dev": "Liste des modèles de pi.dev",
+	"new models, at most every 4 hours": "les nouveaux modèles, au plus toutes les 4 heures",
+	"Prism asks pi.dev for the models of the providers you connected: pi.dev sees their names, Prism's version and your address. Off, the list changes only with Prism's updates and prism update --models.":
+		"Prism demande à pi.dev les modèles des fournisseurs que vous avez connectés : pi.dev voit leurs noms, la version de Prism et votre adresse. Éteint, la liste ne change qu’avec les mises à jour de Prism et prism update --models.",
+	"Web search through Exa": "Recherche web par Exa",
+	"the model's searches go to Exa, without a key": "les recherches du modèle vont à Exa, sans clé",
+	"Off, searches go to your own SearXNG instance: give its address with /web-key searxng. Brave, Tavily and Firecrawl are in /settings › Network & web.":
+		"Éteint, les recherches vont à votre propre instance SearXNG : donnez son adresse avec /web-key searxng. Brave, Tavily et Firecrawl sont dans /settings › Réseau et web.",
+	"Web search: give your SearXNG instance's address with /web-key searxng.":
+		"Recherche web : donnez l’adresse de votre instance SearXNG avec /web-key searxng.",
 	"labwc is not installed; install it with: {0}": "labwc n’est pas installé ; installez-le avec : {0}",
 	// fork (audit PB-22): what logoutProvider() returns, printed by `prism auth logout` (src/fork/auth-login-cli.ts).
 	"Logged out of {0}": "Déconnecté de {0}",

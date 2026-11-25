@@ -18,7 +18,7 @@ Certaines commandes appartiennent à un module intégré : elles n’existent qu
 | `/llama` | Gérer les modèles du routeur llama.cpp configuré |
 | `/web-key [exa\|brave\|tavily\|firecrawl\|searxng] [remove]` | Enregistrer ou supprimer une clé API de recherche web ou une URL SearXNG ; le fournisseur sélectionné est utilisé par défaut. Choisissez-le dans `/settings` > Web search ; consultez [Réglages de la recherche web](settings.md#recherche-web) |
 | `/budget` | Afficher limites et consommation ; `/budget time 30`, `/budget tools 50`, `/budget tokens 200000`, `/budget cost 2`, `/budget off [time\|tools\|tokens\|cost]` définissent ou suppriment les limites |
-| `/onboarding` | Refaire les choix du premier lancement : langue, thème, permissions, modules, modèle |
+| `/onboarding` | Refaire les choix du premier lancement : langue, thème, permissions, modules, confidentialité, modèle |
 | `/tutorial` | Apprendre Prism en neuf courts modules, chacun avec un exercice que Prism vérifie sans appeler le modèle ; la progression est conservée |
 
 ## Permissions et sécurité
@@ -59,7 +59,7 @@ Certaines commandes appartiennent à un module intégré : elles n’existent qu
 | `/checkpoints` | Lister les points de restauration des fichiers et revenir à l’un d’eux |
 | `/bg` | Voir et gérer les tâches de fond (`Alt+J`) |
 | `/bg-clear` | Oublier les tâches de fond terminées |
-| `/agents` | Créer et gérer des agents personnalisés, que le modèle lance avec l’outil `agent` |
+| `/agents` | Créer et gérer des agents personnalisés, que le modèle lance avec l’outil `agent` ; voir les agents lancés dans la session, en arrêter un, envoyer un message à un agent fini (il garde son contexte), en lancer un vous-même ; activer le mode avancé des agents. `/agents fork <tâche>` (mode avancé) lance un agent sur une copie de cette conversation |
 | `/plan` | Entrer dans le mode Plan ou le gérer : le modèle planifie et ne fait que lire des fichiers jusqu’à votre accord (`Alt+P`) |
 | `/goal [--tokens 100k] <objectif>` | Donner au modèle un objectif qu’il poursuit d’un tour à l’autre |
 | `/schedule` | Créer, mettre en pause ou supprimer des [tâches planifiées](scheduled-tasks.md) |

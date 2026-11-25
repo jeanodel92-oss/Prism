@@ -382,6 +382,16 @@ body.sidebar-collapsed .side-panel {
 	color: var(--warning);
 }
 
+/* the message that continues a finished agent, under its transcript. */
+.agent-message {
+	align-items: flex-start;
+	margin-top: 0.75rem;
+}
+
+.agent-message textarea {
+	flex: 1;
+}
+
 /* The memory, read as the model reads it: each file, then what can be done with it. */
 .side-memory {
 	display: flex;
@@ -778,6 +788,9 @@ body.sidebar-collapsed .side-panel {
 	min-height: 0;
 	overflow-y: auto;
 	scrollbar-color: var(--line-strong) transparent;
+	/* the transcript keeps the reader's place itself (transcript-list.js). WebKitGTK's own
+	   scroll anchoring moved the view as well, which a smooth scroll of the wheel then undid: the transcript jumped. */
+	overflow-anchor: none;
 }
 
 /* The welcome's and the empty model's heights (cqh) are the transcript's room. Only while one shows: a size container
@@ -3144,6 +3157,11 @@ dialog .dialog-actions {
 
 .panel-text.warning {
 	color: var(--warning);
+}
+
+/* what turning the advanced agent mode on sends away, in red before it is turned on. */
+.panel.agents .panel-text.dialog-warning {
+	color: var(--error);
 }
 
 /* The risk a question's answer accepts: red, whole, never scrolled. */

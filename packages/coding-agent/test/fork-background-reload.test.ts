@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
-import backgroundExtension, { backgroundTasks, END_MESSAGE } from "../src/fork/background.ts";
+import backgroundExtension, { backgroundTasks, END_MESSAGE, sessionBackgroundTasks } from "../src/fork/background.ts";
 import { createHarness, createTestUiContext, type Harness } from "./suite/harness.ts";
 
 describe("fork: background tasks across a /reload", () => {
@@ -51,8 +51,14 @@ describe("fork: background tasks across a /reload", () => {
 		await harness.session.prompt("start a task");
 		expect(backgroundTasks()?.map((task) => task.status)).toEqual(["running"]);
 
+		// the session's own tasks, by its id (the browser opens a task's server for that session only).
+		const id = harness.session.sessionManager.getSessionId();
+		expect(sessionBackgroundTasks(id).map((task) => task.status)).toEqual(["running"]);
+		expect(sessionBackgroundTasks("another-session")).toEqual([]);
+
 		await harness.session.reload();
 		expect(backgroundTasks()?.map((task) => task.status)).toEqual(["running"]);
+		expect(sessionBackgroundTasks(id).map((task) => task.status)).toEqual(["running"]);
 
 		writeFileSync(flag, "");
 		await vi.waitFor(() => expect(backgroundTasks()?.[0]?.status).toBe("done"), { timeout: 10_000 });

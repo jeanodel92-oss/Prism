@@ -244,6 +244,48 @@ export const ADVANCED_SETTINGS = new Set([
 	"trace-retention-days",
 	"model-thinking",
 	"command:scoped-models",
+	// Simple keeps what changes a newcomer's experience.
+	"mermaid-rendering",
+	"quiet-startup",
+	"budget-default-time",
+	"budget-default-tools",
+	"budget-default-tokens",
+	"budget-default-cost",
+	"handoff-reminder",
+	"handoff-reminder-interval",
+	"command:skills",
+	"command:perm window",
+	"command:perm scope",
+	"perm-project",
+	"fullscreen-scrollbar",
+	"auto-resize-images",
+	"warnings",
+	"notify-test",
+	"command:budget",
+	"command:llama",
+	...[
+		"llama.cpp",
+		"codemode",
+		"tool-search",
+		"trace",
+		"budgets",
+		"prism",
+		"lsp-setup",
+		"machine-context",
+		"project-continuity",
+		"background",
+		"session-state",
+		"append-system",
+		"agents",
+		"skills",
+		"config-tool",
+		"pi-context-inspector",
+		"capability-gates",
+		// Also set in Notifications, Permissions & sandbox and Conversation.
+		"notify",
+		"injection-warning",
+		"reply-language",
+	].map((name) => `builtin:${name}`),
 ]);
 
 /** the update modes as /settings lists them. */
@@ -268,30 +310,38 @@ export function shown(item: SettingItem): SettingItem {
 	});
 }
 
-function extensionItems(extras: SettingsDomainExtras): SettingItem[] {
+/** `advanced`: whether the advanced interface is shown now (the module's own name only there). */
+function extensionItems(extras: SettingsDomainExtras, advanced: () => boolean): SettingItem[] {
 	const items: SettingItem[] = extras.builtinExtensions.map((extension) => {
 		// fork: why a module that is on does nothing here, then the commands it adds, which search finds.
 		const state = extras.featureState?.(extension.name);
 		const commands = MODULE_COMMANDS[extension.name]?.map((command) => `/${command}`).join(", ");
-		return {
+		const item: SettingItem = {
 			id: `builtin:${extension.name}`,
 			// the module's name in words; its own name ends the description, where search finds it.
 			label: EXTENSION_LABELS[extension.name] ?? extension.name,
-			description: [
-				state && stateSentence(state),
-				// fork.9 QA: each part in the interface language; the whole sentence is in no catalog.
-				EXTENSION_DESCRIPTIONS[extension.name]
-					? t(EXTENSION_DESCRIPTIONS[extension.name]!)
-					: fill("Included add-on (builtin:{0}).", extension.name),
-				commands && fill("Commands: {0}.", commands),
-				t("Applies when you close Settings."),
-				EXTENSION_LABELS[extension.name] && fill("Module: {0}.", extension.name),
-			]
-				.filter(Boolean)
-				.join(" "),
 			currentValue: extension.enabled ? "on" : "off",
 			values: ["on", "off"],
 		};
+		// Read when drawn: the interface mode can change while Settings is open.
+		Object.defineProperty(item, "description", {
+			get: () =>
+				[
+					state && stateSentence(state),
+					// fork.9 QA: each part in the interface language; the whole sentence is in no catalog.
+					EXTENSION_DESCRIPTIONS[extension.name]
+						? t(EXTENSION_DESCRIPTIONS[extension.name]!)
+						: fill("Included add-on (builtin:{0}).", extension.name),
+					commands && fill("Commands: {0}.", commands),
+					t("Applies when you close Settings."),
+					// an internal name, not for the simple interface.
+					advanced() && EXTENSION_LABELS[extension.name] && fill("Module: {0}.", extension.name),
+				]
+					.filter(Boolean)
+					.join(" "),
+			enumerable: true,
+		});
+		return item;
 	});
 	// fork: an advanced, on-demand tool, shown like the other advanced settings.
 	if (extras.getModuleCostConfiguration) {
@@ -646,6 +696,8 @@ export function groupSettingsByDomain(
 
 	const isAdvancedSetting = (id: string) =>
 		ADVANCED_SETTINGS.has(id) ||
+		// Exa works without a key; the other services' key stays in Simple, they need it.
+		(id === "web-search-key" && extras.webSearch?.provider === "exa") ||
 		id === "module-cost" ||
 		sections.some((entry) => entry.section.isAdvanced?.(id) === true);
 	// the simple interface neither shows nor changes advanced settings.
@@ -695,7 +747,7 @@ export function groupSettingsByDomain(
 	);
 	// the bundled add-ons in one domain (web search moved to Network & web). fork
 	// the computer use modules in a domain of their own, with their settings and the browser's setup.
-	const moduleItems = extensionItems(extras);
+	const moduleItems = extensionItems(extras, () => advanced);
 	const usesComputer = (item: SettingItem) => COMPUTER_USE_MODULES.has(item.id.slice("builtin:".length));
 	domains.push(
 		domain(

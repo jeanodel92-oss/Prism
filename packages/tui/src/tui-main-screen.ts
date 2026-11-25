@@ -148,6 +148,9 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	// fork: rows that can hold a Kitty image, per frame returned by applyLineResets, so the
 	// image scans below skip the other rows instead of searching every line of every frame.
 	private kittyRows = new WeakMap<string[], number[]>();
+	// fork: the renderPrefix serial of the render that previousLines and the reset rows come from, so
+	// its unchanged leading lines can be skipped. -1 when they come from elsewhere.
+	private paintedSerial = -1;
 
 	captureRenderState(): TuiMainScreenRenderState {
 		return {
@@ -162,6 +165,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	}
 
 	restoreRenderState(state: TuiMainScreenRenderState): void {
+		this.paintedSerial = -1; // fork
 		this.previousLines = state.previousLines.map((line) => (isImageLine(line) ? "" : line));
 		this.previousKittyImageIds = new Set();
 		this.previousWidth = state.previousWidth;
@@ -173,6 +177,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	}
 
 	protected override resetRenderState(): void {
+		this.paintedSerial = -1; // fork
 		this.previousLines = [];
 		this.previousWidth = -1;
 		this.previousHeight = -1;
@@ -261,25 +266,40 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		return this.deleteKittyImages(ids);
 	}
 
-	protected override applyLineResets(lines: string[]): string[] {
-		const input = lines.slice();
+	/**
+	 * `stable`: fork, how many leading rows are known to equal last frame's input. They take last
+	 * frame's output without a comparison, and both reset arrays are now updated in place instead of copied.
+	 */
+	protected override applyLineResets(lines: string[], stable = 0): string[] {
 		const changedRows: number[] = [];
 		const kittyRows: number[] = [];
-		const previousKittyRows = new Set(this.kittyRows.get(this.resetOutput));
-		for (let row = 0; row < lines.length; row++) {
-			if (lines[row] === this.resetInput[row]) {
-				lines[row] = this.resetOutput[row]!;
+		const resetInput = this.resetInput;
+		const resetOutput = this.resetOutput;
+		const previousKittyList = this.kittyRows.get(resetOutput) ?? [];
+		const previousKittyRows = new Set(previousKittyList);
+		const start = Math.min(stable, lines.length, resetInput.length, resetOutput.length);
+		for (const row of previousKittyList) if (row < start) kittyRows.push(row);
+		for (let row = 0; row < start; row++) lines[row] = resetOutput[row]!;
+		for (let row = start; row < lines.length; row++) {
+			const line = lines[row]!;
+			if (line === resetInput[row]) {
+				lines[row] = resetOutput[row]!;
 				if (previousKittyRows.has(row)) kittyRows.push(row);
 			} else {
+				resetInput[row] = line;
 				changedRows.push(row);
-				if (lines[row]!.includes(KITTY_SEQUENCE_PREFIX)) kittyRows.push(row);
+				if (line.includes(KITTY_SEQUENCE_PREFIX)) kittyRows.push(row);
 			}
 		}
+		resetInput.length = lines.length;
 		const changed = super.applyLineResets(changedRows.map((row) => lines[row]!));
-		for (let index = 0; index < changedRows.length; index++) lines[changedRows[index]!] = changed[index]!;
-		this.resetInput = input;
-		this.resetOutput = lines.slice();
-		this.kittyRows.set(this.resetOutput, kittyRows);
+		for (let index = 0; index < changedRows.length; index++) {
+			const row = changedRows[index]!;
+			lines[row] = changed[index]!;
+			resetOutput[row] = changed[index]!;
+		}
+		resetOutput.length = lines.length;
+		this.kittyRows.set(resetOutput, kittyRows);
 		this.kittyRows.set(lines, kittyRows);
 		return lines;
 	}
@@ -314,17 +334,26 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		};
 
 		// Render all components to get new lines
+		const serial = this.renderPrefix.serial;
 		let newLines = this.render(width);
+		// fork: leading lines unchanged since the last painted frame, skipped by the resets and the diff.
+		let stable =
+			this.paintedSerial === serial && this.renderPrefix.serial === serial + 1 ? this.renderPrefix.stable : 0;
+		this.paintedSerial = this.renderPrefix.serial;
 
 		// Composite overlays into the rendered lines (before differential compare)
 		if (this.hasOverlayEntries) {
 			newLines = this.compositeOverlays(newLines, width, height);
+			// fork: the overlay's rows differ from the render: the frame after it closes compares them all.
+			stable = 0;
+			this.paintedSerial = -1;
 		}
 
 		// Extract cursor position before applying line resets (marker must be found first)
 		const cursorPos = this.extractCursorPosition(newLines, height);
+		if (cursorPos) stable = Math.min(stable, cursorPos.row); // fork
 
-		newLines = this.applyLineResets(newLines);
+		newLines = this.applyLineResets(newLines, stable);
 
 		// Helper to clear scrollback and viewport and render all new lines
 		const fullRender = (clear: boolean): void => {
@@ -416,7 +445,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		let firstChanged = -1;
 		let lastChanged = -1;
 		const maxLines = Math.max(newLines.length, this.previousLines.length);
-		for (let i = 0; i < maxLines; i++) {
+		for (let i = Math.min(stable, this.previousLines.length); i < maxLines; i++) {
 			const oldLine = i < this.previousLines.length ? this.previousLines[i] : "";
 			const newLine = i < newLines.length ? newLines[i] : "";
 

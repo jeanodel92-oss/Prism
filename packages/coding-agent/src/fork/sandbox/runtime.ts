@@ -60,6 +60,7 @@ import { TOOL_RESOURCES } from "./read-limit.ts";
 import { relaySnapshot } from "./relay-snapshot.ts";
 import { seccompArch, seccompFilter } from "./seccomp.ts";
 import { closeSessionNet, prepareSessionNet, sessionNetPrefix, sessionNetReport } from "./session-net.ts";
+import { closeSessionPorts } from "./session-ports.ts";
 import { sshConfigCopies } from "./ssh-config.ts";
 import { sandboxWrites } from "./ssh-provenance.ts";
 import { createToolCaches } from "./tool-caches.ts";
@@ -252,6 +253,8 @@ export function removeSessionTmpDir(sessionId: string): void {
 	if (!borrowedTmps.has(dir)) removeTmpUnlessHeld(dir);
 	// fork (SEC-07): its background tasks still running keep the session's network.
 	closeSessionNet(dir);
+	// the browser's relays of the session's ports end with it.
+	closeSessionPorts(dir);
 }
 
 /**

@@ -65,6 +65,8 @@ describe("fork: desktop notifications in the window's settings", () => {
 		views.handleCommand({ type: "set_views", columns: 100, rows: 30, nativeMenus: true });
 		const harness = await createHarness({ extensionFactories: [{ name: "notify", factory: notifyExtension }] });
 		harnesses.push(harness);
+		// the test notification is in the advanced interface only.
+		harness.session.settingsManager.setInterfaceMode("advanced");
 		await harness.session.bindExtensions({
 			uiContext: createTestUiContext({
 				custom: (factory, opts) => views.custom(factory, opts),

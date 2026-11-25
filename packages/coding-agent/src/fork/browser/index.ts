@@ -19,6 +19,7 @@ import { destinationName, toolNetworkGate } from "../sandbox/tool-network.ts";
 import { commandEnv } from "../secrets/env.ts";
 import { firefoxRunning, launchFirefoxWithBidi } from "./bidi.ts";
 import { BrowserCommandError, type BrowserHostConnection, BrowserHosts } from "./client.ts";
+import { closeLocalPages, isLocalPage, localHint, localPage } from "./local-pages.ts";
 import type { BrowserHostInfo } from "./protocol.ts";
 import {
 	browserCommand,
@@ -37,6 +38,13 @@ import { dialogUi, runBrowserSetup, runNativeBrowserSetup, sameBrowser, type Wiz
 
 /** fork: the browser the agent uses when several are linked, set by /browser setup. */
 export const PREFERRED_BROWSER_SETTING = "browserPreferred";
+/**
+ * the browser /browser setup linked, as the setup found it (`FoundBrowser.name`), which
+ * the tool starts when no browser is linked. The name the extension gives is not enough: Zen names itself Firefox.
+ */
+export const SETUP_BROWSER_SETTING = "browserSetupBrowser";
+/** how long the tool waits for a browser it started to link (owner: about 20 s), and how often it looks. */
+export const BROWSER_START = { waitMs: 20_000, pollMs: 500 };
 /** Set once the guided setup was offered on its own, when the module first ran with nobody linked. */
 const SETUP_OFFERED_SETTING = "browserSetupOffered";
 /** The Prism session name of the setup's check: its tab is its own, apart from every agent's. */
@@ -211,6 +219,38 @@ export function formatResult(action: BrowserAction, result: Record<string, unkno
 const installedBrowser = (browser: FoundBrowser): boolean =>
 	isInstalledBrowser(browser, { onPath: (program) => onPath(program) });
 
+/** Starts `browser` on its usual profile, detached, on `url` when given: undefined, or why it could not. */
+function launchBrowser(browser: FoundBrowser, url?: string): string | undefined {
+	const command = browserCommand(browser, (program) => onPath(program));
+	if (!command) return fill("Prism did not find {0}'s program: open it yourself.", browser.name);
+	try {
+		const child = spawn(hostCommand(command[0]!), [...command.slice(1), ...(url ? [url] : [])], {
+			detached: true,
+			stdio: "ignore",
+			env: commandEnv(process.env, "browser", command.join(" ")).env,
+		});
+		child.on("error", () => {});
+		child.unref();
+		return undefined;
+	} catch (error) {
+		return (error as Error).message;
+	}
+}
+
+/**
+ * the browser /browser setup linked, still installed; undefined when none was set up. A setup made before
+ * fork.12.5 kept only the extension's name: it counts when it names one installed browser.
+ */
+function configuredBrowser(): FoundBrowser | undefined {
+	const installed = detectBrowsers().filter(installedBrowser);
+	const chosen = readGlobalSetting(SETUP_BROWSER_SETTING);
+	if (typeof chosen === "string") return installed.find((browser) => browser.name === chosen);
+	const preferred = readGlobalSetting(PREFERRED_BROWSER_SETTING);
+	if (typeof preferred !== "string") return undefined;
+	const named = installed.filter((browser) => sameBrowser(preferred, browser.name));
+	return named.find((browser) => browser.name === preferred) ?? (named.length === 1 ? named[0] : undefined);
+}
+
 /**
  * How the extension a browser runs differs from the one this Prism ships, or undefined when it does not. A copy
  * /browser setup wrote carries its build (setup.ts `extensionBuild`): another build is another Prism's copy. A store
@@ -268,8 +308,54 @@ export default function browserExtension(pi: ExtensionAPI): void {
 	const used = new Map<string, string>();
 	const dnsGuard = new DnsGuard();
 
-	async function pick(session: string, wanted: string | undefined): Promise<BrowserHostConnection> {
-		const available = await hosts.list();
+	/** The start under way, shared by the calls that found no browser meanwhile. */
+	let starting: Promise<BrowserHostConnection[]> | undefined;
+
+	/**
+	 * with no browser linked, starts the one /browser setup linked and waits for its
+	 * extension; the hosts then linked. None when no browser was set up.
+	 */
+	function startConfigured(status: (text: string) => void, signal?: AbortSignal): Promise<BrowserHostConnection[]> {
+		const browser = configuredBrowser();
+		if (!browser) return Promise.resolve([]);
+		status(
+			`No browser was linked: Prism is starting ${browser.name} and waiting for its Prism extension to connect…`,
+		);
+		starting ??= (async () => {
+			const failed = launchBrowser(browser);
+			if (failed) throw new BrowserCommandError(`Prism could not start ${browser.name}: ${failed}`, "no_browser");
+			const end = Date.now() + BROWSER_START.waitMs;
+			for (;;) {
+				const available = await hosts.list();
+				if (available.length > 0) return available;
+				if (Date.now() >= end) break;
+				await new Promise((resolve) => setTimeout(resolve, BROWSER_START.pollMs));
+			}
+			throw new BrowserCommandError(
+				`Prism started ${browser.name}, but its Prism extension did not connect within ${Math.round(BROWSER_START.waitMs / 1000)} s. Do not retry: ask the user to check that the Prism extension is installed and turned on in ${browser.name} (/browser setup checks it).`,
+				"no_browser",
+			);
+		})().finally(() => {
+			starting = undefined;
+		});
+		if (!signal) return starting;
+		const shared = starting;
+		return new Promise((resolve, reject) => {
+			const abort = () => reject(new BrowserCommandError("Aborted", "aborted"));
+			if (signal.aborted) return abort();
+			signal.addEventListener("abort", abort, { once: true });
+			shared.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+		});
+	}
+
+	async function pick(
+		session: string,
+		wanted: string | undefined,
+		status: (text: string) => void = () => {},
+		signal?: AbortSignal,
+	): Promise<BrowserHostConnection> {
+		let available = await hosts.list();
+		if (available.length === 0) available = await startConfigured(status, signal);
 		if (available.length === 0) throw new BrowserCommandError(NO_BROWSER, "no_browser");
 		if (wanted) {
 			const match = available.find((host) => host.info?.name.toLowerCase().includes(wanted.toLowerCase()));
@@ -304,6 +390,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 		action: BrowserAction,
 		asked: URL,
 		final: string,
+		session: string,
 	): Promise<string | undefined> {
 		let url: URL;
 		try {
@@ -313,6 +400,8 @@ export default function browserExtension(pi: ExtensionAPI): void {
 		}
 		if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
 		if (destinationName(url) === destinationName(asked)) return undefined;
+		// from a local page to another of the session's (its server's absolute links, for example).
+		if (isLocalPage(session, url)) return undefined;
 		const gate = toolNetworkGate(pi.events, toolCallId, `browser ${action} ${asked.href} -> ${url.href}`, true);
 		try {
 			return (await gate?.destination(url, (name) => dnsGuard.resolve(name)))?.replace(" Nothing was sent.", "");
@@ -334,10 +423,16 @@ export default function browserExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use browser for pages that need a real browser (sign-in, scripts, forms); web_fetch is enough to read a public page.",
 			"After browser open or navigate, take a snapshot before clicking or typing.",
+			"To check a web page you made, open it with browser: a project file by its path or a file:// URL, a server this session started (a background task) at http://localhost:<port>. Prism shows both to the browser; then use screenshot or snapshot.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(BROWSER_ACTIONS),
-			url: Type.Optional(Type.String({ description: "URL (open, navigate)" })),
+			url: Type.Optional(
+				Type.String({
+					description:
+						"URL (open, navigate); a project file by its path or file:// URL, a server of this session at http://localhost:<port>",
+				}),
+			),
 			tab: Type.Optional(Type.Number({ description: "Tab id; default: the tab used last" })),
 			ref: Type.Optional(Type.String({ description: "Element ref from the latest snapshot, e.g. e12" })),
 			x: Type.Optional(Type.Number({ description: "CSS pixels from the left of the viewport (click)" })),
@@ -361,7 +456,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			gone: Type.Optional(Type.Boolean({ description: "Wait for text or selector to disappear instead (wait)" })),
 			browser: Type.Optional(Type.String({ description: "Browser name when several are linked, e.g. firefox" })),
 		}),
-		async execute(toolCallId, params, signal, _onUpdate, ctx): Promise<AgentToolResult<BrowserDetails>> {
+		async execute(toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<BrowserDetails>> {
 			const action = params.action as BrowserAction;
 			const fail = (text: string, browser?: string): AgentToolResult<BrowserDetails> => ({
 				content: [{ type: "text", text }],
@@ -371,31 +466,50 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			const session = ctx.sessionManager.getSessionId();
 			let host: BrowserHostConnection;
 			try {
-				host = await pick(session, params.browser);
+				host = await pick(
+					session,
+					params.browser,
+					(text) => onUpdate?.({ content: [{ type: "text", text }], details: { action } }),
+					signal,
+				);
 			} catch (error) {
 				return fail((error as Error).message);
 			}
 			const browserName = host.info?.name;
 			let asked: URL | undefined;
-			if ((action === "open" || action === "navigate") && params.url) {
+			let opened = params.url;
+			// a project file or a server of this session, which Prism shows to the browser itself.
+			const local =
+				(action === "open" || action === "navigate") && params.url
+					? await localPage(session, ctx.cwd, params.url)
+					: undefined;
+			if (local && "error" in local) return fail(local.error, browserName);
+			if (local) {
+				asked = local.url;
+				opened = local.url.href;
+			} else if ((action === "open" || action === "navigate") && params.url) {
 				let url: URL;
 				try {
 					url = new URL(params.url);
 				} catch {
-					return fail(`Not a URL: ${params.url}`, browserName);
+					return fail(
+						`Not a URL: ${params.url}. For a file of the project, pass its path or a file:// URL.`,
+						browserName,
+					);
 				}
 				asked = url;
 				const gate = toolNetworkGate(pi.events, toolCallId, `browser ${action} ${params.url}`, true);
 				try {
 					const refused = await gate?.destination(url, (name) => dnsGuard.resolve(name));
-					if (refused) return fail(refused, browserName);
+					if (refused) return fail(localHint(refused, url), browserName);
 				} catch (error) {
 					return fail((error as Error).message, browserName);
 				} finally {
 					gate?.close();
 				}
 			}
-			const { action: _action, browser: _browser, ...args } = params;
+			const { action: _action, browser: _browser, ...rest } = params;
+			const args = opened === undefined ? rest : { ...rest, url: opened };
 			const timeout = action === "wait" ? 70000 : 60000;
 			let result: Record<string, unknown>;
 			try {
@@ -408,7 +522,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			// a redirect takes the tab where the server chose, a port of this machine for example. The
 			// page the tab ended on passes the host rule too; refused, the tab is closed before anything of it is read.
 			if (asked && tab !== undefined && typeof result.url === "string") {
-				const refused = await redirectRefusal(toolCallId, action, asked, result.url);
+				const refused = await redirectRefusal(toolCallId, action, asked, result.url, session);
 				if (refused) {
 					const closed = await host.request("close", session, { tab }, 20000).then(
 						() => true,
@@ -443,22 +557,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 		declare: (browser) => declareHost(browser),
 		grantFlatpak: grantFlatpakHostAccess,
 		extensionDir: (browser) => extensionDirFor(browser.family),
-		openBrowser: (browser, url) => {
-			const command = browserCommand(browser, (program) => onPath(program));
-			if (!command) return fill("Prism did not find {0}'s program: open it yourself.", browser.name);
-			try {
-				const child = spawn(hostCommand(command[0]!), [...command.slice(1), ...(url ? [url] : [])], {
-					detached: true,
-					stdio: "ignore",
-					env: commandEnv(process.env, "browser", command.join(" ")).env,
-				});
-				child.on("error", () => {});
-				child.unref();
-				return undefined;
-			} catch (error) {
-				return (error as Error).message;
-			}
-		},
+		openBrowser: launchBrowser,
 		copy: copyToClipboard,
 		linked: async () =>
 			(await hosts.list()).flatMap((host) =>
@@ -478,8 +577,9 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			const host = (await hosts.list()).find((entry) => entry.info?.pid === pid);
 			return host ? checkLink(host) : t("The browser disconnected.");
 		},
-		choose: (name) => {
+		choose: (name, browser) => {
 			saveGlobalSetting([PREFERRED_BROWSER_SETTING], name);
+			saveGlobalSetting([SETUP_BROWSER_SETTING], browser.name);
 			// Hot switch: each session's last browser is forgotten, so the next call uses this one.
 			used.clear();
 		},
@@ -671,6 +771,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		const session = ctx.sessionManager.getSessionId();
+		closeLocalPages(session);
 		const path = used.get(session);
 		if (path) {
 			const host = (await hosts.list()).find((entry) => entry.path === path);

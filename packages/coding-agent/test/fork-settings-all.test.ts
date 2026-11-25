@@ -100,6 +100,9 @@ describe("fork: all the settings in /settings", () => {
 			"Interface",
 			"Other",
 		]);
+		// the warnings list is in the advanced interface only.
+		expect(ids(model, "notifications")).toEqual(["notifications-x"]);
+		model.onChange("interface-mode", "advanced");
 		expect(ids(model, "notifications")).toEqual(["warnings", "notifications-x"]);
 	});
 

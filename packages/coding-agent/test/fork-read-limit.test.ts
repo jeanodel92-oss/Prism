@@ -11,6 +11,7 @@ import {
 	realpathSync,
 	renameSync,
 	rmSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -21,9 +22,9 @@ import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV_AGENT_DIR, getReadmePath } from "../src/config.ts";
 import type { ExtensionAPI, ExtensionUIContext } from "../src/core/extensions/types.ts";
-import permissionsExtension, { decidePermission, modePolicy, READ_LIMIT_NOTICE } from "../src/fork/permissions.ts";
+import permissionsExtension, { decidePermission, modePolicy } from "../src/fork/permissions.ts";
 import { addProjectRule, readProjectGrants } from "../src/fork/project-permissions.ts";
-import { chooseHomeStart, opensWholeHome, startsFresh } from "../src/fork/sandbox/home-start.ts";
+import { chooseHomeStart, opensWholeHome, startsFresh, windowWorkFolder } from "../src/fork/sandbox/home-start.ts";
 import {
 	buildLayout,
 	bwrapArgs,
@@ -793,17 +794,12 @@ describe.skipIf(!bwrap)("fork: reading limited to the project, in the real sandb
 		expect(readFileSync(join(home, "dotfiles/gitconfig"), "utf8")).toBe(config);
 	});
 
-	it("says once that reading is limited, and where to widen it", async () => {
+	// no line about limited reading at startup; it told new users of a change they never saw.
+	it("says nothing about limited reading at startup", async () => {
 		writeFileSync(join(agentDir, "settings.json"), "{}");
 		const first = await start();
-		expect(first.notices).toContain(READ_LIMIT_NOTICE);
-		expect(READ_LIMIT_NOTICE).toContain("MCP and LSP servers and your browser are not limited");
-		// The user's rules are left as they were.
+		expect(first.notices.join("\n")).not.toMatch(/read only the project/);
 		expect(JSON.parse(readFileSync(join(agentDir, "permissions.json"), "utf8"))).toEqual({ mode: "broad" });
-		expect((await start()).notices).not.toContain(READ_LIMIT_NOTICE);
-		rmSync(join(agentDir, "sandbox", "read-limit-noticed"));
-		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ sandbox: { read: { limit: "all" } } }));
-		expect((await start()).notices).not.toContain(READ_LIMIT_NOTICE);
 	});
 
 	it("keeps reading limited while the sandbox does not work, and says it does not", async () => {
@@ -816,7 +812,6 @@ describe.skipIf(!bwrap)("fork: reading limited to the project, in the real sandb
 		const { harness, notices, questions } = await start();
 		expect(sessionSandbox(harness.sessionManager)).toMatchObject({ error: expect.any(String) });
 		expect(notices.join("\n")).toMatch(/sandbox/i);
-		expect(notices).not.toContain(READ_LIMIT_NOTICE);
 		const command = await bash(harness, "cat ~/Documents/secret.txt");
 		expect(command).not.toContain("canary-home");
 		expect(command).toContain("The sandbox does not work");
@@ -1293,16 +1288,39 @@ describe("fork: Prism opened in the home folder with reading limited", () => {
 		}
 	});
 
-	it("works in a new folder of /tmp by default, kept, where the sandbox runs commands", async () => {
+	// fork.12.5 QA: the terminal started in the home folder works in ~/Prism by default, as the
+	// window started from the applications menu does (main.ts windowFolder), creating it when missing.
+	it("works in ~/Prism by default, created when missing, as the window does", async () => {
+		const prism = join(home, "Prism");
+		expect(existsSync(prism)).toBe(false);
 		const offered: { label: string; value: string }[] = [];
 		const folder = await chooseHomeStart(home, async (title, options) => {
 			expect(title).toContain("the project would be the whole home folder");
 			offered.push(...options);
 			return options[0]!.value;
 		});
+		expect(offered.map((option) => option.value)).toEqual(["prism", "tmp", "home", "none"]);
+		expect(offered[0]!.label).toBe("Work in ~/Prism, the window's folder (created if missing)");
+		expect(folder).toBe(windowWorkFolder(home));
+		expect(folder).toBe(prism);
+		expect(statSync(prism).isDirectory()).toBe(true);
+		expect(realpathSync(process.cwd())).toBe(realpathSync(prism));
+		expect(opensWholeHome(folder)).toBe(false);
+		const layout = buildLayout({ cwd: folder, home, agentDir, settings: readSandboxSettings(agentDir), env: {} });
+		expect(layout.blocked).toBeUndefined();
+		expect(layout.writable).toContain(realpathSync(prism));
+		expect(readSandboxSettings(agentDir).read.limit).toBe("project");
+		// The same folder at the next launch, its content kept.
+		writeFileSync(join(prism, "notes.md"), "kept");
+		process.chdir(startDir);
+		expect(await chooseHomeStart(home, async () => "prism")).toBe(prism);
+		expect(readFileSync(join(prism, "notes.md"), "utf-8")).toBe("kept");
+	});
+
+	it("still offers a new folder of /tmp, kept, where the sandbox runs commands", async () => {
+		const folder = await chooseHomeStart(home, async () => "tmp");
 		made.push(folder);
-		expect(offered.map((option) => option.value)).toEqual(["tmp", "home", "none"]);
-		expect(offered[0]!.label).toBe("Work in a new folder in /tmp (kept after the session)");
+		expect(existsSync(join(home, "Prism"))).toBe(false);
 		expect(folder.startsWith(join(tmpdir(), "prism-work-"))).toBe(true);
 		expect(existsSync(folder)).toBe(true);
 		expect(realpathSync(process.cwd())).toBe(realpathSync(folder));

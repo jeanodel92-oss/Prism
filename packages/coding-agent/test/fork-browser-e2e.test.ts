@@ -2,7 +2,7 @@
 // and Firefox. Throwaway HOME and profiles; skipped when a browser is not installed.
 // Never run on the maintainer's own browsers or profiles.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isReservedBrowserPort, writeBidiPort } from "../src/fork/browser/bidi.ts";
 import { BrowserCommandError, type BrowserHostConnection, BrowserHosts } from "../src/fork/browser/client.ts";
 import { checkLink, formatResult } from "../src/fork/browser/index.ts";
+import { closeLocalPages, localPage } from "../src/fork/browser/local-pages.ts";
 import { ensurePrivateDir } from "../src/fork/browser/protocol.ts";
 import {
 	extensionBuild,
@@ -264,6 +265,24 @@ async function scenario(host: BrowserHostConnection, real: boolean): Promise<voi
 	const gone = await call("wait", { selector: "#moves", gone: true, timeout: 600 });
 	expect(gone).toMatchObject({ found: false, gone: true });
 	await expect(call("wait", { selector: "[[", timeout: 2000 })).rejects.toMatchObject({ code: "page" });
+
+	// a project file Prism serves to the browser; its one-time secret becomes a cookie of that port, which
+	// the page's own stylesheet request carries too.
+	const project = mkdtempSync(join(tmpdir(), "prism-e2e-local-"));
+	try {
+		writeFileSync(join(project, "index.html"), '<link rel="stylesheet" href="/style.css"><h1>Local page</h1>');
+		writeFileSync(join(project, "style.css"), "h1 { color: rgb(255, 0, 0) }");
+		const local = await localPage("e2e-local", project, join(project, "index.html"));
+		if (!local || "error" in local) throw new Error(JSON.stringify(local));
+		await call("navigate", { url: local.url.href });
+		expect((await call("wait", { text: "Local page", timeout: 10000 })).found).toBe(true);
+		expect(String((await call("evaluate", { expression: "location.href" })).value)).not.toContain("prism-preview");
+		const color = await call("evaluate", { expression: 'getComputedStyle(document.querySelector("h1")).color' });
+		expect(color.value).toBe("rgb(255, 0, 0)");
+	} finally {
+		closeLocalPages("e2e-local");
+		rmSync(project, { recursive: true, force: true });
+	}
 
 	await call("close");
 	expect((await call("tabs")).tabs).toHaveLength(0);

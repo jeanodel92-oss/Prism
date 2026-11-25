@@ -92,11 +92,11 @@ describe("fork: /settings by domain", () => {
 		]);
 		// the add-on switches alone; the web search service is in Network & web.
 		expect(domainItems(grouped, "Modules").map((entry) => entry.id)).toEqual(["builtin:web", "builtin:memory"]);
-		expect(domainItems(grouped, "Network & web").map((entry) => entry.id)).toEqual([
-			"web-search-provider",
-			"web-search-key",
-		]);
+		// Exa needs no key, so its key row is only in the advanced interface.
+		expect(domainItems(grouped, "Network & web").map((entry) => entry.id)).toEqual(["web-search-provider"]);
 		expect(domainItems(grouped, "Interface").map((entry) => entry.id)).toEqual(["interface-mode"]);
+		grouped.onChange("interface-mode", "advanced");
+		expect(domainItems(grouped, "Network & web").map((entry) => entry.id)).toContain("web-search-key");
 	});
 
 	it("hides technical settings until advanced settings are shown, and says which ones they are", () => {
@@ -114,6 +114,31 @@ describe("fork: /settings by domain", () => {
 		expect(grouped.isAdvancedSetting("clear-on-shrink")).toBe(true);
 		expect(grouped.isAdvancedSetting("tui-mode")).toBe(false);
 		expect(grouped.counts()).toEqual({ shown: 9, total: 9 });
+	});
+
+	// Simple keeps what changes a newcomer's experience.
+	it("keeps internal modules, duplicates and Exa's optional key out of the simple interface", () => {
+		const modules = ["web", "trace", "notify", "pi-goal"].map((name) => ({ name, enabled: true }));
+		const grouped = groupSettingsByDomain(
+			[item("mermaid-rendering"), item("compaction-threshold")],
+			vi.fn(),
+			extras({ builtinExtensions: modules, webSearch: { provider: "exa", keySource: "none" } }),
+		);
+		expect(domainItems(grouped, "Modules").map((entry) => entry.id)).toEqual(["builtin:web", "builtin:pi-goal"]);
+		expect(domainItems(grouped, "Conversation").map((entry) => entry.id)).toEqual(["compaction-threshold"]);
+		expect(domainItems(grouped, "Network & web").map((entry) => entry.id)).toEqual(["web-search-provider"]);
+		// The module's internal name ends its description only in the advanced interface.
+		const goal = () => domainItems(grouped, "Modules").find((entry) => entry.id === "builtin:pi-goal")!;
+		expect(goal().description).not.toContain("Module:");
+		grouped.onChange("interface-mode", "advanced");
+		expect(goal().description).toContain("Module: pi-goal.");
+		expect(domainItems(grouped, "Modules").map((entry) => entry.id)).toContain("builtin:trace");
+		// A service that needs its key keeps the key row in Simple.
+		const brave = groupSettingsByDomain([], vi.fn(), extras({ webSearch: { provider: "brave", keySource: "none" } }));
+		expect(domainItems(brave, "Network & web").map((entry) => entry.id)).toEqual([
+			"web-search-provider",
+			"web-search-key",
+		]);
 	});
 
 	// the interface mode is saved, and a saved advanced mode shows technical settings.
@@ -153,7 +178,8 @@ describe("fork: /settings by domain", () => {
 		const grouped = groupSettingsByDomain(
 			[{ ...item("mermaid-rendering"), description: "Render Mermaid code blocks as Unicode diagrams" }],
 			vi.fn(),
-			extras(),
+			// an advanced setting.
+			extras({ interfaceMode: "advanced" }),
 		);
 		expect(domainItems(grouped, "Appearance")[0]!.description).toContain("flowcharts");
 	});
@@ -163,7 +189,12 @@ describe("fork: /settings by domain", () => {
 		const grouped = groupSettingsByDomain(
 			[item("theme")],
 			vi.fn(),
-			extras({ commands: [{ command: "llama", label: "llama.cpp models", description: "d" }], onRunCommand }),
+			// llama.cpp's page is in the advanced interface only.
+			extras({
+				commands: [{ command: "llama", label: "llama.cpp models", description: "d" }],
+				onRunCommand,
+				interfaceMode: "advanced",
+			}),
 		);
 		expect(domainItems(grouped, "Other").map((entry) => entry.label)).toEqual(["Updates", "llama.cpp models"]);
 		grouped.onChange("command:llama", "open");

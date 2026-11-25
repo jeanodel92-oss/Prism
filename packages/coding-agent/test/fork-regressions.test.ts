@@ -238,6 +238,40 @@ describe("fork regressions", () => {
 		expect(await checkForPrismUpdate("1.0.0-fork.10", install, fetchLatest)).toBeUndefined();
 		expect(await checkForPrismUpdate("1.0.0-fork.9", install, async () => new Response("<html>"))).toBeUndefined();
 
+		// the site does not answer, so the stable list of the GitHub copy; never for a test site.
+		const siteDown = vi.fn(async (url: string | URL | Request) =>
+			String(url).startsWith("https://github.com/")
+				? new Response("1.0.0-fork.10\n")
+				: Promise.reject(new Error("connection refused")),
+		);
+		expect(await checkForPrismUpdate("1.0.0-fork.9", install, siteDown)).toBe("1.0.0-fork.10");
+		expect(String(siteDown.mock.calls[1][0])).toBe(
+			"https://github.com/jeanodel92-oss/Prism/releases/latest/download/LATEST",
+		);
+		const siteFails = vi.fn(async (url: string | URL | Request) =>
+			String(url).startsWith("https://github.com/")
+				? new Response("1.0.0-fork.10\n")
+				: new Response("", { status: 522 }),
+		);
+		expect(await checkForPrismUpdate("1.0.0-fork.9", install, siteFails)).toBe("1.0.0-fork.10");
+		const mirrorCanary = async (url: string | URL | Request) =>
+			String(url).startsWith("https://github.com/")
+				? new Response("1.0.0-fork.10.canary.1\n")
+				: new Response("", { status: 502 });
+		expect(await checkForPrismUpdate("1.0.0-fork.9", install, mirrorCanary)).toBeUndefined();
+		vi.stubEnv("PRISM_BASE_URL", "https://localhost:1");
+		siteDown.mockClear();
+		expect(await checkForPrismUpdate("1.0.0-fork.9", install, siteDown)).toBeUndefined();
+		expect(siteDown).toHaveBeenCalledTimes(1);
+		vi.stubEnv("PRISM_MIRROR_URL", "https://github.com/jeanodel92-oss/Prism/releases");
+		expect(await checkForPrismUpdate("1.0.0-fork.9", install, siteDown)).toBe("1.0.0-fork.10");
+		vi.stubEnv("PRISM_BASE_URL", "");
+		vi.stubEnv("PRISM_MIRROR_URL", "");
+		siteDown.mockClear();
+		expect(await checkForPrismUpdate("1.0.0-fork.9", install, siteDown)).toBeUndefined();
+		expect(siteDown).toHaveBeenCalledTimes(1);
+		vi.unstubAllEnvs();
+
 		fetchLatest.mockClear();
 		expect(await checkForPrismUpdate("1.0.0-fork.9", undefined, fetchLatest)).toBeUndefined();
 		vi.stubEnv("PI_OFFLINE", "1");

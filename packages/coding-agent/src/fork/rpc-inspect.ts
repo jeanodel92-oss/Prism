@@ -42,6 +42,10 @@
  *   returns `{reload: true}`; refused during a working turn. Creation never overwrites an existing agent.
  *   `agents_stop {run}` stops an agent running in the background. `agents_get` also lists the
  *   session's runs; `agent_transcript {session}` → `{entries}`, a run's full transcript.
+ *   `agents_run {agent, task}` and `agents_resume {session, message}` start a run for the user (→ the list
+ *   and `started`, its id); `agents_fork {task}` starts one on a copy of the conversation; `agents_advanced {on}` (→ `{reload: true}`), `agents_presets {names}` and
+ *   `agents_parallel {count}` set the advanced mode; `agents_builtin {name, model?, thinking?}` sets the model and
+ *   effort of the general agent or a preconfigured one (empty: the session's).
  */
 import { dirname } from "node:path";
 import type { ToolCall } from "@earendil-works/pi-ai";
@@ -107,6 +111,13 @@ export const INSPECT_COMMANDS = new Set([
 	"agents_policy",
 	"agents_disable",
 	"agents_stop",
+	"agents_run",
+	"agents_resume",
+	"agents_fork",
+	"agents_advanced",
+	"agents_presets",
+	"agents_parallel",
+	"agents_builtin",
 	"agent_transcript",
 ]);
 
@@ -118,7 +129,14 @@ export async function handleInspectCommand(command: Command, session: AgentSessi
 		case "agents_remove":
 		case "agents_policy":
 		case "agents_disable":
-		case "agents_stop": {
+		case "agents_stop":
+		case "agents_run":
+		case "agents_resume":
+		case "agents_fork":
+		case "agents_advanced":
+		case "agents_presets":
+		case "agents_parallel":
+		case "agents_builtin": {
 			const panel = agentsPanel(session.extensionRunner.createContext());
 			if (!panel) throw new Error(t("module off"));
 			if (command.type === "agents_save") panel.save(command.agent, command.existingName);
@@ -135,6 +153,20 @@ export async function handleInspectCommand(command: Command, session: AgentSessi
 				panel.disable();
 				return { reload: true };
 			}
+			// the user starts an agent, or continues a finished one; the run's id comes back with the list.
+			if (command.type === "agents_run")
+				return { ...panel.snapshot(), started: panel.run(command.agent, command.task) };
+			if (command.type === "agents_resume")
+				return { ...panel.snapshot(), started: panel.resume(command.session, command.message) };
+			if (command.type === "agents_fork") return { ...panel.snapshot(), started: panel.fork(command.task) };
+			if (command.type === "agents_advanced") {
+				panel.setAdvanced(command.on);
+				return { reload: true };
+			}
+			if (command.type === "agents_presets") panel.setPresets(command.names);
+			if (command.type === "agents_parallel") panel.setMaxParallel(command.count);
+			if (command.type === "agents_builtin")
+				panel.setBuiltin(command.name, { model: command.model, thinking: command.thinking });
 			return panel.snapshot();
 		}
 		case "agent_transcript": {

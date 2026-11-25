@@ -119,7 +119,7 @@ describe("fork: native /onboarding", () => {
 		await vi.waitFor(() => expect(e.menu()?.screenId).toBe("step:language"));
 		expect(e.menu()).toMatchObject({ kind: "choice", title: "Language", hint: "close" });
 		expect(e.menu().lines).toEqual([
-			"Welcome to Prism · Step 1 of 6",
+			"Welcome to Prism · Step 1 of 7",
 			"The language of Prism's own interface. The model answers in the language you write in.",
 		]);
 		expect(e.menu().currentItemId).toBe(e.item("Automatic").id);
@@ -157,6 +157,12 @@ describe("fork: native /onboarding", () => {
 		// fork: computer use, a step of its own, all off at first.
 		await vi.waitFor(() => expect(e.menu().screenId).toBe("step:computer"));
 		expect(e.item("Your browser").selected).toBe(false);
+		e.act({ kind: "activate", itemId: e.item("Continue").id });
+
+		// the privacy step, on at first; no Exa row, web search was turned off above.
+		await vi.waitFor(() => expect(e.menu().screenId).toBe("step:privacy"));
+		expect(e.item("Model list from pi.dev").selected).toBe(true);
+		expect(e.menu().items.map((entry: { label: string }) => entry.label)).toEqual(["Model list from pi.dev"]);
 		e.act({ kind: "activate", itemId: e.item("Continue").id });
 
 		await vi.waitFor(() => expect(e.menu().screenId).toBe("step:connection"));
@@ -205,6 +211,8 @@ describe("fork: native /onboarding", () => {
 		await vi.waitFor(() => expect(e.menu().screenId).toBe("step:modules"));
 		e.act({ kind: "activate", itemId: e.item("Continue").id });
 		await vi.waitFor(() => expect(e.menu().screenId).toBe("step:computer"));
+		e.act({ kind: "activate", itemId: e.item("Continue").id });
+		await vi.waitFor(() => expect(e.menu().screenId).toBe("step:privacy"));
 		e.act({ kind: "activate", itemId: e.item("Continue").id });
 		await e.choose("connection", "Keep this model");
 		await finished;

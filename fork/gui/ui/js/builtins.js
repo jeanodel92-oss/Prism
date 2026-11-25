@@ -228,7 +228,7 @@ const builtins = {
 // Engine commands the window draws with its own screen, from the engine's data (screens.js), for the arguments
 // it handles: /doctor export <path> and anything else still go to the engine.
 const screens = {
-	agents: () => agentsScreen,
+	agents: (args) => (view) => agentsScreen(view, args),
 	"lsp-setup": (args) => (view) => lspSetupScreen(view, args === "all"),
 	checkpoints: () => (view) => checkpointsScreen(view),
 	undo: () => (view) => checkpointsScreen(view, true),

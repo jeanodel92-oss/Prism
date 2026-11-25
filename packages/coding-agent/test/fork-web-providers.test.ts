@@ -458,7 +458,8 @@ describe("fork: web search providers", () => {
 			await AuthStorage.create().modify(provider, async () => ({ type: "api_key", key: KEY }));
 			const extras = await createSettingsDomainExtras(options);
 			expect(extras.webSearch?.keySource).toBe("auth");
-			const grouped = groupSettingsByDomain([], vi.fn(), extras);
+			// Exa's key row is in the advanced interface only.
+			const grouped = groupSettingsByDomain([], vi.fn(), { ...extras, interfaceMode: "advanced" });
 			expect(webSearchItems(grouped)[1]!.currentValue).toBe("saved key");
 			expect(JSON.stringify(extras)).not.toContain(KEY);
 		},
@@ -475,7 +476,8 @@ describe("fork: web search providers", () => {
 				hasWebKeyCommand: true,
 				onWebSearchKey,
 			});
-			const grouped = groupSettingsByDomain([], vi.fn(), extras);
+			// Exa's key row is in the advanced interface only.
+			const grouped = groupSettingsByDomain([], vi.fn(), { ...extras, interfaceMode: "advanced" });
 			const items = webSearchItems(grouped);
 			expect(items[0]!.label).toBe("Provider");
 			for (const item of items) {
@@ -621,7 +623,8 @@ describe("fork: web search providers", () => {
 				onWebSearchKey,
 				onWebSearchReload,
 			});
-			const grouped = groupSettingsByDomain([], vi.fn(), extras);
+			// Exa's key row is in the advanced interface only.
+			const grouped = groupSettingsByDomain([], vi.fn(), { ...extras, interfaceMode: "advanced" });
 			const items = webSearchItems(grouped);
 			expect(items[0]!.currentValue).toBe(provider);
 			expect(open(items[0]!).map((item) => item.id)).toEqual([...WEB_SEARCH_PROVIDERS]);

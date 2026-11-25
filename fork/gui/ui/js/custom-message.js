@@ -32,10 +32,16 @@ export function customText(message, text) {
 	if (message.customType === "agent-background")
 		return text.replace(/^\*\*Agent (.+?): background task ended\*\*/, (_match, name) => `**${t("agentBackgroundEnded", name)}**`);
 	// an agent run in the background answered or failed (agents.ts).
-	if (message.customType === "agent-answer")
+	if (message.customType === "agent-answer") {
+		// an answer agent_wait returned stays out of the model's message, in `details.answer`: shown here.
+		const answer = message.details?.answer;
 		return text
+			// the line telling the model the user started this run is for the model only (agents.ts).
+			.replace(/^(\*\*.+\*\*\n\n)\[Started by the user, not by you: [^\n]*\n\n/, "$1")
 			.replace(/^\*\*Agent (.+?) (answered|failed|stopped) \((.+?)\)\*\*/, (_match, name, how, id) => `**${t({ failed: "agentFailed", stopped: "agentStopped" }[how] ?? "agentAnswered", name, id)}**`)
-			.replace(/^(\*\*.+\*\*\n\n)The user stopped this agent before it answered\.$/, (_match, title) => `${title}${t("agentStoppedByUser")}`);
+			.replace(/^(\*\*.+\*\*\n\n)The user stopped this agent before it answered\.$/, (_match, title) => `${title}${t("agentStoppedByUser")}`)
+			.replace(/^(\*\*.+\*\*\n\n)Its answer was returned by agent_wait\.$/, (match, title) => (typeof answer === "string" ? `${title}${answer}` : match));
+	}
 	if (message.customType !== "proposed-plan") return text;
 	return text.replace(
 		/^\*\*(Proposed Plan|Saved Plan|Active Implementation Plan)\*\*/,

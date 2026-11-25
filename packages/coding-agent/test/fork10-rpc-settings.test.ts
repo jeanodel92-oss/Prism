@@ -123,6 +123,8 @@ describe("fork.10: native /settings", () => {
 
 	it("shows the domains, then a domain's settings, and saves a change as the terminal does", async () => {
 		const e = await engine();
+		// Mermaid, the three-value setting these steps use, is in the advanced interface only.
+		e.settings.setInterfaceMode("advanced");
 		const done = e.run();
 		await vi.waitFor(() => expect(e.menu()?.screenId).toBe("settings:domains"));
 		expect(e.menu()).toMatchObject({ kind: "choice", title: "Settings", hint: "close" });
@@ -296,6 +298,8 @@ describe("fork.10: native /settings", () => {
 	// the window's settings search, across every domain as in the terminal.
 	it("searches the settings of every domain and changes one in place", async () => {
 		const e = await engine();
+		// Mermaid, the three-value setting these steps use, is in the advanced interface only.
+		e.settings.setInterfaceMode("advanced");
 		const done = e.run({ layout: "sections", domain: "models" });
 		await vi.waitFor(() => expect(e.menu()?.screenId).toBe("settings:models"));
 		e.act({ kind: "search", query: "  APPEARANCE  " });
@@ -357,6 +361,8 @@ describe("fork.10: native /settings", () => {
 	it("shows French values and saves the setting's own", async () => {
 		setLanguage("fr");
 		const e = await engine();
+		// Mermaid, the three-value setting these steps use, is in the advanced interface only.
+		e.settings.setInterfaceMode("advanced");
 		const done = e.run({ domain: "appearance" });
 		await vi.waitFor(() => expect(e.menu()?.screenId).toBe("settings:appearance"));
 		const row = e.menu().items.find((item) => item.values?.length === 3)!;

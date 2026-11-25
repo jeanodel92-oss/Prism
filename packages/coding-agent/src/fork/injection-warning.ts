@@ -34,9 +34,9 @@ export default function injectionWarning(pi: ExtensionAPI): void {
 			items: () => [
 				{
 					id: "injection-warning",
-					label: "Prompt injection warning",
+					label: "Hidden instructions alert",
 					description:
-						"Pause on likely instructions hidden in tool results. A risk reduction, not a guarantee; content is never changed.",
+						"Stops the agent when something it reads (a page, a file, a command's output) holds instructions that seem meant for it, and asks whether to continue. A risk reduction, not a guarantee; the content is never changed.",
 					currentValue: enabled ? "on" : "off",
 					values: ["on", "off"],
 				},

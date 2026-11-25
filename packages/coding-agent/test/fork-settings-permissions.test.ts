@@ -144,16 +144,9 @@ describe("fork: Permissions & sandbox in /settings", () => {
 		const simple = domainItems(deps, false).map((item) => item.id);
 		expect(simple).not.toContain("sandbox-write");
 		expect(simple).not.toContain("perm-protected");
-		// the simple interface keeps what a beginner needs.
-		expect(simple).toEqual([
-			"perm-mode",
-			"perm-default-mode",
-			"command:perm window",
-			"command:perm scope",
-			"perm-project",
-			"sandbox-state",
-			"sandbox-read-limit",
-		]);
+		// the simple interface keeps what a beginner needs. fork.12.5
+		// the modes in effect, the task scope and the project's rules moved to the advanced interface.
+		expect(simple).toEqual(["perm-mode", "perm-default-mode", "sandbox-state", "sandbox-read-limit"]);
 		setLanguage("fr");
 		const fr = domainItems(deps);
 		expect(fr.find((item) => item.id === "perm-rules")).toMatchObject({

@@ -92,6 +92,8 @@ describe("fork: the last settings domains", () => {
 			builtinExtensions: [],
 			onBuiltinExtensionChange: vi.fn(),
 			sections: () => [section],
+			// the default budgets are in the advanced interface only.
+			interfaceMode: "advanced",
 		})
 			.domains()
 			.find((d) => d.id === "conversation")!

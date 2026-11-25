@@ -10,7 +10,8 @@ import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;:]*m|\x1b_[^\x07]*\x07/g, "");
 
-function setup(rows = 30) {
+/** `interfaceMode`: fork.12.5, the Mermaid setting the tests choose from is in the advanced interface only. */
+function setup(rows = 30, interfaceMode: "simple" | "advanced" = "simple") {
 	const onChange = vi.fn();
 	const items: SettingItem[] = [
 		{ id: "theme", label: "Theme", currentValue: "dark", values: ["dark", "light"] },
@@ -29,6 +30,7 @@ function setup(rows = 30) {
 	const model = groupSettingsByDomain(items, onChange, {
 		builtinExtensions: [{ name: "web", enabled: true }],
 		onBuiltinExtensionChange: vi.fn(),
+		interfaceMode,
 	});
 	const onClose = vi.fn();
 	const view = new SettingsView(model, { onClose, rows: () => rows });
@@ -88,7 +90,7 @@ describe("fork: /settings window", () => {
 	});
 
 	it("goes into the settings with →, switches on/off with Enter, opens choices with their descriptions", () => {
-		const { view, onChange, model } = setup();
+		const { view, onChange, model } = setup(30, "advanced");
 		view.render(100);
 		view.handleInput(RIGHT);
 		view.handleInput(DOWN);
@@ -180,7 +182,7 @@ describe("fork: /settings window", () => {
 	});
 
 	it("keeps a space between a cut value and the domain in search results", () => {
-		const { view } = setup();
+		const { view } = setup(30, "advanced");
 		for (const key of "/mermaid") view.handleInput(key);
 		for (const width of [100, 44, 40]) {
 			const row = view

@@ -1,5 +1,6 @@
 import { APP_NAME } from "../config.ts";
 import { fill, t } from "../fork/i18n/index.ts";
+import { trustedWithoutPrompt } from "../fork/project-trust-default.ts";
 import { emitProjectTrustEvent } from "./extensions/runner.ts";
 import type { LoadExtensionsResult, ProjectTrustContext } from "./extensions/types.ts";
 import type { DefaultProjectTrust } from "./settings-manager.ts";
@@ -57,7 +58,9 @@ export async function resolveProjectTrusted(options: ResolveProjectTrustedOption
 		return options.trustOverride;
 	}
 	if (!hasTrustRequiringProjectResources(options.cwd)) {
-		return true;
+		// fork (upstream 31ade0e0d, adapted): a saved refusal holds for a folder without project resources too, as at
+		// startup (the package commands come through here).
+		return trustedWithoutPrompt(options.trustStore.get(options.cwd), false);
 	}
 
 	if (options.extensionsResult) {

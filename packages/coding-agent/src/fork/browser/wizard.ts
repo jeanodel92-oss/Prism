@@ -55,8 +55,11 @@ export interface WizardDeps {
 	linked(): Promise<LinkedBrowser[]>;
 	/** A tab opened, read and closed in that browser through the extension: undefined, or what failed. */
 	check(pid: number): Promise<string | undefined>;
-	/** Makes it the browser the agent uses. */
-	choose(name: string): void;
+	/**
+	 * Makes it the browser the agent uses: `name` as its extension names it, `browser` as the setup found it, which the
+	 * browser tool starts when no browser is linked.
+	 */
+	choose(name: string, browser: FoundBrowser): void;
 	sleep(ms: number): Promise<void>;
 	/** How long the check waits for the extension to connect. */
 	waitMs?: number;
@@ -459,7 +462,7 @@ async function check(
 		leave = true;
 		if (answer !== "done") return "steps";
 		if (found && !failure) {
-			deps.choose(found.name);
+			deps.choose(found.name, browser);
 			await ui.ask({
 				id: "linked",
 				title: fill("{0} is linked", browser.name),

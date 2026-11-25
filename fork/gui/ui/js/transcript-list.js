@@ -7,6 +7,15 @@
 // An entry is pinned (never dropped) once it holds state of its own: a tool the engine still reports on, a question,
 // a block the reader opened. Two spacers hold the place of what is not drawn, at the heights last measured (or the
 // average of entries of the same kind, until measured): the scroll bar and the view stay where the reader expects.
+//
+// scrolling up fast stuttered. Each entry drawn above the view is measured at a height other
+// than the one assumed, and each new measure changed the average assumed for the thousands of entries above: the top
+// spacer changed by up to tens of thousands of px on many frames of a scroll up, and the scroll position moved to
+// keep the view in place (the list's own correction, or WebKitGTK's scroll anchoring), which the wheel's smooth
+// scroll, aiming at a position set before, then undid: the transcript jumped. While the reader scrolls, the heights
+// assumed are kept as they were, and the difference of an entry measured goes into the top spacer (`drift`), which
+// leaves the scroll position alone; once the view has been still for a moment (or the spacer has no room left), the
+// averages and the spacer are set right and the view moves once.
 
 /** Room drawn above and below the view, at least: a view's height, so a scroll by a page finds its entries drawn. */
 const OVERSCAN_MIN = 600;
@@ -16,6 +25,8 @@ const DEFAULT_HEIGHTS = { user: 60, assistant: 240, tool: 80, turn: 20, other: 4
 const HOLD_SPAN_MAX = 200;
 /** Entries drawn while the transcript is not in the page (nothing can be measured there): its last ones. */
 const DETACHED_TAIL = 30;
+/** How long the view stays still before the top spacer is set back to the heights it stands for (`drift`), in ms. */
+const SETTLE_MS = 250;
 
 /** What an element of the transcript is, for the heights assumed before it is measured. */
 export function kindOf(el) {
@@ -87,6 +98,10 @@ export class TranscriptList {
 		this.bottomSpacer = undefined;
 		this.resizes = undefined;
 		this.scheduled = false;
+		this.drift = 0; // px of the top spacer beyond the heights of the entries it stands for (see above)
+		this.assumed = undefined; // kind → height assumed for an entry not measured; kept while the reader scrolls
+		this.kept = undefined; // the entry at the view's top after the last reconcile, and where it was
+		this.settling = undefined; // the timer that sets the top spacer back once the view is still
 	}
 
 	get size() {
@@ -138,6 +153,8 @@ export class TranscriptList {
 		this.entries = entries;
 		this.start = 0;
 		this.end = -1;
+		this.drift = 0;
+		this.assumed = undefined;
 		for (const entry of entries) entry.pinned = false;
 		// At the end while the view follows it (a conversation opened); elsewhere, where the view is.
 		if (this.#measurable()) this.reconcile();
@@ -244,8 +261,9 @@ export class TranscriptList {
 	 * `anchor` ({ entry, offset }): the view goes to that entry, its top `offset` px under the view's top. Otherwise
 	 * what the reader sees stays where it is, whatever the heights of the entries drawn or dropped above it.
 	 */
-	reconcile({ end = false, anchor: target } = {}) {
+	reconcile({ end = false, anchor: target, settle = false } = {}) {
 		if (!this.#measurable()) return;
+		clearTimeout(this.settling);
 		if (!this.resizes) {
 			// What is drawn changes with the transcript's height: a block opened or closed, a reply growing.
 			this.resizes = new ResizeObserver(() => this.schedule());
@@ -259,19 +277,36 @@ export class TranscriptList {
 		// .
 		const following = this.entries.length > 0 && (end || (!target && this.host.following()));
 		let targetIndex = target ? this.entries.indexOf(target.entry) : -1;
+		// The view is placed (or still): the top spacer stands for the heights above it again.
+		if (following || targetIndex >= 0 || settle) this.drift = 0;
 		for (let pass = 0; pass < 4; pass++) {
+			// The heights assumed follow the entries measured only while the view is placed or still: while the reader
+			// scrolls, a new average would move the thousands of entries above, the view with them.
+			if (following || targetIndex >= 0 || settle) this.assumed = undefined;
 			const gap = Number.parseFloat(getComputedStyle(this.root).rowGap) || 0;
 			const viewTop = scroller.getBoundingClientRect().top;
-			// What the reader sees: the first entry in the page whose bottom is in the view, and where its top is.
+			const rootTop = this.root.getBoundingClientRect().top;
+			// What the reader sees: the first entry in the page whose bottom is in the view, and where its top is (from
+			// the view's top, and from the transcript's).
 			let anchor = -1;
 			let offset = 0;
+			let inRoot = 0;
 			for (let i = this.start; i <= this.end; i++) {
 				const entry = this.entries[i];
 				const rect = this.#measure(entry);
 				if (anchor < 0 && !entry.hidden && rect.bottom > viewTop) {
 					anchor = i;
 					offset = rect.top - viewTop;
+					inRoot = rect.top - rootTop;
 				}
+			}
+			// The reader has not scrolled since the last reconcile, but an entry above the view changed its height
+			// meanwhile (an image or a diagram drawn late): its entry goes back where the reader saw it. The browser's
+			// own scroll anchoring, which did that, is off (style.css, .scroller).
+			const kept = this.kept;
+			if (pass === 0 && kept && Math.abs(scroller.scrollTop - kept.scrollTop) < 0.5 && kept.entry.el?.isConnected) {
+				const index = this.entries.indexOf(kept.entry);
+				if (index >= this.start && index <= this.end) [anchor, offset, inRoot] = [index, kept.offset, kept.inRoot];
 			}
 			const tops = this.#tops(gap);
 			const room = scroller.clientHeight;
@@ -282,7 +317,7 @@ export class TranscriptList {
 				let top;
 				if (targetIndex >= 0) top = tops[targetIndex] - target.offset;
 				else if (anchor >= 0) top = tops[anchor] - offset;
-				else top = scroller.scrollTop - this.#rootTop(scroller);
+				else top = scroller.scrollTop - this.#rootTop(scroller) - this.drift;
 				range = rangeOf(tops, top - overscan, top + room + overscan);
 				if (targetIndex >= 0) range = [Math.min(range[0], targetIndex), Math.max(range[1], targetIndex)];
 			}
@@ -305,8 +340,16 @@ export class TranscriptList {
 					this.host.moved(scroller.scrollTop - was, true);
 				}
 			} else if (anchor >= 0 && this.entries[anchor]?.el?.isConnected) {
-				// The reader's entry where it was: the heights drawn above it differ from those assumed.
-				const delta = this.entries[anchor].el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
+				// The reader's entry where it was: the heights drawn above it differ from those assumed. The top spacer
+				// takes the difference while it has room (the scroll position stays); otherwise the view moves. The
+				// difference is read from the transcript's top, which no move of the view hides (a browser's own scroll
+				// anchoring, should one still run).
+				const el = this.entries[anchor].el;
+				if (!settle) {
+					const shifted = el.getBoundingClientRect().top - this.root.getBoundingClientRect().top - inRoot;
+					if (Math.abs(shifted) > 0.5) this.#absorb(tops, gap, shifted);
+				}
+				const delta = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
 				if (Math.abs(delta) > 0.5) {
 					scroller.scrollTop += delta;
 					this.host.moved(scroller.scrollTop - was, false);
@@ -316,6 +359,9 @@ export class TranscriptList {
 			// The entry asked for stays the anchor of the next pass, at its place now.
 			if (targetIndex >= 0) targetIndex = this.entries.indexOf(target.entry);
 		}
+		this.#keep(scroller);
+		// Reconciled again on each scroll: the spacer is set back only once the view has been still for SETTLE_MS.
+		if (this.drift !== 0) this.settling = setTimeout(() => this.reconcile({ settle: true }), SETTLE_MS);
 	}
 
 	/** Shows `entry` with its top `offset` px under the view's top (search, the jump between prompts). */
@@ -337,7 +383,7 @@ export class TranscriptList {
 		const gap = Number.parseFloat(getComputedStyle(this.root).rowGap) || 0;
 		const viewTop = scroller.getBoundingClientRect().top;
 		const tops = this.#tops(gap);
-		let shift = this.#rootTop(scroller) - scroller.scrollTop;
+		let shift = this.#rootTop(scroller) - scroller.scrollTop + this.drift;
 		const first = this.entries[this.start];
 		if (first?.el?.isConnected) shift = first.el.getBoundingClientRect().top - viewTop - tops[this.start];
 		return Array.from({ length: this.entries.length }, (_, i) => {
@@ -374,11 +420,14 @@ export class TranscriptList {
 	}
 
 	#tops(gap) {
-		const assumed = {};
-		for (const [kind, height] of Object.entries(DEFAULT_HEIGHTS)) {
-			const seen = this.measured[kind];
-			assumed[kind] = seen?.count ? seen.sum / seen.count : height;
+		if (!this.assumed) {
+			this.assumed = {};
+			for (const [kind, height] of Object.entries(DEFAULT_HEIGHTS)) {
+				const seen = this.measured[kind];
+				this.assumed[kind] = seen?.count ? seen.sum / seen.count : height;
+			}
 		}
+		const assumed = this.assumed;
 		return topsOf(
 			this.entries.map((entry) => {
 				if (entry.hidden || entry.kind === "slot") return 0;
@@ -442,10 +491,37 @@ export class TranscriptList {
 		this.host.dropped(entry, el);
 	}
 
-	/** The spacers' heights: what is not drawn above and below takes the room it would. */
+	/** The entry at the view's top and where it is, for the next reconcile (`kept`). */
+	#keep(scroller) {
+		this.kept = undefined;
+		const viewTop = scroller.getBoundingClientRect().top;
+		const rootTop = this.root.getBoundingClientRect().top;
+		for (let i = this.start; i <= this.end; i++) {
+			const el = this.entries[i].el;
+			const rect = el.getBoundingClientRect();
+			if (rect.height > 0 && rect.bottom > viewTop) {
+				this.kept = { entry: this.entries[i], offset: rect.top - viewTop, inRoot: rect.top - rootTop, scrollTop: scroller.scrollTop };
+				return;
+			}
+		}
+	}
+
+	/**
+	 * The top spacer shrunk by `delta` px, so what is drawn below it moves back by `delta` while the scroll position
+	 * stays. When it cannot (no entry left above what is drawn: the transcript's start must be at its top; or the spacer
+	 * would be under 0), the drift is dropped instead and the caller moves the view by what is left.
+	 */
+	#absorb(tops, gap, delta) {
+		const drift = this.drift - delta;
+		const room = this.start > 0 && this.end >= this.start && tops[this.start] - gap + drift >= 0;
+		this.drift = room ? drift : 0;
+		this.#spacers(tops, gap);
+	}
+
+	/** The spacers' heights: what is not drawn above and below takes the room it would (and the top one its drift). */
 	#spacers(tops, gap) {
 		const n = this.entries.length;
-		const above = this.end >= this.start ? tops[this.start] : 0;
+		const above = this.end >= this.start ? tops[this.start] + this.drift : 0;
 		const below = this.end >= this.start ? tops[n] - tops[this.end + 1] : 0;
 		place(this.topSpacer, above > 0 ? above - gap : undefined, (el) => this.root.prepend(el));
 		place(this.bottomSpacer, below > 0 ? below - gap : undefined, (el) => this.root.append(el));

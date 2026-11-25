@@ -5,6 +5,50 @@ site show these notes. Earlier versions (before 1.0.0-fork.12) were private prev
 
 ## [Unreleased]
 
+## [1.0.0-fork.12.5] - 2026-11-24
+
+### Changed
+- The Simple settings show 50 settings instead of 89, in plainer words; everything else is still under Advanced.
+- The first-start setup explains language servers, MCP servers, Goal mode and the sandbox in plain words.
+- `prism --help` shows Prism's own examples.
+- Started from your home folder, the terminal now offers `~/Prism`, the window's folder, first.
+
+### Removed
+- The first-launch line saying that commands now read only the project.
+- `--perm-yolo`: use `--perm-mode broad`, which is the default anyway.
+
+### Fixed
+- On the phone and in a narrow window, opening an agent's transcript, a scheduled task, the desktop or the trace from
+  the side menu now closes the menu instead of leaving it over the screen.
+- In the window, scrolling up fast through a long conversation no longer jumps around.
+- In the window and on the phone, when the model asks several questions, you can go back to the previous one and
+  review your answers before sending them.
+- On the phone, the memory's Update button and the settings no longer leave the side menu in the way.
+- In the window, the settings search field is now shown in the chosen language.
+- A message with deeply nested `>` quotes no longer freezes and crashes Prism, including when the session is reopened.
+- Security fixes from pi 1.5: stricter checks on streamed replies and MCP event streams, and a refused folder stays
+  refused for package commands.
+
+### Added
+- Every agent, built-in ones included, can have its own model and effort (`/agents`); by default it uses the session's.
+- The browser can show the agent the pages it made: a project file by its path or a `file://` URL, and a server it
+  started (`npm run dev`) at `http://localhost:<port>`, so it can check a page visually without opening a browser on
+  your desktop. Files outside the project and protected files stay refused.
+- When no browser is linked, the browser tool starts the one you set up with `/browser setup` and waits for it.
+- An advanced agent mode, off by default (`/agents`): a general agent you do not need to create, a model chosen for
+  each call from your selected models, a tool to wait for agents' answers, and a limit on agents running at once. It
+  adds to the normal mode: your own agents and settings stay.
+- In the advanced agent mode, ready-made agents to turn on in `/agents`: an explorer, a planner and a reviewer that
+  only read, and a worker with all tools.
+- `/agents` and the window's sub-agents panel list this session's agents: stop one, send a finished one a
+  message (it keeps its context), or run one yourself. The model reacts to the answer as soon as it arrives.
+- `/agents fork <task>` runs an agent on a copy of this conversation (advanced agent mode).
+- A Privacy step in the first-start setup: turn off the model list from pi.dev, or send web searches to your own
+  SearXNG instead of Exa.
+- When the Prism site is down, installing and `prism update` fall back to the copy of the stable releases on GitHub,
+  checked with the same signature. Backup install command:
+  `curl -fsSL https://github.com/jeanodel92-oss/Prism/releases/latest/download/install.sh | sh`.
+
 ## [1.0.0-fork.12.2] - 2026-11-23
 
 ### Added

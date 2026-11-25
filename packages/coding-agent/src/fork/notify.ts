@@ -322,7 +322,7 @@ export default function (pi: ExtensionAPI) {
 			{
 				id: "notify-approvals",
 				label: "Approval notifications",
-				description: `A desktop notification when a tool call has waited ${APPROVAL_DELAY_MS / 1000} s for your approval, at most one per ${APPROVAL_THROTTLE_MS / 1000} s.`,
+				description: `A desktop notification when the agent has waited ${APPROVAL_DELAY_MS / 1000} s for your approval, at most one per ${APPROVAL_THROTTLE_MS / 1000} s.`,
 				currentValue: approvalsEnabled ? "on" : "off",
 				values: ["on", "off"],
 			},

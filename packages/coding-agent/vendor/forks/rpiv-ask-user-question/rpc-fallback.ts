@@ -34,6 +34,17 @@ const MULTI_SELECT_INSTRUCTIONS =
 const CUSTOM_ANSWER_TITLE = "Type your answer:";
 const MULTI_SELECT_PLACEHOLDER = "1,3";
 
+// prism-fork: going back to the previous question, and a review before the answers are sent (once an option was chosen there was no way back, where the terminal's tabs and other harnesses allow it)
+// .
+const PREVIOUS_LABEL = "← Previous question";
+const REVIEW_TITLE = "Review your answers";
+const SUBMIT_LABEL = "Submit answers";
+const CHANGE_LABEL = "Change {n}. {question}";
+const CANCEL_LABEL = "Cancel";
+const NO_ANSWER = "(no answer)";
+/** What a question's step returns when the user goes back to the previous one. */
+const BACK = Symbol("back");
+
 /** Longest preview slice folded into a select title before truncation. */
 const MAX_PREVIEW_CHARS = 600;
 
@@ -93,24 +104,67 @@ function buildPreviewBlock(question: QuestionData): string {
  * mirroring Esc in the TUI — and the shared envelope emits DECLINE. A
  * `QuestionAnswer` is produced per question otherwise, so the envelope is
  * identical to the TUI path's.
+ *
+ * prism-fork: a single-select question after the first offers "← Previous question", and with several questions a
+ * review lists the answers before they are sent, each one open to change (as the TUI's Submit tab). Dismissing a
+ * question reopened from the review goes back to the review with its answer unchanged.
  */
 export async function runRpcQuestionnaire(
 	ui: DialogUI,
 	params: QuestionParams,
 	opts?: DialogOptions,
 ): Promise<QuestionnaireResult> {
-	const answers: QuestionAnswer[] = [];
-	for (let qi = 0; qi < params.questions.length; qi++) {
-		if (opts?.signal?.aborted) return { answers, cancelled: true };
+	const count = params.questions.length;
+	const answers: (QuestionAnswer | undefined)[] = new Array(count).fill(undefined);
+	const given = () => answers.filter((answer): answer is QuestionAnswer => answer !== undefined);
+	const ask = (qi: number, back: boolean) => {
 		const q = params.questions[qi];
 		const header = q.header ? `[${q.header}] ` : "";
-		const answer = q.multiSelect
-			? await askMultiSelect(ui, q, qi, header, opts)
-			: await askSingleSelect(ui, q, qi, header, opts);
-		if (answer === undefined) return { answers, cancelled: true };
-		answers.push(answer);
+		return q.multiSelect
+			? askMultiSelect(ui, q, qi, header, opts)
+			: askSingleSelect(ui, q, qi, header, opts, back);
+	};
+	for (let qi = 0; qi < count; ) {
+		if (opts?.signal?.aborted) return { answers: given(), cancelled: true };
+		const answer = await ask(qi, qi > 0);
+		if (answer === undefined) return { answers: given(), cancelled: true };
+		if (answer === BACK) {
+			qi--;
+			continue;
+		}
+		answers[qi] = answer;
+		qi++;
 	}
-	return { answers, cancelled: false };
+	while (count > 1) {
+		if (opts?.signal?.aborted) return { answers: given(), cancelled: true };
+		const submit = t("submit.label", SUBMIT_LABEL);
+		const cancel = t("submit.cancel", CANCEL_LABEL);
+		const changes = params.questions.map((q, i) =>
+			t("rpc.review_change", CHANGE_LABEL)
+				.replace("{n}", () => String(i + 1))
+				.replace("{question}", () => q.header || q.question),
+		);
+		const lines = params.questions.map((q, i) => `${i + 1}. ${q.question}\n   → ${answerText(answers[i])}`);
+		const chosen = await ui.select(
+			`${t("submit.review_title", REVIEW_TITLE)}\n\n${lines.join("\n")}`,
+			[submit, ...changes, cancel],
+			opts,
+		);
+		if (chosen == null || chosen === cancel) return { answers: given(), cancelled: true };
+		if (chosen === submit) break;
+		const qi = changes.indexOf(chosen);
+		if (qi < 0) return { answers: given(), cancelled: true };
+		const answer = await ask(qi, false);
+		if (answer !== undefined && answer !== BACK) answers[qi] = answer;
+	}
+	return { answers: given(), cancelled: false };
+}
+
+/** An answer as the review lists it. */
+function answerText(answer: QuestionAnswer | undefined): string {
+	if (!answer) return t("rpc.no_answer", NO_ANSWER);
+	if (answer.kind === "multi") return answer.selected?.length ? answer.selected.join(", ") : t("rpc.no_answer", NO_ANSWER);
+	return answer.answer ?? t("rpc.no_answer", NO_ANSWER);
 }
 
 /** `undefined` means the user dismissed the dialog (cancel the questionnaire). */
@@ -120,11 +174,19 @@ async function askSingleSelect(
 	questionIndex: number,
 	header: string,
 	opts?: DialogOptions,
-): Promise<QuestionAnswer | undefined> {
+	back = false,
+): Promise<QuestionAnswer | typeof BACK | undefined> {
 	const options = q.options.map(formatOptionLine);
 	options.push(`${q.options.length + 1}. ${displayLabel("other")}`);
-	const chosen = await ui.select(`${header}${q.question}${buildPreviewBlock(q)}`, options, opts);
+	// prism-fork: the way back to the previous question, last.
+	const previous = t("rpc.previous", PREVIOUS_LABEL);
+	const chosen = await ui.select(
+		`${header}${q.question}${buildPreviewBlock(q)}`,
+		back ? [...options, previous] : options,
+		opts,
+	);
 	if (chosen == null) return undefined;
+	if (back && chosen === previous) return BACK;
 	const idx = parseIndex(chosen, options.length);
 	// A host returning something outside the offered list is indistinguishable
 	// from a dismissal — treat it as one rather than fabricate an answer.

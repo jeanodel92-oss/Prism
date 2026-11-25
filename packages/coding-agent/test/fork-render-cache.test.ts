@@ -114,9 +114,11 @@ describe("fork: hooked transcript renders are cached", () => {
 		expect(calls.assistant).toBe(2);
 		message.updateContent(assistant("partial, then done"), false);
 		const done = message.render(40);
-		// render() adds the OSC 133 marks to its copy, never to the cached lines.
-		expect(message.render(40)).toEqual(done);
-		expect(message.render(40)).toEqual(done);
+		// render() adds the OSC 133 marks to its copy, never to the cached lines. it returns that same
+		// marked array while nothing changes, so the screen skips it by reference.
+		expect(message.render(40)).toBe(done);
+		expect(message.render(40)).toBe(done);
+		expect(done[0]!.split("\x1b]133;A").length).toBe(2);
 		expect(calls.assistant).toBe(3);
 		expect(done.join("\n")).toContain("partial, then done");
 		message.setHideThinkingBlock(true);

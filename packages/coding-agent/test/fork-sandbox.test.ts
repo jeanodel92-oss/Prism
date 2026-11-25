@@ -27,7 +27,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { CONFIG_DIR_NAME, ENV_AGENT_DIR } from "../src/config.ts";
 import { emitSessionShutdownEvent } from "../src/core/extensions/runner.ts";
 import type { ExtensionUIContext } from "../src/core/extensions/types.ts";
-import backgroundExtension from "../src/fork/background.ts";
+import backgroundExtension, { backgroundControl, backgroundTasks } from "../src/fork/background.ts";
 import { setLanguage, t } from "../src/fork/i18n/index.ts";
 import type { PermView } from "../src/fork/perm-view.ts";
 import permissionsExtension from "../src/fork/permissions.ts";
@@ -1079,6 +1079,9 @@ describe.skipIf(!bwrap)("fork: real sandbox", () => {
 	});
 
 	afterEach(() => {
+		// Background tasks outlive their session on purpose: a test's own are stopped here, so a test that fails
+		// before its task ends leaves nothing running.
+		for (const task of backgroundTasks() ?? []) if (task.status === "running") backgroundControl()?.stop(task.id);
 		for (const harness of harnesses.splice(0)) {
 			// dispose() does not end the session as quitting does, so its private /tmp is removed here.
 			removeSessionTmpDir(harness.sessionManager.getSessionId());
@@ -2679,7 +2682,8 @@ for host in ${JSON.stringify(raw)}:
 					recording(titles, () => undefined),
 					approveAway,
 				);
-				const wait = `while [ ! -e go-$N ]; do sleep 0.05; done`;
+				// Bounded (30 s): a run that fails before writing go-N must not leave the loop running.
+				const wait = `i=0; while [ ! -e go-$N ] && [ $i -lt 600 ]; do sleep 0.05; i=$((i+1)); done`;
 				const command = [1, 2, 3]
 					.map((n) => `${wait.replace("$N", String(n))}; curl -sS ${base}/b${n} > b${n}.txt 2>&1`)
 					.join("; ");

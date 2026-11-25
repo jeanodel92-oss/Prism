@@ -38,7 +38,16 @@
 #                                              to an older stable release is allowed
 #                                              then (your config is kept)
 #
+# Mirror: when the site does not answer, stable releases come from their
+# copy in the public repository's GitHub releases ($PRISM_MIRROR_URL/latest/download/LATEST
+# and $PRISM_MIRROR_URL/download/prism-v<version>/), checked exactly as from the site: the
+# signature is what is trusted, not the server. Canary releases are not mirrored.
+#
+#   curl -fsSL https://github.com/jeanodel92-oss/Prism/releases/latest/download/install.sh | sh
+#
 # Environment: PRISM_BASE_URL (default https://prism.odelserver.space),
+# PRISM_MIRROR_URL (default https://github.com/jeanodel92-oss/Prism/releases when
+# PRISM_BASE_URL is unset, none otherwise; empty: none),
 # PRISM_VERSION (default: the channel's latest release; with --update, also allows
 # an older one), PRISM_INSTALL_DIR, PRISM_BIN_DIR.
 
@@ -132,9 +141,17 @@ sha256() {
 	fi
 }
 
+try_fetch() { curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1" 2>/dev/null; }
+
 fetch() {
 	curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1" ||
 		die "cannot download $1: check the network connection, or try again later"
+}
+
+# From here on, downloads come from the mirror.
+use_mirror() {
+	say "$BASE_URL does not answer; downloading from the copy at $MIRROR_URL (the signature is checked the same way)"
+	mirror=1
 }
 
 # The installation directory holds one directory per installed release under
@@ -411,6 +428,16 @@ rollback() {
 main() {
 	set -eu
 	BASE_URL=${PRISM_BASE_URL:-https://prism.odelserver.space}
+	# The mirror stands in for the real site only: a test or private site given by PRISM_BASE_URL gets none
+	# unless PRISM_MIRROR_URL names one.
+	if [ -n "${PRISM_MIRROR_URL+set}" ]; then
+		MIRROR_URL=$PRISM_MIRROR_URL
+	elif [ -z "${PRISM_BASE_URL:-}" ]; then
+		MIRROR_URL=https://github.com/jeanodel92-oss/Prism/releases
+	else
+		MIRROR_URL=""
+	fi
+	mirror=""
 	INSTALL_DIR=${PRISM_INSTALL_DIR:-$HOME/.local/share/prism}
 	# A relative directory is taken from where the command runs: the link in BIN_DIR needs an absolute target
 	#.
@@ -496,7 +523,12 @@ main() {
 		version=$PRISM_VERSION
 	else
 		if [ "$channel" = stable ]; then
-			fetch "$BASE_URL/releases/LATEST" "$work/LATEST"
+			if ! try_fetch "$BASE_URL/releases/LATEST" "$work/LATEST"; then
+				[ -n "$MIRROR_URL" ] ||
+					die "cannot download $BASE_URL/releases/LATEST: check the network connection, or try again later"
+				use_mirror
+				fetch "$MIRROR_URL/latest/download/LATEST" "$work/LATEST"
+			fi
 			version=$(head -n 1 "$work/LATEST")
 		else
 			# Canary follows the newer of the two lists: a stable release promoted after the
@@ -554,9 +586,17 @@ main() {
 
 	archive="prism-$version-linux-x64.tar.gz"
 	release="$BASE_URL/releases/$version"
+	[ -z "$mirror" ] || release="$MIRROR_URL/download/prism-v$version"
 
 	say "downloading prism $version"
-	fetch "$release/SHA256SUMS" "$work/SHA256SUMS"
+	if ! try_fetch "$release/SHA256SUMS" "$work/SHA256SUMS"; then
+		# A version asked for by name skips LATEST: the site's silence shows here first.
+		[ -z "$mirror" ] && [ -n "$MIRROR_URL" ] && [ "$release_channel" = stable ] ||
+			die "cannot download $release/SHA256SUMS: check the network connection, or try again later"
+		use_mirror
+		release="$MIRROR_URL/download/prism-v$version"
+		fetch "$release/SHA256SUMS" "$work/SHA256SUMS"
+	fi
 	fetch "$release/SHA256SUMS.minisig" "$work/SHA256SUMS.minisig"
 	comment=$(verify_signature "$work/SHA256SUMS" "$work/SHA256SUMS.minisig" "$work" "$(release_key "$release_channel")") ||
 		die "SHA256SUMS: bad signature, nothing was installed"

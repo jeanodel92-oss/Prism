@@ -1,0 +1,15 @@
+[
+	{ "do": "log", "text": "fork.12.5: at phone width (412 px), opening a scheduled task's screen from the side menu folds the menu" },
+	{ "do": "wait", "selector": "#composer[data-starting='false']", "timeout": 30000 },
+	{ "do": "click", "selector": "#toggle-sidebar" },
+	{ "do": "click", "selector": ".rail-button[data-view='schedule']" },
+	{ "do": "click", "selector": "#side-schedule-new" },
+	{ "do": "wait", "selector": "#surface .panel.schedule" },
+	{ "do": "absent", "selector": "body.sidebar-open", "why": "the panel folds over a narrow window when a scheduled task opens" },
+	{ "do": "fits", "selector": "#surface .panel.schedule" },
+	{ "do": "shot", "name": "p1-schedule" },
+	{ "do": "key", "selector": ".panel.schedule", "key": "Escape" },
+	{ "do": "toasts" },
+	{ "do": "absent", "selector": ".toast.error" },
+	{ "do": "quit" }
+]

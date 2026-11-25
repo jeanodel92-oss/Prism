@@ -38,7 +38,7 @@ export const MODE_LABELS: Record<Mode, string> = {
 export const MODE_SUMMARIES: Record<Mode, string> = {
 	safe: "Reads and searches freely. Changes no file and runs only safe commands (ls, git status…). Internet: it asks.",
 	ask: "Reads freely. Asks before changing a file, running a command or going on the internet.",
-	broad: "Works in the project without asking. Still asks for what leaves the project, sudo and the first use of a browser or a desktop. Configuration uses configure_prism; security settings are user-only.",
+	broad: "Works in the project without asking. Still asks for what leaves the project, sudo and the first use of a browser or a desktop.",
 	unrestricted:
 		"Skips ordinary questions. Configuration uses configure_prism; security settings are user-only. Keep it for a throwaway machine or container.",
 };

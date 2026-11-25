@@ -73,7 +73,14 @@ export class SettingsDialog {
 		// one search across the window's preferences and every engine domain, as
 		// the terminal's /settings search.
 		this.query = "";
-		this.search = h("input", { type: "search", class: "field settings-search", placeholder: t("searchSettings"), "aria-label": t("searchSettings") });
+		// built before the language is known, so named again when it changes.
+		this.search = h("input", {
+			type: "search",
+			class: "field settings-search",
+			placeholder: t("searchSettings"),
+			"aria-label": t("searchSettings"),
+			dataset: { i18nPlaceholder: "searchSettings", i18nLabel: "searchSettings" },
+		});
 		let typing;
 		this.search.addEventListener("input", () => {
 			clearTimeout(typing);

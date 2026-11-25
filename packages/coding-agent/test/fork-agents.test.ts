@@ -16,17 +16,29 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../src/core/extensions/types.ts";
 import agentsExtension, {
+	agentBrief,
+	agentModelLabels,
+	agentModels,
 	agentName,
+	agentPermissions,
+	availableAgents,
 	buildAgentInvocation,
+	builtinChoices,
 	type CustomAgent,
+	DEFAULT_MAX_PARALLEL,
+	GENERAL_AGENT,
 	invocationRule,
 	isValidAgentName,
+	maxParallelAgents,
 	mentionsKeyword,
+	modelLabel,
+	PRESET_AGENTS,
 	readAgentInvocation,
 	readAgents,
 	writeAgent,
 } from "../src/fork/agents.ts";
 import { getExtensionArgs, setCliExtensions } from "../src/fork/child-invocation.ts";
+import { setLanguage, t } from "../src/fork/i18n/index.ts";
 import { parseFrontmatter } from "../src/utils/frontmatter.ts";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -149,6 +161,148 @@ const agent: CustomAgent = {
 };
 
 describe("fork: custom agents", () => {
+	// the advanced agent mode.
+	it("offers the general agent only in the advanced mode, a user's own agent of that name first", () => {
+		const dir = temporaryDir();
+		expect(availableAgents(false, dir)).toEqual([]);
+		expect(availableAgents(true, dir).map((entry) => entry.name)).toEqual(["general"]);
+		writeAgent({ ...agent, name: "general" }, dir);
+		expect(availableAgents(true, dir)).toEqual([{ ...agent, name: "general" }]);
+		expect(GENERAL_AGENT.tools).toEqual(["read", "grep", "find", "ls", "bash", "edit", "write"]);
+	});
+
+	// the general agent's purpose stayed in English in a French window.
+	it("words the built-in agents' purposes in the interface language", () => {
+		setLanguage("fr");
+		try {
+			for (const builtIn of [GENERAL_AGENT, ...PRESET_AGENTS])
+				expect(t(builtIn.description), builtIn.name).not.toBe(builtIn.description);
+		} finally {
+			setLanguage("en");
+		}
+	});
+
+	// asked for "Haiku 5.5", the model saw `claude-code/haiku` with no version and
+	// picked a dated id of Haiku 4.5. The list names each model as its provider does.
+	it("names each model of the agent tool's list as its provider does", () => {
+		const haiku = { provider: "claude-code", id: "haiku", name: "Haiku (claude-haiku-5-5)" };
+		expect(modelLabel(haiku)).toBe("claude-code/haiku (Haiku (claude-haiku-5-5))");
+		expect(modelLabel({ provider: "fake", id: "scripted", name: "Scripted" })).toBe("fake/scripted");
+		expect(modelLabel({ provider: "local", id: "small" })).toBe("local/small");
+		expect(modelLabel({ provider: "local", id: "small", name: " Small\n model " })).toBe("local/small (Small model)");
+		expect(
+			agentModelLabels({ provider: "fake", id: "scripted" }, [
+				{ model: haiku },
+				{ model: { provider: "fake", id: "scripted", name: "Other" } },
+			]),
+		).toEqual(["fake/scripted", "claude-code/haiku (Haiku (claude-haiku-5-5))"]);
+	});
+
+	it("lets agents use the session's model and the user's selected list, and reads the limit on agents at once", () => {
+		const scoped = [{ model: { provider: "local", id: "small" } }, { model: { provider: "fake", id: "scripted" } }];
+		expect(agentModels("fake/scripted", scoped)).toEqual(["fake/scripted", "local/small"]);
+		expect(agentModels("fake/scripted", [])).toEqual(["fake/scripted"]);
+		const dir = temporaryDir();
+		expect(maxParallelAgents(dir)).toBe(DEFAULT_MAX_PARALLEL);
+		for (const [value, expected] of [
+			[2, 2],
+			[0, DEFAULT_MAX_PARALLEL],
+			[2.5, DEFAULT_MAX_PARALLEL],
+			["3", DEFAULT_MAX_PARALLEL],
+		] as const) {
+			writeFileSync(join(dir, "settings.json"), JSON.stringify({ agentsMaxParallel: value }));
+			expect(maxParallelAgents(dir)).toBe(expected);
+		}
+	});
+
+	it("offers the preconfigured agents the user turned on, and runs those that only read in the read-only mode", () => {
+		const dir = temporaryDir();
+		writeFileSync(join(dir, "settings.json"), JSON.stringify({ agentsPresets: ["reviewer", "explorer", "unknown"] }));
+		expect(availableAgents(false, dir)).toEqual([]);
+		expect(availableAgents(true, dir).map((entry) => entry.name)).toEqual(["general", "explorer", "reviewer"]);
+		writeAgent({ ...agent, name: "explorer" }, dir);
+		expect(availableAgents(true, dir).find((entry) => entry.name === "explorer")).toEqual({
+			...agent,
+			name: "explorer",
+		});
+		expect(PRESET_AGENTS.map((entry) => [entry.name, entry.readOnly === true])).toEqual([
+			["explorer", true],
+			["planner", true],
+			["reviewer", true],
+			["worker", false],
+		]);
+		const reviewer = PRESET_AGENTS.find((entry) => entry.name === "reviewer")!;
+		expect(agentPermissions(reviewer, { mode: "unrestricted", deny: ["bash(rm *)"] })).toEqual({
+			mode: "safe",
+			deny: ["bash(rm *)"],
+		});
+		expect(agentPermissions(reviewer, undefined)).toEqual({ mode: "safe", deny: [] });
+		const session = { mode: "broad" as const, deny: [] };
+		expect(agentPermissions(GENERAL_AGENT, session)).toBe(session);
+	});
+
+	// the call's context and files are joined to the task; the files are checked, not read.
+	it("joins the conversation's summary and the files to read first to the agent's task", () => {
+		const dir = temporaryDir();
+		writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+		mkdirSync(join(dir, "src"));
+		writeFileSync(join(dir, "src", "b.md"), "# b\n");
+		expect(agentBrief(dir, "Do it.")).toBe("Do it.");
+		expect(agentBrief(dir, "Do it.", "  We chose X.  ", ["a.ts", "./src/b.md", "a.ts"])).toBe(
+			"Do it.\n\n## Context from the main session\nWe chose X.\n\n## Files to read first\n- a.ts\n- src/b.md",
+		);
+		expect(() => agentBrief(dir, "x", undefined, ["../outside.txt"])).toThrow(
+			"../outside.txt is outside the project",
+		);
+		expect(() => agentBrief(dir, "x", undefined, ["/etc/passwd"])).toThrow("/etc/passwd is outside the project");
+		expect(() => agentBrief(dir, "x", undefined, ["missing.ts"])).toThrow("missing.ts is not a file of the project.");
+		expect(() => agentBrief(dir, "x", undefined, ["src"])).toThrow("src is not a file of the project.");
+	});
+
+	// a model and an effort for every agent, built-in ones included.
+	it("gives every agent its own model and effort, the session's by default", () => {
+		const dir = temporaryDir();
+		writeAgent({ ...agent, thinking: "high" }, dir);
+		expect(readFileSync(join(dir, "agents", "reader.md"), "utf8")).toContain("\nthinking: high\n");
+		expect(readAgents(dir)).toEqual([{ ...agent, thinking: "high" }]);
+		writeFileSync(
+			join(dir, "agents", "odd.md"),
+			"---\nname: odd\ndescription: x\ntools: read\nthinking: huge\n---\n\nx\n",
+		);
+		expect(readAgents(dir).find((entry) => entry.name === "odd")?.thinking).toBeUndefined();
+		const argv = buildAgentInvocation({ ...agent, thinking: "low" }, "fake/parent", []);
+		expect(argv.slice(argv.indexOf("--model"), argv.indexOf("--model") + 4)).toEqual([
+			"--model",
+			"fake/scripted",
+			"--thinking",
+			"low",
+		]);
+		expect(buildAgentInvocation(agent, "fake/parent", [])).not.toContain("--thinking");
+		writeFileSync(
+			join(dir, "settings.json"),
+			JSON.stringify({
+				agentsPresets: ["explorer"],
+				agentsBuiltin: {
+					general: { model: "local/small" },
+					explorer: { thinking: "minimal" },
+					reader: { model: "x/y" },
+					planner: { thinking: "huge" },
+				},
+			}),
+		);
+		expect(builtinChoices(dir)).toEqual({
+			general: { model: "local/small" },
+			explorer: { thinking: "minimal" },
+			planner: {},
+		});
+		const offered = availableAgents(true, dir);
+		expect(offered.find((entry) => entry.name === "general")).toMatchObject({ model: "local/small" });
+		expect(offered.find((entry) => entry.name === "explorer")).toMatchObject({ thinking: "minimal" });
+		expect(offered.find((entry) => entry.name === "explorer")?.model).toBeUndefined();
+		// A user's own agent of the same name keeps its own settings.
+		expect(offered.find((entry) => entry.name === "reader")).toEqual({ ...agent, thinking: "high" });
+	});
+
 	it("parses and writes the compatible Markdown format", () => {
 		const dir = temporaryDir();
 		const path = writeAgent(agent, dir);
@@ -197,7 +351,7 @@ describe("fork: custom agents", () => {
 	it("creates an agent through /agents dialogs without using the default config", async () => {
 		const dir = temporaryDir();
 		process.env[ENV_AGENT_DIR] = dir;
-		const choices = ["New agent", "provider/custom", "Done", "Close"];
+		const choices = ["New agent", "provider/custom", "The model's default", "Done", "Close"];
 		const inputs = ["helper", "Read and explain files"];
 		let editorText = "";
 		let command: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
@@ -222,6 +376,7 @@ describe("fork: custom agents", () => {
 			confirm: async () => false,
 		};
 		const ctx = {
+			sessionManager: { getEntries: () => [] },
 			ui,
 			modelRegistry: { getAvailable: () => [{ provider: "provider", id: "custom" }] },
 		} as unknown as ExtensionCommandContext;
@@ -239,7 +394,14 @@ describe("fork: custom agents", () => {
 		expect(existsSync(join(dir, ".pi"))).toBe(false);
 
 		// Edit asks the name too; a new one renames the agent.
-		choices.push("helper — Read and explain files", "Edit", "Same as the current session", "Done", "Close");
+		choices.push(
+			"helper — Read and explain files",
+			"Edit",
+			"Same as the current session",
+			"The model's default",
+			"Done",
+			"Close",
+		);
 		inputs.push("Lecteur Rapide", "");
 		await command?.("", ctx);
 		expect(readAgents(dir).map((entry) => [entry.name, entry.description])).toEqual([
@@ -254,7 +416,7 @@ describe("fork: custom agents", () => {
 		process.env[ENV_AGENT_DIR] = dir;
 		const titles: string[] = [];
 		const notes: string[] = [];
-		const choices = ["New agent", "Same as the current session", "Done", "Close"];
+		const choices = ["New agent", "Same as the current session", "The model's default", "Done", "Close"];
 		const inputs = ["helper", "Read and explain files"];
 		let command: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
 		agentsExtension({
@@ -267,6 +429,7 @@ describe("fork: custom agents", () => {
 			},
 		} as unknown as ExtensionAPI);
 		const ctx = {
+			sessionManager: { getEntries: () => [] },
 			ui: {
 				select: async (title: string) => {
 					titles.push(title);
@@ -288,6 +451,86 @@ describe("fork: custom agents", () => {
 			].join("\n"),
 		);
 		expect(notes).toEqual(["Agent created: helper. Ask the model to use it, e.g. « use the helper agent to … »."]);
+	});
+
+	// turning the advanced mode on goes on to the preconfigured agents, and with it on
+	// the agents it adds are listed with the user's own, each with a model and effort to choose.
+	it("goes on to the preconfigured agents when the advanced mode is turned on, then lists the agents it adds", async () => {
+		const dir = temporaryDir();
+		process.env[ENV_AGENT_DIR] = dir;
+		writeAgent(agent);
+		const titles: string[] = [];
+		const lists: string[][] = [];
+		let reloads = 0;
+		let command: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
+		agentsExtension({
+			getAllTools: () => [],
+			registerTool: () => {},
+			registerMessageRenderer: () => {},
+			on: () => {},
+			registerCommand: (_name: string, options: { handler: typeof command }) => {
+				command = options.handler;
+			},
+		} as unknown as ExtensionAPI);
+		const run = async (pick: (title: string, items: string[]) => string | undefined) => {
+			const ctx = {
+				sessionManager: { getEntries: () => [] },
+				ui: {
+					select: async (title: string, items: string[]) => {
+						titles.push(title);
+						lists.push(items);
+						return pick(title, items);
+					},
+					input: async () => undefined,
+					editor: async () => undefined,
+					notify: () => {},
+					confirm: async () => true,
+				},
+				modelRegistry: { getAvailable: () => [] },
+				reload: async () => void reloads++,
+			} as unknown as ExtensionCommandContext;
+			await command?.("", ctx);
+		};
+		let step = 0;
+		await run((_title, items) => {
+			step++;
+			if (step === 1) return items.find((item) => item.startsWith("Advanced mode: off"));
+			if (step === 2) return items.find((item) => item.startsWith("· explorer — "));
+			return "Back";
+		});
+		expect(titles[1]?.startsWith("Preconfigured agents\n")).toBe(true);
+		expect(lists[2]?.find((item) => item.includes("explorer — "))?.startsWith("✓ ")).toBe(true);
+		expect(reloads).toBe(1);
+		expect(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"))).toMatchObject({
+			agentsAdvanced: true,
+			agentsPresets: ["explorer"],
+		});
+		titles.length = 0;
+		lists.length = 0;
+		step = 0;
+		await run((_title, items) => {
+			step++;
+			if (step === 1) return items.find((item) => item.startsWith("general — built-in — "));
+			if (step === 2) return "Same as the current session";
+			if (step === 3) return "low";
+			return "Close";
+		});
+		expect(titles[0]).toContain(
+			"Advanced mode on: the general agent and the preconfigured agents you turned on are added to yours.",
+		);
+		expect(lists[0]).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/^general — built-in — Same as the current session — /),
+				expect.stringMatching(/^explorer — built-in — /),
+				expect.stringMatching(/^reader — fake\/scripted — /),
+			]),
+		);
+		expect(lists[3]?.find((item) => item.startsWith("general — "))).toMatch(
+			/^general — built-in — Same as the current session · low — /,
+		);
+		expect(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")).agentsBuiltin).toEqual({
+			general: { thinking: "low" },
+		});
 	});
 
 	// the user chooses when the model may run an agent; only the keyword alone can be enforced.
@@ -340,6 +583,7 @@ describe("fork: custom agents", () => {
 		];
 		let reloaded = 0;
 		const ctx = {
+			sessionManager: { getEntries: () => [] },
 			ui: {
 				select: async () => choices.shift(),
 				input: async () => "@helper",
@@ -409,6 +653,143 @@ describe("fork: custom agents", () => {
 		expect(run("/delegate", "Hand this to @agent and report back.")).toMatchObject({ block: true });
 		expect(run("/delegate @agent", "Hand this to @agent and report back.")).toBeUndefined();
 	});
+
+	// two agent_wait calls on one run each count, so the answer comes once; a resumed
+	// session's new runs come after its earlier ids, so `resume` names one run only.
+	it("counts overlapping waits on one run, and numbers runs after a resumed session's", async () => {
+		const env = setupCli();
+		process.env[ENV_AGENT_DIR] = env.agentDir;
+		writeFileSync(join(env.agentDir, "settings.json"), JSON.stringify({ agentsAdvanced: true }));
+		const open = (extra: string[]) => {
+			const rpc = startPrism(
+				env.prism,
+				env.cwd,
+				env.agentDir,
+				[
+					"--mode",
+					"rpc",
+					"-e",
+					fakeProvider,
+					"--provider",
+					"fake",
+					"--model",
+					"scripted",
+					"--perm-mode",
+					"broad",
+					...extra,
+				],
+				"pipe",
+			);
+			const results: Array<{ tool: string; text: string }> = [];
+			const answers: string[] = [];
+			let settledTurns = 0;
+			const waiting: Array<() => void> = [];
+			let buffer = "";
+			rpc.child.stdout?.on("data", (chunk: string) => {
+				buffer += chunk;
+				const lines = buffer.split("\n");
+				buffer = lines.pop() ?? "";
+				for (const line of lines) {
+					if (!line.startsWith("{")) continue;
+					const record = JSON.parse(line) as {
+						type?: string;
+						toolName?: string;
+						result?: { content?: Array<{ text?: string }> };
+						message?: { customType?: string; content?: unknown };
+					};
+					if (record.type === "tool_execution_end" && record.toolName)
+						results.push({ tool: record.toolName, text: record.result?.content?.[0]?.text ?? "" });
+					if (record.type === "message_end" && record.message?.customType === "agent-answer")
+						answers.push(String(record.message.content));
+					if (record.type === "agent_settled") settledTurns++;
+					for (const wake of waiting) wake();
+				}
+			});
+			const until = (ready: () => boolean) =>
+				new Promise<void>((resolveUntil) => {
+					const check = () => {
+						if (ready()) resolveUntil();
+					};
+					waiting.push(check);
+					check();
+				});
+			const prompt = (id: string, message: string) =>
+				rpc.child.stdin?.write(`${JSON.stringify({ id, type: "prompt", message })}\n`);
+			return { rpc, results, answers, until, prompt, turns: () => settledTurns };
+		};
+		const work = `steps ${JSON.stringify([["bash", { command: "sleep 3; echo slow-answer" }]])}`;
+
+		const first = open([]);
+		first.prompt("p1", `steps ${JSON.stringify([["agent", { agent: "general", task: work }]])}`);
+		await first.until(() => first.turns() >= 1);
+		// Two waits on ag1 at once; the shorter one returns first and must not let the answer through as a message.
+		first.prompt(
+			"p2",
+			`calls ${JSON.stringify([
+				["agent_wait", { ids: ["ag1"], timeout_seconds: 1 }],
+				["agent_wait", { ids: ["ag1"], timeout_seconds: 30 }],
+			])}`,
+		);
+		await first.until(() => first.answers.length >= 1 && first.turns() >= 2);
+		const waits = first.results.filter((entry) => entry.tool === "agent_wait").map((entry) => entry.text);
+		expect(waits.some((text) => text.startsWith("## ag1\nStill running after 1 s"))).toBe(true);
+		expect(waits.some((text) => /^## ag1\n(?!Still running)/.test(text))).toBe(true);
+		expect(first.answers).toEqual(["**Agent general answered (ag1)**\n\nIts answer was returned by agent_wait."]);
+		first.rpc.child.stdin?.end();
+		expect((await finishPrism(first.rpc, 30_000)).code).toBe(0);
+
+		// The same session resumed by a new process: its next run is ag2, not a second ag1.
+		const second = open(["--continue"]);
+		second.prompt(
+			"p3",
+			`steps ${JSON.stringify([
+				["agent", { agent: "general", task: "x" }],
+				["agent_wait", {}],
+			])}`,
+		);
+		await second.until(() => second.results.some((entry) => entry.tool === "agent_wait"));
+		expect(second.results[0]!.text).toMatch(/^Started agent general \(ag2\)/);
+		second.rpc.child.stdin?.end();
+		expect((await finishPrism(second.rpc, 30_000)).code).toBe(0);
+	}, 90_000);
+
+	// without an interface, the limit on agents at once holds for parallel calls.
+	it("holds the limit on agents at once in print mode", async () => {
+		const env = setupCli();
+		process.env[ENV_AGENT_DIR] = env.agentDir;
+		writeFileSync(
+			join(env.agentDir, "settings.json"),
+			JSON.stringify({ agentsAdvanced: true, agentsMaxParallel: 1 }),
+		);
+		const work = (tag: string) => `steps ${JSON.stringify([["bash", { command: `sleep 1; echo ${tag}` }]])}`;
+		const run = startPrism(env.prism, env.cwd, env.agentDir, [
+			"--mode",
+			"json",
+			"-e",
+			fakeProvider,
+			"--provider",
+			"fake",
+			"--model",
+			"scripted",
+			"--perm-mode",
+			"broad",
+			"--no-session",
+			"-p",
+			`calls ${JSON.stringify([
+				["agent", { agent: "general", task: work("one") }],
+				["agent", { agent: "general", task: work("two") }],
+			])}`,
+		]);
+		const result = await finishPrism(run, 60_000);
+		expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0);
+		const ends = result.stdout
+			.split("\n")
+			.filter((line) => line.startsWith("{"))
+			.map((line) => JSON.parse(line) as { type?: string; toolName?: string; isError?: boolean })
+			.filter((record) => record.type === "tool_execution_end" && record.toolName === "agent");
+		expect(ends.map((record) => record.isError === true).sort()).toEqual([false, true]);
+		expect(result.stdout).toContain("1 agents are already running, the most the user allows at once.");
+	}, 70_000);
 
 	it("runs the real source CLI with the agent model and restricted tools", async () => {
 		const env = setupCli();
@@ -539,6 +920,387 @@ describe("fork: custom agents", () => {
 		expect(titles).toContainEqual(expect.stringMatching(/^writer: /));
 		expect(readFileSync(join(env.cwd, "agent.txt"), "utf8")).toBe("agent");
 	}, 70_000);
+
+	// a preconfigured agent that only reads cannot write even in a broad session; the
+	// worker, in the session's mode, can.
+	it("runs the read-only preconfigured agents in the read-only mode", async () => {
+		const env = setupCli();
+		process.env[ENV_AGENT_DIR] = env.agentDir;
+		writeFileSync(
+			join(env.agentDir, "settings.json"),
+			JSON.stringify({ agentsAdvanced: true, agentsPresets: ["reviewer", "worker"] }),
+		);
+		const rpc = startPrism(
+			env.prism,
+			env.cwd,
+			env.agentDir,
+			[
+				"--mode",
+				"rpc",
+				"-e",
+				fakeProvider,
+				"--provider",
+				"fake",
+				"--model",
+				"scripted",
+				"--perm-mode",
+				"broad",
+				"--no-session",
+			],
+			"pipe",
+		);
+		let waitText = "";
+		let settled: () => void = () => {};
+		const waited = new Promise<void>((resolveWait) => {
+			settled = resolveWait;
+		});
+		let buffer = "";
+		rpc.child.stdout?.on("data", (chunk: string) => {
+			buffer += chunk;
+			const lines = buffer.split("\n");
+			buffer = lines.pop() ?? "";
+			for (const line of lines) {
+				if (!line.startsWith("{")) continue;
+				const record = JSON.parse(line) as {
+					type?: string;
+					toolName?: string;
+					result?: { content?: Array<{ text?: string }> };
+				};
+				if (record.type === "tool_execution_end" && record.toolName === "agent_wait") {
+					waitText = record.result?.content?.[0]?.text ?? "";
+					settled();
+				}
+			}
+		});
+		const touch = (file: string) => `steps ${JSON.stringify([["bash", { command: `touch ${file}` }]])}`;
+		const steps = JSON.stringify([
+			["agent", { agent: "reviewer", task: touch("by-reviewer.txt") }],
+			["agent", { agent: "worker", task: touch("by-worker.txt") }],
+			["agent_wait", {}],
+		]);
+		rpc.child.stdin?.write(`${JSON.stringify({ id: "p1", type: "prompt", message: `steps ${steps}` })}\n`);
+		await waited;
+		expect(waitText).toMatch(/^## ag1\n.+\n\n## ag2\n/s);
+		expect(existsSync(join(env.cwd, "by-worker.txt"))).toBe(true);
+		expect(existsSync(join(env.cwd, "by-reviewer.txt"))).toBe(false);
+		rpc.child.stdin?.end();
+		const result = await finishPrism(rpc, 30_000);
+		expect(result.code, result.stderr).toBe(0);
+	}, 90_000);
+
+	// a finished agent continues with its context, from the model (resume) and
+	// from the user (agents_resume), whose run starts no turn.
+	it("continues a finished agent with its context, from the model and from the user", async () => {
+		const env = setupCli();
+		process.env[ENV_AGENT_DIR] = env.agentDir;
+		writeFileSync(join(env.agentDir, "settings.json"), JSON.stringify({ agentsAdvanced: true }));
+		const rpc = startPrism(
+			env.prism,
+			env.cwd,
+			env.agentDir,
+			["--mode", "rpc", "-e", fakeProvider, "--provider", "fake", "--model", "scripted", "--perm-mode", "broad"],
+			"pipe",
+		);
+		const results: Array<{ tool: string; text: string; error: boolean }> = [];
+		const answers: Array<{ id?: string; continues?: string; byUser?: boolean; session?: string }> = [];
+		const contents: string[] = [];
+		const responses = new Map<string, (record: { success?: boolean; data?: unknown; error?: string }) => void>();
+		const waiting: Array<{ count: number; turns: number; done: () => void }> = [];
+		const when = (count: number, turns = 0) =>
+			new Promise<void>((resolveWhen) => {
+				waiting.push({ count, turns, done: resolveWhen });
+			});
+		let settledTurns = 0;
+		let buffer = "";
+		rpc.child.stdout?.on("data", (chunk: string) => {
+			buffer += chunk;
+			const lines = buffer.split("\n");
+			buffer = lines.pop() ?? "";
+			for (const line of lines) {
+				if (!line.startsWith("{")) continue;
+				const record = JSON.parse(line) as {
+					type?: string;
+					id?: string;
+					success?: boolean;
+					data?: unknown;
+					error?: string;
+					toolName?: string;
+					isError?: boolean;
+					result?: { content?: Array<{ text?: string }> };
+					message?: { customType?: string; details?: Record<string, unknown>; content?: unknown };
+				};
+				if (record.type === "response" && record.id) responses.get(record.id)?.(record);
+				if (record.type === "tool_execution_end" && record.toolName)
+					results.push({
+						tool: record.toolName,
+						text: record.result?.content?.[0]?.text ?? "",
+						error: record.isError === true,
+					});
+				if (record.type === "message_end" && record.message?.customType === "agent-answer") {
+					answers.push(record.message.details as (typeof answers)[number]);
+					contents.push(String(record.message.content));
+				}
+				if (record.type === "agent_settled") settledTurns++;
+				for (const wait of waiting) if (answers.length >= wait.count && settledTurns >= wait.turns) wait.done();
+			}
+		});
+		const request = <T>(id: string, command: Record<string, unknown>) =>
+			new Promise<{ success?: boolean; data?: T; error?: string }>((resolveRequest) => {
+				responses.set(id, (record) => resolveRequest(record as { success?: boolean; data?: T; error?: string }));
+				rpc.child.stdin?.write(`${JSON.stringify({ id, ...command })}\n`);
+			});
+		const prompt = (id: string, steps: unknown[]) =>
+			rpc.child.stdin?.write(
+				`${JSON.stringify({ id, type: "prompt", message: `steps ${JSON.stringify(steps)}` })}\n`,
+			);
+		prompt("p1", [
+			["agent", { agent: "general", task: "first task", context: "We chose X." }],
+			["agent_wait", {}],
+		]);
+		await when(1, 1);
+		prompt("p2", [
+			["agent", { agent: "explorer", task: "x", resume: "ag1" }],
+			["agent", { agent: "general", task: "second task", resume: "ag1" }],
+			["agent_wait", {}],
+		]);
+		await when(2, 2);
+		const [first, , wrong, second, wait] = results;
+		expect(first!.text).toMatch(/^Started agent general \(ag1\)/);
+		expect(wrong).toMatchObject({ tool: "agent", error: true, text: "ag1 is a run of general, not of explorer." });
+		expect(second!.text).toMatch(/^Started agent general \(ag2, continuing ag1 with its context\)/);
+		expect(wait!.text).toMatch(/^## ag2\n/);
+		expect(answers.map((entry) => [entry.id, entry.continues])).toEqual([
+			["ag1", undefined],
+			["ag2", "ag1"],
+		]);
+		expect(answers[1]!.session).toBe(answers[0]!.session);
+		// The user continues it from the list: same session, and its answer starts a turn of the model
+		// .
+		const turnsBefore = settledTurns;
+		const started = await request<{ started?: string }>("r1", {
+			type: "agents_resume",
+			session: answers[0]!.session,
+			message: "third task",
+		});
+		expect(started.data?.started).toBe("ag3");
+		await when(3);
+		expect(answers[2]).toMatchObject({ id: "ag3", continues: "ag2", byUser: true, session: answers[0]!.session });
+		await when(3, turnsBefore + 1);
+		const entries =
+			(
+				await request<{ entries: Array<{ kind: string; text?: string }> }>("t1", {
+					type: "agent_transcript",
+					session: answers[0]!.session,
+				})
+			).data?.entries ?? [];
+		// The call's context reaches the agent with its task; the run keeps the task alone as its label.
+		expect(entries.filter((entry) => entry.kind === "user").map((entry) => entry.text)).toEqual([
+			"first task\n\n## Context from the main session\nWe chose X.",
+			"second task",
+			"third task",
+		]);
+		// A run started by the user, then a refusal for a session that ran none.
+		const launched = await request<{ started?: string }>("r2", {
+			type: "agents_run",
+			agent: "general",
+			task: "fourth",
+		});
+		expect(launched.data?.started).toBe("ag4");
+		const refused = await request("r3", {
+			type: "agents_resume",
+			session: "00000000-0000-0000-0000-000000000000",
+			message: "x",
+		});
+		expect(refused).toMatchObject({
+			success: false,
+			error: "No finished agent run with this transcript in this session.",
+		});
+		await when(4);
+		// the model is told which runs the user started, and which message
+		// continued which run; its own runs carry no such line.
+		expect(contents[0]).not.toContain("Started by the user");
+		expect(contents[2]).toMatch(
+			/^\*\*Agent general answered \(ag3\)\*\*\n\n\[Started by the user, not by you: they sent general \(ag2\) a follow-up message, run as ag3 with ag2's context\. Their message: "third task"\]\n\n/,
+		);
+		expect(contents[3]).toContain('[Started by the user, not by you: they ran general (ag4) with the task "fourth"]');
+		rpc.child.stdin?.end();
+		const result = await finishPrism(rpc, 30_000);
+		expect(result.code, result.stderr).toBe(0);
+	}, 90_000);
+
+	// /agents fork: an agent starts from a copy of this conversation, on its model, and
+	// its answer starts no turn.
+	it("runs an agent on a copy of the conversation", async () => {
+		const env = setupCli();
+		process.env[ENV_AGENT_DIR] = env.agentDir;
+		writeFileSync(join(env.agentDir, "settings.json"), JSON.stringify({ agentsAdvanced: true }));
+		const rpc = startPrism(
+			env.prism,
+			env.cwd,
+			env.agentDir,
+			["--mode", "rpc", "-e", fakeProvider, "--provider", "fake", "--model", "scripted", "--perm-mode", "broad"],
+			"pipe",
+		);
+		const answers: Array<{ id?: string; agent?: string; byUser?: boolean; session?: string; launchModel?: string }> =
+			[];
+		const responses = new Map<string, (record: { success?: boolean; data?: unknown; error?: string }) => void>();
+		let settledTurns = 0;
+		const waiting: Array<() => void> = [];
+		let buffer = "";
+		rpc.child.stdout?.on("data", (chunk: string) => {
+			buffer += chunk;
+			const lines = buffer.split("\n");
+			buffer = lines.pop() ?? "";
+			for (const line of lines) {
+				if (!line.startsWith("{")) continue;
+				const record = JSON.parse(line) as {
+					type?: string;
+					id?: string;
+					success?: boolean;
+					data?: unknown;
+					error?: string;
+					message?: { customType?: string; details?: Record<string, unknown> };
+				};
+				if (record.type === "response" && record.id) responses.get(record.id)?.(record);
+				if (record.type === "message_end" && record.message?.customType === "agent-answer")
+					answers.push(record.message.details as (typeof answers)[number]);
+				if (record.type === "agent_settled") settledTurns++;
+				for (const wake of waiting) wake();
+			}
+		});
+		const until = (ready: () => boolean) =>
+			new Promise<void>((resolveUntil) => {
+				const check = () => {
+					if (ready()) resolveUntil();
+				};
+				waiting.push(check);
+				check();
+			});
+		const request = <T>(id: string, command: Record<string, unknown>) =>
+			new Promise<{ success?: boolean; data?: T; error?: string }>((resolveRequest) => {
+				responses.set(id, (record) => resolveRequest(record as { success?: boolean; data?: T; error?: string }));
+				rpc.child.stdin?.write(`${JSON.stringify({ id, ...command })}\n`);
+			});
+		rpc.child.stdin?.write(
+			`${JSON.stringify({ id: "p1", type: "prompt", message: "attachments? the main conversation" })}\n`,
+		);
+		await until(() => settledTurns >= 1);
+		const started = await request<{ started?: string }>("f1", {
+			type: "agents_fork",
+			task: "attachments? the fork's task",
+		});
+		expect(started.data?.started).toBe("ag1");
+		await until(() => answers.length >= 1);
+		expect(answers[0]).toMatchObject({ id: "ag1", agent: "fork", byUser: true, launchModel: "fake/scripted" });
+		const entries =
+			(
+				await request<{ entries: Array<{ kind: string; text?: string }> }>("t1", {
+					type: "agent_transcript",
+					session: answers[0]!.session,
+				})
+			).data?.entries ?? [];
+		// The copy holds the main conversation, then the agent's own task.
+		expect(entries.filter((entry) => entry.kind === "user").map((entry) => entry.text)).toEqual([
+			"attachments? the main conversation",
+			"attachments? the fork's task",
+		]);
+		// Its answer starts a turn of the model.
+		await until(() => settledTurns >= 2);
+		rpc.child.stdin?.end();
+		const result = await finishPrism(rpc, 30_000);
+		expect(result.code, result.stderr).toBe(0);
+	}, 90_000);
+
+	// without any agent created, the general agent runs; a model outside the user's list
+	// is refused; the limit on agents at once holds; agent_wait returns the answers, which the messages do not repeat.
+	it("runs the advanced mode: general agent, listed models only, a limit, and agent_wait", async () => {
+		const env = setupCli();
+		process.env[ENV_AGENT_DIR] = env.agentDir;
+		writeFileSync(
+			join(env.agentDir, "settings.json"),
+			JSON.stringify({ agentsAdvanced: true, agentsMaxParallel: 2 }),
+		);
+		const rpc = startPrism(
+			env.prism,
+			env.cwd,
+			env.agentDir,
+			[
+				"--mode",
+				"rpc",
+				"-e",
+				fakeProvider,
+				"--provider",
+				"fake",
+				"--model",
+				"scripted",
+				"--perm-mode",
+				"broad",
+				"--no-session",
+			],
+			"pipe",
+		);
+		const results: Array<{ tool: string; text: string; error: boolean }> = [];
+		const answers: string[] = [];
+		let settled: () => void = () => {};
+		const waited = new Promise<void>((resolveWait) => {
+			settled = resolveWait;
+		});
+		let buffer = "";
+		rpc.child.stdout?.on("data", (chunk: string) => {
+			buffer += chunk;
+			const lines = buffer.split("\n");
+			buffer = lines.pop() ?? "";
+			for (const line of lines) {
+				if (!line.startsWith("{")) continue;
+				const record = JSON.parse(line) as {
+					type?: string;
+					toolName?: string;
+					isError?: boolean;
+					result?: { content?: Array<{ text?: string }> };
+					message?: { customType?: string; content?: unknown };
+				};
+				if (record.type === "tool_execution_end" && record.toolName) {
+					results.push({
+						tool: record.toolName,
+						text: record.result?.content?.[0]?.text ?? "",
+						error: record.isError === true,
+					});
+					if (record.toolName === "agent_wait") settled();
+				}
+				if (record.type === "message_end" && record.message?.customType === "agent-answer")
+					answers.push(String(record.message.content));
+			}
+		});
+		const work = (tag: string) => `steps ${JSON.stringify([["bash", { command: `sleep 1; echo ${tag}` }]])}`;
+		const steps = JSON.stringify([
+			["agent", { agent: "general", task: "x", model: "fake/not-listed" }],
+			["agent", { agent: "general", task: work("first") }],
+			["agent", { agent: "general", task: work("second") }],
+			["agent", { agent: "general", task: "third" }],
+			["agent_wait", {}],
+		]);
+		rpc.child.stdin?.write(`${JSON.stringify({ id: "p1", type: "prompt", message: `steps ${steps}` })}\n`);
+		await waited;
+		// The answer messages come once each run ended.
+		await new Promise((resolveWait) => setTimeout(resolveWait, 1000));
+		const [listed, first, second, third, wait] = results.filter((entry) => entry.tool !== "bash");
+		expect(listed).toMatchObject({ tool: "agent", error: true });
+		expect(listed!.text).toMatch(
+			/^Model not in the user's selected list: fake\/not-listed\. The models agents may use: fake\/scripted\./,
+		);
+		expect(first!.text).toMatch(/^Started agent general \(ag1\)\..*agent_wait/);
+		expect(second!.text).toMatch(/^Started agent general \(ag2\)/);
+		expect(third).toMatchObject({ error: true });
+		expect(third!.text).toMatch(/^2 agents are already running/);
+		expect(wait!.text).toMatch(/^## ag1\n.+\n\n## ag2\n/s);
+		expect(answers.sort()).toEqual([
+			"**Agent general answered (ag1)**\n\nIts answer was returned by agent_wait.",
+			"**Agent general answered (ag2)**\n\nIts answer was returned by agent_wait.",
+		]);
+		rpc.child.stdin?.end();
+		const result = await finishPrism(rpc, 30_000);
+		expect(result.code, result.stderr).toBe(0);
+	}, 90_000);
 
 	// an agent has the session's tools except those addressed to the user,
 	// and its background task outlives its answer: its end reaches the main session through the agent.

@@ -80,6 +80,8 @@ for name in "${names[@]}"; do
 	case "$name" in
 	narrow | switches-narrow) at=560x800 ;;
 	qa-window-audit-narrow) at=640x800 ;;
+	# the side menu's checks on a phone pass by themselves at 1280 px, where the menu covers nothing.
+	qa-agents-fork-phone | qa-schedule-phone) at=412x900 ;;
 	# Room for a pinned command: at 560 px it stays in more… (footer-narrow).
 	footer) at=1280x800 ;;
 	footer-narrow)
@@ -225,15 +227,24 @@ for name in "${names[@]}"; do
 		mkdir -p "$profile"
 		printf '%064d\n' 1 2 >"$profile/linked-phones"
 		;;
-	qa-desktop)
+	qa-desktop | qa-desktop-phone)
 		# the agent's desktop module on; it needs labwc and the helper of this checkout.
 		if ! command -v labwc >/dev/null; then
 			echo "$name: skip (labwc is not installed)"
 			continue
 		fi
+		[[ $name == qa-desktop-phone ]] && at=412x900
 		"$GUI/../desktop-helper/build.sh" >/dev/null || { echo "$name: FAIL the desktop helper did not build"; continue; }
 		mkdir -p "$profile/demo/agent"
 		echo '{"extensions":["+builtin:desktop"]}' >"$profile/demo/agent/settings.json"
+		# The phone's check also opens the trace (advanced display, trace on).
+		[[ $name == qa-desktop-phone ]] &&
+			echo '{"extensions":["+builtin:desktop"],"interfaceMode":"advanced","traceEnabled":true}' >"$profile/demo/agent/settings.json"
+		;;
+	qa-side-menu-room-phone)
+		at=412x900
+		mkdir -p "$profile/demo/agent"
+		echo '{"extensions":["+builtin:memory"]}' >"$profile/demo/agent/settings.json"
 		;;
 	qa-native-keybindings)
 		mkdir -p "$profile/demo/agent"
@@ -263,7 +274,8 @@ for name in "${names[@]}"; do
 	# The files the attach button's picker would return, and a model that takes images.
 	drop) extra=(FAKE_PLAIN=1) ;;
 	# The turns an agent's answer and its background task's end start get "ok", not the demo's tools.
-	qa-subagent | qa-side-menu-agents) extra=(FAKE_PLAIN=1) ;;
+	# the turn the answer of an agent the user started now starts too.
+	qa-subagent | qa-side-menu-agents | qa-agents-advanced | qa-agents-fork | qa-agents-fork-phone) extra=(FAKE_PLAIN=1) ;;
 	qa-phone-link) extra=("PRISM_REMOTE_BIN=$GUI/../android/server/target/release/prism-remote" "PRISM_REMOTE_DIR=$remote_dir" PRISM_REMOTE_PORT=0 PRISM_REMOTE_HOSTS=127.0.0.1) ;;
 	# A phone that goes lets its engine go after 1 s, not minutes.
 	qa-phone-open) extra=(FAKE_PLAIN=1 "PRISM_REMOTE_BIN=$GUI/../android/server/target/release/prism-remote" "PRISM_REMOTE_DIR=$remote_dir" PRISM_REMOTE_PORT=0 PRISM_REMOTE_HOSTS=127.0.0.1 PRISM_REMOTE_KEEP_ALIVE=1) ;;

@@ -75,7 +75,6 @@ L’[étape de permissions](permissions.md) est toujours chargée, dans tous les
 | Option | Comportement |
 |---|---|
 | `--perm-mode <mode>` | Mode de permissions de cette exécution : `ask`, `safe`, `broad` (par défaut) ou `unrestricted`. `unrestricted` ne demande rien ; ses commandes s’exécutent hors de la [sandbox](sandbox.md), sauf si vous l’avez activé pour ce mode |
-| `--perm-yolo` | Équivaut à `--perm-mode broad` (`broad` s’appelait `yolo`) |
 | `--perm-deny <règles>` | Règles de refus de cette session, sous forme de tableau JSON comme `'["bash(git push*)"]'` ; Prism transmet les siennes aux agents qu’il lance |
 | `--scheduled <nom>` | Exécuter une [tâche planifiée](scheduled-tasks.md). Son minuteur systemd passe cette option ; vous ne l’utilisez pas vous-même |
 

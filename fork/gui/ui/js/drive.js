@@ -677,6 +677,14 @@ export async function runDrive(app) {
 					if (r.top < box.top - 1 || r.bottom > box.bottom + 1) throw new Error(`in-view: ${Math.round(r.top)}..${Math.round(r.bottom)} outside ${Math.round(box.top)}..${Math.round(box.bottom)}`);
 					break;
 				}
+				case "in-front": {
+					// nothing covers the element at its middle (a narrow window's side menu left open over it).
+					const el = await waitFor(step);
+					const r = el.getBoundingClientRect();
+					const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+					if (!top || !el.contains(top)) throw new Error(`in-front ${step.selector}: covered by ${top ? `${top.tagName.toLowerCase()}#${top.id}.${String(top.className).split(" ")[0]}` : "nothing"}`);
+					break;
+				}
 				case "second-screen": {
 					// fork: a second screen on the conversation shown, as the phone on a session of the
 					// window: another view of the same session file, which the host attaches to the engine already running
@@ -1051,6 +1059,120 @@ export async function runDrive(app) {
 					}
 					await log(`view-hold ${step.by}: ${el.className.split(" ").slice(0, 2).join(".")} moved at most ${Math.round(worst)} px`);
 					if (Math.abs(worst) > (step.tolerance ?? 2)) throw new Error(`view-hold ${step.by}: moved ${Math.round(worst)}px`);
+					break;
+				}
+				case "scroll-run": {
+					// a fast scroll up a long conversation stuttered. The transcript moved by `px` a
+					// frame (negative: up) for `frames` frames, as a fling would; with `smooth`, a wheel's ticks instead: a
+					// smooth scroll by `px` every `every` frames (the browser's own animation, aiming at a position, which
+					// undoes a move of the view made meanwhile). Logged: the frames' intervals and those over 34 ms; the time
+					// spent putting entries in the page (list.reconcile) and building them; how often the list moved the view
+					// itself, while scrolled and once still; the frames that showed a spacer under the view's middle (blank);
+					// how far the content moved, and its worst jump: how far the entry under the view moved from the `px`
+					// asked (smooth: beyond a tick). `detail` logs each frame that jumped or moved the view.
+					// `maxLong`: frames over 34 ms. `maxP95`: 95th percentile interval, ms. `maxCorrections`: moves of the
+					// view by the list while scrolled. `maxJump`: px.
+					const scroller = document.getElementById("scroller");
+					const list = app.active.list;
+					const { reconcile, materialize } = list;
+					const host = list.host;
+					const { moved } = host;
+					let busy = 0;
+					let building = 0;
+					let calls = 0;
+					let built = 0;
+					let corrections = 0;
+					let corrected = 0;
+					let during = 0; // the corrections while the view was scrolled, not once it was still
+					list.reconcile = function (...args) {
+						const t0 = performance.now();
+						try {
+							return reconcile.apply(this, args);
+						} finally {
+							busy += performance.now() - t0;
+							calls++;
+						}
+					};
+					list.materialize = function (entry) {
+						if (entry.el) return materialize.call(this, entry);
+						const t0 = performance.now();
+						built++;
+						try {
+							return materialize.call(this, entry);
+						} finally {
+							building += performance.now() - t0;
+						}
+					};
+					const movedBy = [];
+					host.moved = (delta, placed) => {
+						if (step.detail) movedBy.push(Math.round(delta));
+						corrections++;
+						corrected += Math.abs(delta);
+						return moved(delta, placed);
+					};
+					// The entry under the view's middle; a spacer there is a blank frame (the view is past what is drawn).
+					let blank = 0;
+					const under = () => {
+						const box = scroller.getBoundingClientRect();
+						const el = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest(".transcript > *");
+						if (el?.classList.contains("transcript-spacer")) blank++;
+						return el && !el.classList.contains("transcript-spacer") ? { el, top: el.getBoundingClientRect().top } : undefined;
+					};
+					const intervals = [];
+					let jump = 0;
+					let travel = 0;
+					let ticks = 0;
+					const startTop = scroller.scrollTop;
+					const shape = () => `spacer ${Math.round(list.topSpacer?.getBoundingClientRect().height ?? -1)} [${list.start},${list.end}] height ${scroller.scrollHeight}`;
+					let previous = performance.now();
+					try {
+						for (let frame = 0; frame < step.frames; frame++) {
+							const before = under();
+							const from = scroller.scrollTop;
+							const was = step.detail ? shape() : "";
+							const callsWere = calls;
+							let asked;
+							if (!step.smooth) {
+								scroller.scrollTop += step.px;
+								asked = scroller.scrollTop - from;
+							} else if (frame % (step.every ?? 4) === 0) {
+								scroller.scrollBy({ top: step.px, behavior: "smooth" });
+								ticks++;
+							}
+							await new Promise(requestAnimationFrame);
+							const now = performance.now();
+							intervals.push(now - previous);
+							previous = now;
+							if (!before?.el.isConnected) continue;
+							const shift = before.el.getBoundingClientRect().top - before.top;
+							travel += shift;
+							if (step.detail && Math.abs(shift) > Math.abs(step.px))
+								await log(
+									`  frame ${frame}: content moved ${Math.round(shift)} px, scrollTop ${Math.round(from)} -> ${Math.round(scroller.scrollTop)}, ${was} -> ${shape()}, reconciles ${calls - callsWere}, moves [${movedBy.splice(0)}]`,
+								);
+							else if (step.detail && movedBy.length) await log(`  frame ${frame}: moves [${movedBy.splice(0)}] following ${app.stick}`);
+							// What the reader sees jump: off the `px` asked, or (smooth) any move larger than a tick.
+							jump = Math.max(jump, asked !== undefined ? Math.abs(shift + asked) : Math.abs(shift) - Math.abs(step.px));
+						}
+						during = corrections;
+						await sleep(step.settle ?? 300);
+					} finally {
+						delete list.reconcile;
+						delete list.materialize;
+						host.moved = moved;
+					}
+					const sorted = [...intervals].sort((x, y) => x - y);
+					const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+					const long = intervals.filter((ms) => ms > 34).length;
+					const total = intervals.reduce((sum, ms) => sum + ms, 0);
+					await log(
+						`scroll-run ${step.label ?? ""} ${step.px}x${step.frames} (overflow-anchor ${getComputedStyle(scroller).overflowAnchor}): ${Math.round(total)} ms, mean ${(total / intervals.length).toFixed(1)} p95 ${p95.toFixed(1)} max ${sorted.at(-1).toFixed(1)} ms, long ${long}; reconcile ${calls}x ${busy.toFixed(0)} ms, built ${built} in ${building.toFixed(0)} ms; corrections ${during} while scrolling, ${corrections - during} after (${Math.round(corrected)} px, scrollTop ${Math.round(scroller.scrollTop - startTop)}); blank frames ${blank}; content moved ${Math.round(travel)} px${step.smooth ? ` for ${ticks} ticks of ${-step.px}` : ""}, worst jump ${Math.round(Math.max(0, jump))} px`,
+					);
+					if (step.maxLong !== undefined && long > step.maxLong) throw new Error(`scroll-run: ${long} frames over 34 ms, over ${step.maxLong}`);
+					if (step.maxP95 !== undefined && p95 > step.maxP95) throw new Error(`scroll-run: p95 ${p95.toFixed(1)} ms, over ${step.maxP95}`);
+					if (step.maxCorrections !== undefined && during > step.maxCorrections)
+						throw new Error(`scroll-run: the list moved the view ${during} times while it was scrolled, over ${step.maxCorrections}`);
+					if (step.maxJump !== undefined && jump > step.maxJump) throw new Error(`scroll-run: the content jumped ${Math.round(jump)} px, over ${step.maxJump}`);
 					break;
 				}
 				case "scroll-to": {

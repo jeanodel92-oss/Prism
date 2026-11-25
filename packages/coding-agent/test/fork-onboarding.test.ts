@@ -24,6 +24,7 @@ import onboarding, {
 	onboardingPath,
 	PERMISSION_MODE_EVENT,
 	type PermissionModeRequest,
+	searchNeeds,
 	setOnboardingHost,
 	shouldOpenAtStartup,
 } from "../src/fork/onboarding.ts";
@@ -134,6 +135,9 @@ describe("fork: onboarding", () => {
 		// fork: computer use, a step of its own.
 		expect(component.stepId).toBe("computer");
 		keys(ENTER, DOWN, DOWN, DOWN, ENTER); // browser on, Continue
+		// the privacy step.
+		expect(component.stepId).toBe("privacy");
+		keys(DOWN, ENTER, DOWN, ENTER); // Exa on, Continue
 		expect(component.stepId).toBe("connection");
 		keys(DOWN, ENTER); // Later
 		expect(seen.done).toEqual({
@@ -143,8 +147,26 @@ describe("fork: onboarding", () => {
 			permissions: "safe",
 			modules: ["web", "pi-lsp", "memory"],
 			computer: ["browser"],
+			privacy: ["exa"],
 			connection: "later",
 		});
+	});
+
+	// without web search, where searches would go is no question to ask.
+	it("leaves the Exa row out of the privacy step once web search is turned off", () => {
+		const { component, seen, keys } = wizard();
+		keys(ENTER, ENTER, ENTER, ENTER); // language, theme, display, permissions as they are
+		expect(component.stepId).toBe("modules");
+		keys(ENTER, ...Array(8).fill(DOWN), ENTER); // web search off, Continue
+		keys(DOWN, DOWN, DOWN, ENTER); // computer use: Continue
+		expect(component.stepId).toBe("privacy");
+		const screen = component.render(80).join("\n");
+		expect(screen).toContain("Model list from pi.dev");
+		expect(screen).not.toContain("Exa");
+		keys(DOWN, DOWN, DOWN, ENTER); // the cursor stops on Continue, the last of two rows
+		expect(component.stepId).toBe("connection");
+		keys(ENTER);
+		expect(seen.done?.modules).toEqual(["pi-lsp"]);
 	});
 
 	it("Esc skips the rest and keeps what was chosen so far", () => {
@@ -228,6 +250,30 @@ describe("fork: onboarding", () => {
 		expect(component.render(100).join("\n")).not.toContain("relay");
 	});
 
+	// language servers, MCP, Goal mode and the sandbox are defined where they appear.
+	it("defines language servers, MCP and Goal mode on their rows, and the sandbox at the permissions step", () => {
+		const steps = buildSteps(undefined);
+		const note = (value: string) =>
+			steps.find((step) => step.id === "modules")!.options.find((option) => option.value === value)?.note;
+		expect(note("pi-lsp")).toMatch(/^A language server is a program/);
+		expect(note("mcp")).toMatch(/^MCP is a common way/);
+		expect(note("pi-goal")).toMatch(/\/goal pause/);
+		expect(steps.find((step) => step.id === "permissions")!.help).toMatch(/shut in a sandbox/);
+		setLanguage("fr");
+		const { component, keys } = wizard();
+		// The screen's words, without colours or line breaks.
+		const text = () =>
+			component
+				.render(64)
+				.join(" ")
+				.replace(/\x1b\[[0-9;]*m/g, "")
+				.replace(/\s+/g, " ");
+		keys(DOWN, DOWN, ENTER, ENTER, ENTER); // Français, theme, display
+		expect(text()).toContain("enfermées dans une sandbox");
+		keys(ENTER, DOWN); // permissions, then the language servers' row
+		expect(text()).toContain("Un serveur de langage est un programme");
+	});
+
 	it("writes only the choices that changed to settings.json", async () => {
 		const settings = SettingsManager.create(agentDir, agentDir);
 		applyAnswers(settings, initial, {
@@ -253,6 +299,50 @@ describe("fork: onboarding", () => {
 			"notify",
 			"memory",
 		]);
+	});
+
+	// the services Prism contacts besides the model, on by default.
+	it("reads and writes the privacy choices: pi.dev's model list, and Exa or the user's SearXNG", async () => {
+		const settings = SettingsManager.create(agentDir, agentDir);
+		const before = currentAnswers(settings, agentDir, true);
+		expect(before.privacy).toEqual(["catalog", "exa"]);
+		const step = buildSteps(undefined).find((candidate) => candidate.id === "privacy")!;
+		expect(step.toggles).toBe(true);
+		expect(step.options.map((option) => option.value)).toEqual(["catalog", "exa", "continue"]);
+
+		const after = { ...before, privacy: [] };
+		expect(applyAnswers(settings, before, after, agentDir).modulesChanged).toBe(true);
+		expect(searchNeeds(settings, before, after)).toContain("/web-key searxng");
+		await settings.flush();
+		expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"))).toEqual({
+			modelCatalogRefresh: false,
+			webSearchProvider: "searxng",
+		});
+		expect(currentAnswers(settings, agentDir, true).privacy).toEqual([]);
+
+		// Back on: the catalog setting is removed (on is the default), searches go to Exa again.
+		expect(applyAnswers(settings, after, before, agentDir).modulesChanged).toBe(true);
+		expect(searchNeeds(settings, after, before)).toBeUndefined();
+		await settings.flush();
+		expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"))).toEqual({ webSearchProvider: "exa" });
+		// Unchanged choices write nothing.
+		expect(applyAnswers(settings, before, before, agentDir).modulesChanged).toBe(false);
+	});
+
+	it("leaves the search provider alone and asks for no SearXNG address when web search is turned off", async () => {
+		const settings = SettingsManager.create(agentDir, agentDir);
+		const before = currentAnswers(settings, agentDir, true);
+		const modules = (before.modules as string[]).filter((name) => name !== "web");
+		// The Exa row was not shown, or was unticked before web search was turned off: no provider change either way.
+		for (const privacy of [["catalog", "exa"], ["catalog"]]) {
+			const after = { ...before, modules, privacy };
+			applyAnswers(settings, before, after, agentDir);
+			expect(searchNeeds(settings, before, after)).toBeUndefined();
+		}
+		await settings.flush();
+		expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"))).toEqual({
+			extensions: ["-builtin:web"],
+		});
 	});
 
 	/** Runs /onboarding, answering each step with the given keys; returns what it showed and did. */
@@ -347,6 +437,9 @@ describe("fork: onboarding", () => {
 	const toComputerContinue = buildSteps(undefined)[5]!
 		.options.slice(1)
 		.map(() => DOWN);
+	const toPrivacyContinue = buildSteps(undefined)[6]!
+		.options.slice(1)
+		.map(() => DOWN);
 
 	it("/onboarding saves the choices, applies the permission mode now and opens /login when asked", async () => {
 		// English, Dark, Simple, Read only, modules, connect another model. With no mode configured the session is in
@@ -358,6 +451,7 @@ describe("fork: onboarding", () => {
 			[UP, ENTER],
 			[ENTER, DOWN, ENTER, ...toContinue, ENTER],
 			[...toComputerContinue, ENTER],
+			[...toPrivacyContinue, ENTER],
 			[DOWN, ENTER],
 		]);
 
@@ -377,6 +471,7 @@ describe("fork: onboarding", () => {
 		[DOWN, DOWN, DOWN, ENTER],
 		[...toContinue, ENTER],
 		[...toComputerContinue, ENTER],
+		[...toPrivacyContinue, ENTER],
 		[ENTER],
 	];
 
@@ -416,7 +511,16 @@ describe("fork: onboarding", () => {
 		writeFileSync(join(agentDir, "permissions.json"), JSON.stringify({ mode: "safe" }));
 		// Broad is shown as chosen: one step up is Read only.
 		const run = await runOnboarding(
-			[[ENTER], [ENTER], [ENTER], [UP, ENTER], [...toContinue, ENTER], [...toComputerContinue, ENTER], [ENTER]],
+			[
+				[ENTER],
+				[ENTER],
+				[ENTER],
+				[UP, ENTER],
+				[...toContinue, ENTER],
+				[...toComputerContinue, ENTER],
+				[...toPrivacyContinue, ENTER],
+				[ENTER],
+			],
 			{
 				sessionMode: "broad",
 			},
@@ -449,6 +553,7 @@ describe("fork: onboarding", () => {
 				[UP, ENTER],
 				[ENTER, DOWN, ENTER, ...toContinue, ENTER],
 				[...toComputerContinue, ENTER],
+				[...toPrivacyContinue, ENTER],
 				[ENTER],
 			],
 			{
@@ -467,6 +572,7 @@ describe("fork: onboarding", () => {
 			[ENTER],
 			[...toContinue, ENTER],
 			[...toComputerContinue, ENTER],
+			[...toPrivacyContinue, ENTER],
 			[DOWN, ENTER],
 		];
 		const configured = await runOnboarding(toModel);

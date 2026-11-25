@@ -75,7 +75,6 @@ The [permission gate](permissions.md) is always loaded, in every mode, including
 | Option | Behavior |
 |---|---|
 | `--perm-mode <mode>` | Permission mode for this run: `ask`, `safe`, `broad` (default) or `unrestricted`. `unrestricted` asks nothing; its commands run outside the [sandbox](sandbox.md) unless you turned it on for that mode |
-| `--perm-yolo` | Same as `--perm-mode broad` (`broad` was called `yolo`) |
 | `--perm-deny <rules>` | Deny rules for this session, as a JSON array such as `'["bash(git push*)"]'`; Prism passes its own to the agents it starts |
 | `--scheduled <name>` | Run a [scheduled task](scheduled-tasks.md). Its systemd timer passes this option; you do not use it yourself |
 

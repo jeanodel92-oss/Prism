@@ -1,0 +1,163 @@
+[
+	{
+		"do": "log",
+		"text": "fork.12.5: several questions of the model: back to the previous one, then a review before sending"
+	},
+	{
+		"do": "wait",
+		"selector": "#composer[data-starting='false']",
+		"timeout": 30000
+	},
+	{
+		"do": "type",
+		"text": "calls [[\"ask_user_question\", {\"questions\": [{\"header\": \"Base\", \"question\": \"Quelle base de données ?\", \"multiSelect\": false, \"options\": [{\"label\": \"Postgres\", \"description\": \"relationnelle\"}, {\"label\": \"SQLite\", \"description\": \"fichier\"}]}, {\"header\": \"Cache\", \"question\": \"Quel cache ?\", \"multiSelect\": false, \"options\": [{\"label\": \"Redis\", \"description\": \"serveur\"}, {\"label\": \"Aucun\", \"description\": \"rien\"}]}]}]]"
+	},
+	{
+		"do": "send"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Postgres",
+		"timeout": 20000
+	},
+	{
+		"do": "absent",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Previous question",
+		"why": "no way back from the first question"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Postgres"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Redis"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Previous question"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "SQLite"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "SQLite"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Aucun"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Aucun"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"text": "Review your answers"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"text": "→ SQLite"
+	},
+	{
+		"do": "fits",
+		"selector": ".panel.question:not(.closing)"
+	},
+	{
+		"do": "shot",
+		"name": "r1-review"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Change 2. Cache"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Redis"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Redis"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"text": "→ Redis"
+	},
+	{
+		"do": "sleep",
+		"ms": 600,
+		"why": "a question ignores the pointer for 400 ms after it appears"
+	},
+	{
+		"do": "press",
+		"selector": ".panel.question:not(.closing) .listbox li",
+		"text": "Submit answers"
+	},
+	{
+		"do": "wait",
+		"selector": ".panel.question:not(.closing)",
+		"gone": true,
+		"timeout": 20000
+	},
+	{
+		"do": "shot",
+		"name": "r2-sent"
+	},
+	{
+		"do": "toasts"
+	},
+	{
+		"do": "absent",
+		"selector": ".toast.error"
+	},
+	{
+		"do": "quit"
+	}
+]

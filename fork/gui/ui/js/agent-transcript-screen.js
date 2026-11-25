@@ -77,7 +77,33 @@ export async function agentTranscriptScreen(view, run) {
 		});
 		actions.push(stop);
 	}
-	panel.setBody(body);
+	// a finished agent continues with a message, keeping its context; its answer comes
+	// as a message in the conversation, without starting a turn.
+	let reply;
+	if (run.state !== "running" && run.session) {
+		const message = h("textarea", { class: "field", name: "message", rows: "3", "aria-label": t("agentMessageLabel", run.agent), placeholder: t("agentMessageLabel", run.agent) });
+		const send = h("button", {
+			type: "button",
+			class: "primary",
+			dataset: { action: "message" },
+			text: t("agentMessageSend"),
+			onclick: async () => {
+				send.disabled = true;
+				try {
+					const data = await view.engine.request({ type: "agents_resume", session: run.session, message: message.value });
+					view.app.toast(t("agentContinues", run.agent, data.started));
+					panel.done?.();
+				} catch (error) {
+					view.app.toast(String(error?.message ?? error), "error");
+				} finally {
+					send.disabled = false;
+				}
+			},
+		});
+		reply = h("label", { class: "field-row agent-message" }, h("span", { text: t("agentMessage") }), message);
+		actions.push(send);
+	}
+	panel.setBody(body, reply);
 	if (actions.length) panel.setActions(...actions);
 	await view.showPanel("agent-transcript", panel);
 }

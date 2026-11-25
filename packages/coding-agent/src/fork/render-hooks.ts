@@ -115,7 +115,7 @@ export function setRenderHooks(hooks: RenderHooks): void {
  * component is live (streaming, running tool), since its hooked render may animate.
  */
 export class HookRenderCache<T> {
-	private key: unknown[] | undefined;
+	private key: { generation: number; width: number; env: readonly unknown[] } | undefined;
 	private value: T | undefined;
 
 	clear(): void {
@@ -129,11 +129,18 @@ export class HookRenderCache<T> {
 			this.clear();
 			return render();
 		}
-		const key = [hooksGeneration, width, ...env];
+		// compared in place, without a new array per message and frame.
 		const previous = this.key;
-		if (previous && previous.length === key.length && previous.every((v, i) => v === key[i])) return this.value as T;
+		if (
+			previous &&
+			previous.generation === hooksGeneration &&
+			previous.width === width &&
+			(previous.env === env ||
+				(previous.env.length === env.length && previous.env.every((value, index) => value === env[index])))
+		)
+			return this.value as T;
 		const value = render();
-		this.key = key;
+		this.key = { generation: hooksGeneration, width, env };
 		this.value = value;
 		return value;
 	}

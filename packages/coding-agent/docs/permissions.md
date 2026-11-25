@@ -3,7 +3,7 @@
 Prism puts a confirmation gate in front of tool calls. It is always loaded:
 `--no-extensions`, `--safe` and the `extensions` setting do not turn it off. Only you
 change it, with `/perm` or `--perm-mode`. An extension you install that registers
-`/perm`, `--perm-mode` or `--perm-yolo` replaces it. `alt+m` cycles the mode.
+`/perm` or `--perm-mode` replaces it. `alt+m` cycles the mode.
 
 The gate decides whether a call runs; the [sandbox](sandbox.md) limits what a shell
 command can do once it runs. In the `safe`, `ask` and `broad` modes, the agent's
@@ -77,7 +77,7 @@ Stopping keeps the original result in the session too. Dismissing the dialog sto
 
 Without dialogs (print/JSON, or RPC without an interactive client), a warning goes
 to stderr or RPC notifications and the run continues. Content is never filtered or
-rewritten. `/settings` > Permissions & sandbox > **Prompt injection warning** turns
+rewritten. `/settings` > Permissions & sandbox > **Hidden instructions alert** turns
 the check off immediately (`"injectionWarning": false` in global `settings.json`).
 The module can also be disabled like other built-ins.
 
@@ -160,7 +160,7 @@ warning dialog (the choice is saved in the global `permissions.json` as
 run outside the sandbox unless you turn the sandbox on for it in `/settings` › Permissions
 & sandbox; outside the sandbox, the agent can do anything your user account can.
 
-Or for one run: `--perm-mode safe`, `--perm-mode broad` (`--perm-yolo`). The mode
+Or for one run: `--perm-mode safe`, `--perm-mode broad`. The mode
 chosen with `/perm mode` or `alt+m` is saved in the session and comes back when you
 resume it; `/perm default <mode>` sets the mode new sessions start in.
 

@@ -33,6 +33,8 @@ export class AssistantMessageComponent extends Container {
 	/** fork: thinking regions and whether each shows the hidden-thinking label. */
 	private thinkingRegions = new WeakMap<MouseRegion, boolean>();
 	private hookCache = new HookRenderCache<AssistantMessageRender | undefined>(); // fork
+	// the last hooked lines returned, with what they were made from.
+	private lastDrawn?: { rendered: AssistantMessageRender; drawn: string[]; hasToolCalls: boolean; lines: string[] };
 
 	constructor(
 		message?: AssistantMessage,
@@ -100,7 +102,12 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	override render(width: number): string[] {
-		const lines = this.renderHooked(width) ?? super.render(width);
+		const hooked = this.renderHooked(width);
+		if (hooked) return hooked;
+		return this.markZone(super.render(width));
+	}
+
+	private markZone(lines: string[]): string[] {
 		if (this.hasToolCalls || lines.length === 0) {
 			return lines;
 		}
@@ -126,12 +133,18 @@ export class AssistantMessageComponent extends Container {
 			return hook(width, blocks, this.isStreaming);
 		});
 		if (!rendered) return undefined;
+		// fork: a thinking block shown or hidden by a click unfolds or folds.
+		const drawn = renderHooks.unfolding?.(this, "thinking", rendered.lines) ?? rendered.lines;
+		// an unchanged message returns the same marked lines, so the screen skips them by reference.
+		const last = this.lastDrawn;
+		if (last?.rendered === rendered && last.drawn === drawn && last.hasToolCalls === this.hasToolCalls)
+			return last.lines;
 		this.contentContainer.setMouseLayout({ width, children: rendered.layout });
 		this.setMouseLayout({ width, children: [{ component: this.contentContainer, height: rendered.lines.length }] });
-		// render() marks the first and last lines: never on the cached array.
-		const lines = [...rendered.lines];
-		// fork: a thinking block shown or hidden by a click unfolds or folds.
-		return renderHooks.unfolding?.(this, "thinking", lines) ?? lines;
+		// The zone marks change the first and last lines: never on the cached array.
+		const lines = this.markZone([...drawn]);
+		this.lastDrawn = { rendered, drawn, hasToolCalls: this.hasToolCalls, lines };
+		return lines;
 	}
 
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {

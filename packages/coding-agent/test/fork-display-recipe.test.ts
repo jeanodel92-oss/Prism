@@ -5,7 +5,7 @@ import { helpEntries, helpItems, helpSelector } from "../src/fork/help.ts";
 import { FR, FR_PATTERNS } from "../src/fork/i18n/fr.ts";
 import { fill, setLanguage, t } from "../src/fork/i18n/index.ts";
 import { PermView } from "../src/fork/perm-view.ts";
-import { modePolicy, POLICY_ROWS, READ_LIMIT_NOTICE } from "../src/fork/permissions.ts";
+import { modePolicy, POLICY_ROWS } from "../src/fork/permissions.ts";
 import { groupSettingsByDomain } from "../src/fork/settings-domains.ts";
 import { ListEditor } from "../src/fork/settings-list-editor.ts";
 import { SettingsView } from "../src/fork/settings-view.ts";
@@ -73,14 +73,6 @@ describe("fork: display recipe", () => {
 				.join(" ");
 			expect(text.replace(/\s+/g, " "), String(width)).toContain(stop);
 		}
-	});
-
-	it("says in French that the rest of the home folder is not read", () => {
-		// "plus le reste de votre dossier personnel" read as "and also the rest of your home folder".
-		setLanguage("fr");
-		const notice = t(READ_LIMIT_NOTICE);
-		expect(notice).toContain("et non le reste de votre dossier personnel");
-		expect(notice).not.toContain("plus le reste");
 	});
 
 	it("keeps <instruction> in the French empty-memory hint, like /memory's help", () => {

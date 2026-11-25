@@ -112,7 +112,7 @@ describe("browser guided setup", () => {
 		expect(copy).toHaveBeenCalledWith(CHROME_STORE);
 		expect(screens[3]!.lines.join("\n")).toContain(`${CHROME_STORE} copied: paste it in the address bar of Chromium`);
 		expect(screens[5]!.lines.join("\n")).toContain("Checked: Prism opened, read and closed a tab");
-		expect(setup.choose).toHaveBeenCalledWith("Chromium");
+		expect(setup.choose).toHaveBeenCalledWith("Chromium", CHROMIUM);
 	});
 
 	it("says what is in place when the extension never connects, and checks again on demand", async () => {

@@ -18,7 +18,7 @@ import { keyText } from "../../modes/interactive/components/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { AnimationStyle } from "../animations.ts";
 import { APP_DISPLAY_NAME, displayVersion } from "../brand.ts";
-import { t as translate } from "../i18n/index.ts";
+import { getLanguage, t as translate } from "../i18n/index.ts";
 import { pasteTargets } from "../paste-hint.ts";
 import { homeRelative } from "../path-within.ts";
 import { artPixel, LOGO_LARGE, LOGO_MINI, LOGO_SMALL, pixelKind } from "./art.ts";
@@ -142,6 +142,11 @@ class PrismHeader {
 	private readonly state: PrismState;
 
 	private readonly animate: boolean;
+	/**
+	 * the collapsed header once the intro has played, with what it was drawn
+	 * from. Every frame renders it again, and redrawing the logo and its lines took ~350 ms of a 12 s streamed reply.
+	 */
+	private cache?: { theme: Theme; key: string; lines: string[] };
 
 	constructor(tui: Pick<TUI, "requestRender">, state: PrismState, animate: boolean) {
 		this.tui = tui;
@@ -173,6 +178,37 @@ class PrismHeader {
 		const theme = this.state.theme;
 		if (!theme) return [];
 		const t = this.animate ? Date.now() - this.born : INTRO_MS;
+		const key = t >= INTRO_MS && !this.expanded ? this.cacheKey(width) : undefined;
+		if (key !== undefined && this.cache?.theme === theme && this.cache.key === key) return this.cache.lines;
+		const lines = this.draw(width, t);
+		this.cache = key === undefined ? undefined : { theme, key, lines };
+		return lines;
+	}
+
+	/** Everything the collapsed header reads besides the theme. */
+	private cacheKey(width: number): string {
+		let model: NonNullable<PrismState["ctx"]>["model"];
+		let cwd: string | undefined;
+		try {
+			model = this.state.ctx?.model;
+			cwd = this.state.ctx?.cwd;
+		} catch {}
+		return JSON.stringify([
+			width,
+			model?.provider,
+			model?.id,
+			model?.reasoning,
+			this.state.thinkingLevel,
+			cwd ?? process.cwd(),
+			process.env.HOME,
+			this.state.branch(),
+			getLanguage(),
+			this.state.animationStyle("intro"),
+			keyText("app.tools.expand"),
+		]);
+	}
+
+	private draw(width: number, t: number): string[] {
 		const map = logoFor(width);
 		const logoW = map[0]!.length;
 		const logo = this.logo(map, t);

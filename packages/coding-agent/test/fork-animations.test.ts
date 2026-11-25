@@ -222,18 +222,22 @@ describe("fork: animations one by one", () => {
 			prismExtension(pi as unknown as ExtensionAPI);
 			const ui = { theme, setHeader: () => {}, setFooter: () => {}, setEditorComponent: () => {} };
 			await handlers.get("session_start")?.({ type: "session_start" }, { hasUI: true, ui });
-			// The cache key holds each animation's switch, in ANIMATIONS order.
-			const switches = () => renderHooks.cacheKey!().slice(3, 3 + ANIMATIONS.length);
-			expect(switches()).toEqual(ANIMATIONS.map(() => true));
+			// The cache key holds each animation's switch, in ANIMATIONS order. it is computed once per frame
+			// (a frame renders synchronously), so each read here comes after the microtasks, as a next frame does.
+			const switches = async () => {
+				await Promise.resolve();
+				return renderHooks.cacheKey!().slice(3, 3 + ANIMATIONS.length);
+			};
+			expect(await switches()).toEqual(ANIMATIONS.map(() => true));
 
 			settings.animationsOff = ["thinking"];
-			expect(switches()).toEqual(ANIMATIONS.map(() => true)); // read again at most once a second
+			expect(await switches()).toEqual(ANIMATIONS.map(() => true)); // read again at most once a second
 			vi.advanceTimersByTime(1100);
-			expect(switches()).toEqual(ANIMATIONS.map(({ id }) => id !== "thinking"));
+			expect(await switches()).toEqual(ANIMATIONS.map(({ id }) => id !== "thinking"));
 
 			settings.animations = false;
 			vi.advanceTimersByTime(1100);
-			expect(switches()).toEqual(ANIMATIONS.map(() => false));
+			expect(await switches()).toEqual(ANIMATIONS.map(() => false));
 			await handlers.get("session_shutdown")?.({ type: "session_shutdown" }, {});
 		} finally {
 			if (tty) Object.defineProperty(process.stdout, "isTTY", tty);

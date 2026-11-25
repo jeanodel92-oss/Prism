@@ -121,6 +121,10 @@ export async function consumeSseStream(stream: ReadableStream<Uint8Array>, optio
 		}
 		// fork: as in the SSE standard, an event the stream ended in the middle of is
 		// dropped, with its id.
+	} catch (error) {
+		// Releasing the lock alone leaves the response open; the original error wins over a failed cancel.
+		await reader.cancel().catch(() => {});
+		throw error;
 	} finally {
 		signal?.removeEventListener("abort", cancel);
 		reader.releaseLock();

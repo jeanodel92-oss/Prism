@@ -4,7 +4,7 @@
 import type { ExtensionContext } from "../core/extensions/types.ts";
 import { fill, resolveLanguage, setLanguage, t } from "./i18n/index.ts";
 import { NativeFlow, showNativeFlow } from "./native-flow.ts";
-import { type Answers, CONTINUE, type Step } from "./onboarding.ts";
+import { type Answers, CONTINUE, type Step, shownOptions } from "./onboarding.ts";
 
 export class NativeOnboardingView extends NativeFlow {
 	private readonly steps: Step[];
@@ -50,7 +50,7 @@ export class NativeOnboardingView extends NativeFlow {
 							{
 								...screen,
 								kind: "multiSelect",
-								items: step.options
+								items: shownOptions(step, this.answers)
 									.filter((option) => option.value !== CONTINUE)
 									.map((option) => ({
 										id: prefix + option.value,
@@ -72,7 +72,7 @@ export class NativeOnboardingView extends NativeFlow {
 									next();
 									return true;
 								}
-								const option = step.options.find(
+								const option = shownOptions(step, this.answers).find(
 									(candidate) => candidate.value !== CONTINUE && prefix + candidate.value === action.itemId,
 								);
 								if (action.kind !== "multiSelect" || !option || typeof action.selected !== "boolean")

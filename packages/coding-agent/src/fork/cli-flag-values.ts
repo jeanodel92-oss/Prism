@@ -1,6 +1,6 @@
 /**
  * fork: the command line is parsed before extensions say which of their flags
- * are booleans, so a word after an unknown flag is taken as its value: `prism --perm-yolo "Summarize this repo"` would
+ * are booleans, so a word after an unknown flag is taken as its value: `prism --some-boolean-flag "Summarize this repo"` would
  * lose the prompt. The word is remembered with its place among the messages, and when the flag turns out to be a
  * boolean it goes back there, before the initial message is built.
  */
@@ -28,7 +28,7 @@ export function recordAbsorbedValue(args: Args, name: string, value: string): vo
 
 /**
  * Whether the command line may hold a message before extensions are loaded: a message, or a word taken as an unknown
- * flag's value, which is one when the flag is a boolean (`prism --perm-yolo "…"` counted as a plain launch and followed the window setting)
+ * flag's value, which is one when the flag is a boolean (`prism --some-boolean-flag "…"` counted as a plain launch and followed the window setting)
  * .
  */
 export function mayHoldMessage(args: Args): boolean {

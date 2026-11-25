@@ -8,7 +8,7 @@ import { MODE_SUMMARIES } from "./perm-view.ts";
 
 export const SETTING_DESCRIPTIONS: Record<string, string> = {
 	"web-search-provider":
-		"Where web_search sends your searches: Exa works without a key; Brave, Tavily and Firecrawl need a key; SearXNG uses your own instance. Changing this closes Settings and reloads the tools.",
+		"Where the model's searches go: Exa works without a key; Brave, Tavily and Firecrawl need a key; SearXNG uses your own instance. Changing this closes Settings and reloads the tools.",
 	"web-search-key-exa":
 		"Without an API key (an access key from Exa), web_search uses Exa's public service with request limits. A key uses your Exa account's limits. Saved keys are stored in auth.json.",
 	"web-search-key":
@@ -80,7 +80,7 @@ export const EXTENSION_DESCRIPTIONS: Record<string, string> = {
 	trace: "/trace: keeps a local timeline of the tools run, the permissions asked and their results, when you turn it on.",
 	budgets: "/budget: limits on time, tool calls, tokens and cost for a session; 80% gives a warning.",
 	"injection-warning":
-		"Warns when a tool result looks like a prompt injection: stops the agent and asks whether to continue. A safety net, not the main protection.",
+		"Stops the agent when something it reads holds instructions that seem meant for it, and asks whether to continue. A safety net, not the main protection.",
 	"session-state":
 		"On resume, shows what a session was doing when it stopped and what to do about a tool left unfinished; /state shows the same.",
 	schedule:
@@ -145,7 +145,7 @@ export const EXTENSION_LABELS: Record<string, string> = {
 	trace: "Operation trace",
 	budgets: "Session limits (budgets)",
 	notify: "Desktop notifications",
-	"injection-warning": "Prompt injection warning",
+	"injection-warning": "Hidden instructions alert",
 	files: "Files panel",
 	"lsp-setup": "Language server suggestions",
 	"reply-language": "Reply language",

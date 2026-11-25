@@ -1,6 +1,6 @@
 # Permissions
 
-Prism place une étape de confirmation avant les appels d’outils. Elle est toujours active : `--no-extensions`, `--safe` et le réglage `extensions` ne la désactivent pas. Vous seul pouvez la modifier avec `/perm` ou `--perm-mode`. Une extension installée qui enregistre `/perm`, `--perm-mode` ou `--perm-yolo` la remplace. `alt+m` change de mode.
+Prism place une étape de confirmation avant les appels d’outils. Elle est toujours active : `--no-extensions`, `--safe` et le réglage `extensions` ne la désactivent pas. Vous seul pouvez la modifier avec `/perm` ou `--perm-mode`. Une extension installée qui enregistre `/perm` ou `--perm-mode` la remplace. `alt+m` change de mode.
 
 Cette étape décide si un appel s’exécute ; la [sandbox](sandbox.md) limite ce qu’une commande shell peut faire une fois lancée. Dans les modes `safe`, `ask` et `broad`, les commandes de l’agent s’exécutent par défaut dans la sandbox : elles ne peuvent modifier que le projet, ne lisent ni les identifiants de Prism ni vos clés, et ne joignent que les hôtes que vous autorisez. Les règles de cette page cherchent des motifs dans les commandes et les chemins ; seules, elles ne forment pas une frontière de sécurité. Hors de la sandbox (mode `unrestricted`, commandes que vous en excluez, outil `sudo`), une commande autorisée peut tout faire avec les permissions de votre compte. Pour isoler tout le processus Prism, consultez [Conteneuriser Prism](containerization.md).
 
@@ -57,8 +57,8 @@ Fermer le dialogue arrête l’agent.
 
 Sans dialogue (print/JSON ou RPC sans client interactif), l’avertissement part vers
 stderr ou les notifications RPC et l’exécution continue. Le contenu n’est jamais
-filtré ni réécrit. `/settings` > Permissions et sandbox > **Avertissement d’injection
-de prompt** désactive immédiatement le contrôle (`"injectionWarning": false` dans
+filtré ni réécrit. `/settings` > Permissions et sandbox > **Alerte sur les
+instructions cachées** désactive immédiatement le contrôle (`"injectionWarning": false` dans
 le `settings.json` global). Le module peut aussi être désactivé comme les autres
 modules intégrés.
 
@@ -123,7 +123,7 @@ Un périmètre limite les commandes lancées, les fichiers modifiés et les hôt
 
 `broad` s’appelait `yolo` ; `yolo` reste accepté. Le mode `unrestricted` ne pose aucune question, même pour les appels dangereux et les écritures en dehors du projet. Vous l’activez une fois dans une boîte de dialogue d’avertissement (le choix est enregistré dans le `permissions.json` global sous la forme `"unrestrictedAccepted": true`) ou explicitement en ligne de commande (`--perm-mode unrestricted`). Le `permissions.json` d’un projet ne peut pas l’activer. Ses commandes s’exécutent hors de la sandbox, sauf si vous l’activez pour ce mode dans `/settings` › Permissions et sandbox ; hors de la sandbox, l’agent peut tout faire avec les permissions de votre compte.
 
-Vous pouvez aussi utiliser ces options pour une seule exécution : `--perm-mode safe`, `--perm-mode broad` (`--perm-yolo`). Le mode choisi avec `/perm mode` ou `alt+m` est enregistré dans la session et rétabli quand vous la reprenez ; `/perm default <mode>` définit le mode des nouvelles sessions.
+Vous pouvez aussi utiliser ces options pour une seule exécution : `--perm-mode safe`, `--perm-mode broad`. Le mode choisi avec `/perm mode` ou `alt+m` est enregistré dans la session et rétabli quand vous la reprenez ; `/perm default <mode>` définit le mode des nouvelles sessions.
 
 ## Commandes
 

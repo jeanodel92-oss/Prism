@@ -310,6 +310,8 @@ export class SideMenu {
 	async #openSchedule(options) {
 		const view = this.app.active;
 		if (!view?.ready || !view.engine.alive) return;
+		// on a phone or a narrow window the panel covers the screen it opens, as for an agent's transcript.
+		if (narrow()) this.fold(false);
 		const open = () => scheduleScreen(view, "", options);
 		try {
 			if (view.interactions.command?.name === "schedule") await view.interactions.run("schedule", open, { toggle: true });
@@ -373,6 +375,8 @@ export class SideMenu {
 
 	async #openAgent(view, run) {
 		if (!view?.ready || !view.engine.alive) return;
+		// on a phone or a narrow window the panel covers the transcript it opens, so it folds, as a session's does.
+		if (narrow()) this.fold(false);
 		try {
 			const open = () => agentTranscriptScreen(view, run);
 			// Another run's transcript is open: closed first, as a click on a scheduled task does.
@@ -454,10 +458,21 @@ export class SideMenu {
 
 	#runCommand(line) {
 		const view = this.app.active;
-		if (view?.ready && view.engine.alive) view.prompt(line).catch((error) => this.app.toast(String(error?.message ?? error), "error"));
+		if (!view?.ready || !view.engine.alive) return;
+		// on a phone or a narrow window the panel covers the screen the command opens (the
+		// desktop's icon, the trace, the memory's editor), as for a scheduled task.
+		if (narrow()) this.fold(false);
+		view.prompt(line).catch((error) => this.app.toast(String(error?.message ?? error), "error"));
+	}
+
+	/** On a phone or a narrow window, folds the panel, which would cover what opens next. */
+	makeRoom() {
+		if (narrow()) this.fold(false);
 	}
 
 	#compose(text) {
+		// the composer the text goes to is under the panel on a narrow window.
+		this.makeRoom();
 		this.app.setComposerText(text);
 		const input = $("input");
 		input.focus();

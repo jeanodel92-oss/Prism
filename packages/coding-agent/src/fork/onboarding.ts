@@ -23,9 +23,11 @@ import { type InterfaceMode, SettingsManager } from "../core/settings-manager.ts
 import { theme } from "../modes/interactive/theme/theme.ts";
 import { type AnimationStyle, animationOn } from "./animations.ts";
 import { moduleNeeds } from "./feature-state.ts";
+import { readGlobalSetting, saveGlobalSetting } from "./global-settings.ts";
 import { fill, labelled, resolveLanguage, setLanguage, t } from "./i18n/index.ts";
 import { hasNativeMenus } from "./interactive-client.ts";
 import { chooseOnboardingAnswers } from "./onboarding-native.ts";
+import { MODEL_CATALOG_REFRESH_SETTING } from "./policy.ts";
 
 /**
  * The permission mode when no flag, saved session or config names one.
@@ -115,6 +117,8 @@ export interface Option {
 	detail?: string;
 	/** fork: what to know before choosing it, shown in full under the list while it is selected. */
 	note?: string;
+	/** shown only while this module is on in the modules step (the Exa row needs web search). */
+	requires?: string;
 }
 
 export interface Step {
@@ -128,16 +132,43 @@ export interface Step {
 
 export type Answers = Record<string, string | string[]>;
 
+/** The rows of `step` that apply with `answers`: a row that needs a module turned off is left out. */
+export function shownOptions(step: Step, answers: Answers): Option[] {
+	const modules = (answers.modules as string[] | undefined) ?? [];
+	return step.options.filter((option) => !option.requires || modules.includes(option.requires));
+}
+
+/** Whether the web search module is on after the modules step: the search provider matters only then. */
+function webSearchOn(answers: Answers): boolean {
+	return ((answers.modules as string[] | undefined) ?? []).includes("web");
+}
+
 /**
  * Optional modules the onboarding offers, by built-in extension name. fork: more of them;
  * every module stays in /settings › Modules.
  */
 const MODULES: Option[] = [
 	{ value: "web", label: "Web search", detail: "search and read pages; works without a key (Exa)" },
-	{ value: "pi-lsp", label: "Language servers", detail: "code diagnostics from the servers installed for a project" },
-	{ value: "mcp", label: "MCP servers", detail: "tools from the servers listed in mcp.json" },
+	// the terms a newcomer does not know are defined in the row's note.
+	{
+		value: "pi-lsp",
+		label: "Language servers",
+		detail: "code diagnostics from the servers installed for a project",
+		note: "A language server is a program that knows one programming language, such as Python or TypeScript. When one is installed for the project, the model sees the errors it finds while editing the code.",
+	},
+	{
+		value: "mcp",
+		label: "MCP servers",
+		detail: "tools from the servers listed in mcp.json",
+		note: "MCP is a common way of giving an AI more tools: a server can connect it to a service such as GitHub or a database. Prism uses only the servers you add, with /mcp add or in mcp.json; with none, the model gets no extra tool.",
+	},
 	{ value: "pi-plan-mode", label: "Plan mode", detail: "the model plans and only reads until you approve" },
-	{ value: "pi-goal", label: "Goal mode", detail: "a goal the model keeps working towards across turns" },
+	{
+		value: "pi-goal",
+		label: "Goal mode",
+		detail: "a goal the model keeps working towards across turns",
+		note: "Give a goal with /goal followed by what you want: the model keeps working on it, turn after turn, without you writing again, until it is reached. /goal pause stops it.",
+	},
 	{ value: "checkpoints", label: "Checkpoints", detail: "file snapshots before edits, to roll back" },
 	{ value: "notify", label: "Desktop notifications", detail: "when the model finishes or waits for you" },
 	{ value: "memory", label: "Memory", detail: "notes the model keeps between sessions" },
@@ -167,6 +198,26 @@ const COMPUTER: Option[] = [
 	},
 ];
 const OFF_BY_DEFAULT = new Set(["memory", "browser", "desktop", "user-desktop"]);
+/**
+ * the services Prism contacts besides the model, on by default and turned off here.
+ * Web search itself stays a module: a SearXNG instance of the user's keeps it private, so the choice here is where
+ * searches go, not whether the model searches.
+ */
+const PRIVACY: Option[] = [
+	{
+		value: "catalog",
+		label: "Model list from pi.dev",
+		detail: "new models, at most every 4 hours",
+		note: "Prism asks pi.dev for the models of the providers you connected: pi.dev sees their names, Prism's version and your address. Off, the list changes only with Prism's updates and prism update --models.",
+	},
+	{
+		value: "exa",
+		label: "Web search through Exa",
+		detail: "the model's searches go to Exa, without a key",
+		requires: "web",
+		note: "Off, searches go to your own SearXNG instance: give its address with /web-key searxng. Brave, Tavily and Firecrawl are in /settings › Network & web.",
+	},
+];
 export const CONTINUE = "continue";
 
 /**
@@ -208,7 +259,7 @@ export function buildSteps(model: string | undefined, withTutorial = false): Ste
 		{
 			id: "permissions",
 			title: "Permissions",
-			help: "What the model may do without asking you first. Change it later with /perm or alt+m.",
+			help: "What the model may do without asking you first. Except in Unrestricted, the commands it runs are shut in a sandbox, an enclosure that keeps them in the project and away from your other files. Change it later with /perm or alt+m.",
 			options: [
 				// fork: ask first, none recommended, unrestricted offered.
 				{ value: "ask", label: "Ask", detail: "reading and safe commands run; edits and other commands ask" },
@@ -234,6 +285,13 @@ export function buildSteps(model: string | undefined, withTutorial = false): Ste
 			title: "Computer use",
 			help: "The agent can use your browser, a desktop of its own, or yours. Enter turns each on or off; at the end, Prism says what to install, if anything. Every one is in /settings › Computer use.",
 			options: [...COMPUTER, { value: CONTINUE, label: "Continue" }],
+			toggles: true,
+		},
+		{
+			id: "privacy",
+			title: "Privacy",
+			help: "Besides the model you connect, Prism contacts these services. Enter turns each on or off; they stay in /settings › Network & web.",
+			options: [...PRIVACY, { value: CONTINUE, label: "Continue" }],
 			toggles: true,
 		},
 		{
@@ -319,6 +377,11 @@ export class OnboardingWizard implements Component {
 		return this.options.steps[this.index]!;
 	}
 
+	/** The current step's rows, without those that need a module turned off in an earlier step. */
+	private get rows(): Option[] {
+		return shownOptions(this.step, this.answers);
+	}
+
 	invalidate(): void {}
 
 	dispose(): void {
@@ -328,10 +391,10 @@ export class OnboardingWizard implements Component {
 
 	private enterStep(): void {
 		const answer = this.answers[this.step.id];
-		const found = this.step.options.findIndex((option) => option.value === answer);
+		const found = this.rows.findIndex((option) => option.value === answer);
 		this.cursor = this.step.toggles ? 0 : Math.max(0, found);
 		// What is shown matches the cursor again after a step was left with only a preview.
-		if (!this.step.toggles) this.options.onPreview(this.step.id, this.step.options[this.cursor]!.value);
+		if (!this.step.toggles) this.options.onPreview(this.step.id, this.rows[this.cursor]!.value);
 		this.stepStart = Date.now();
 		if (!this.options.animate || this.timer) return;
 		this.timer = setInterval(() => {
@@ -377,7 +440,8 @@ export class OnboardingWizard implements Component {
 			"",
 		];
 		const selected = this.answers[step.id];
-		step.options.forEach((option, i) => {
+		const rows = this.rows;
+		rows.forEach((option, i) => {
 			const here = i === this.cursor;
 			const mark = step.toggles
 				? option.value === CONTINUE
@@ -393,7 +457,7 @@ export class OnboardingWizard implements Component {
 			const row = ` ${label}${detail}`;
 			lines.push(visibleWidth(row) <= width ? row : truncateToWidth(row, width, "…"));
 		});
-		const note = step.options[this.cursor]?.note;
+		const note = rows[this.cursor]?.note;
 		if (note) lines.push("", ...wrapped(theme.fg("warning", t(note))));
 		lines.push("");
 		const back = this.index > 0 ? ` · ← ${t("back")}` : "";
@@ -418,7 +482,7 @@ export class OnboardingWizard implements Component {
 			this.index--;
 			this.enterStep();
 		} else if (keys.matches(data, "tui.select.confirm")) {
-			const option = step.options[this.cursor]!;
+			const option = this.rows[this.cursor]!;
 			if (step.toggles && option.value !== CONTINUE) {
 				const current = new Set((this.answers[step.id] as string[] | undefined) ?? []);
 				if (current.has(option.value)) current.delete(option.value);
@@ -442,8 +506,9 @@ export class OnboardingWizard implements Component {
 
 	private move(delta: number): void {
 		const step = this.step;
-		this.cursor = Math.max(0, Math.min(step.options.length - 1, this.cursor + delta));
-		if (!step.toggles) this.options.onPreview(step.id, step.options[this.cursor]!.value);
+		const rows = this.rows;
+		this.cursor = Math.max(0, Math.min(rows.length - 1, this.cursor + delta));
+		if (!step.toggles) this.options.onPreview(step.id, rows[this.cursor]!.value);
 	}
 }
 
@@ -486,12 +551,24 @@ export function currentAnswers(
 		permissions: sessionMode ?? readPermissionMode(agentDir),
 		modules: enabledModules(settings.getGlobalSettings().extensions ?? []),
 		computer: enabledModules(settings.getGlobalSettings().extensions ?? [], COMPUTER),
+		privacy: [
+			...(readGlobalSetting(MODEL_CATALOG_REFRESH_SETTING, agentDir) !== false ? ["catalog"] : []),
+			...(settings.getWebSearchProvider() === "exa" ? ["exa"] : []),
+		],
 		connection: hasModel ? "keep" : "login",
 	};
 }
 
-/** Writes the choices that differ from the current ones; returns whether modules changed. */
-export function applyAnswers(settings: SettingsManager, before: Answers, after: Answers): { modulesChanged: boolean } {
+/**
+ * Writes the choices that differ from the current ones; returns whether modules changed, the search provider
+ * included: the web module reads it when it loads.
+ */
+export function applyAnswers(
+	settings: SettingsManager,
+	before: Answers,
+	after: Answers,
+	agentDir = getAgentDir(),
+): { modulesChanged: boolean } {
 	if (after.language !== before.language) settings.setLanguage(String(after.language));
 	if (after.theme !== before.theme) settings.setTheme(String(after.theme));
 	if (after.display !== before.display) settings.setInterfaceMode(after.display as InterfaceMode);
@@ -506,7 +583,26 @@ export function applyAnswers(settings: SettingsManager, before: Answers, after: 
 		);
 		settings.setExtensionPaths([...kept, ...changed.map((name) => `${now.has(name) ? "+" : "-"}builtin:${name}`)]);
 	}
-	return { modulesChanged: changed.length > 0 };
+	// the privacy step. Turning Exa off sends searches to the user's SearXNG; turning it back on, to Exa.
+	// Without web search there are no searches: the provider is left as it was (the row is not even shown).
+	const had = new Set((before.privacy as string[] | undefined) ?? []);
+	const has = new Set((after.privacy as string[] | undefined) ?? []);
+	if (before.privacy !== undefined && had.has("catalog") !== has.has("catalog"))
+		saveGlobalSetting([MODEL_CATALOG_REFRESH_SETTING], has.has("catalog") ? undefined : false, agentDir);
+	const searchChanged = before.privacy !== undefined && webSearchOn(after) && had.has("exa") !== has.has("exa");
+	if (searchChanged) settings.setWebSearchProvider(has.has("exa") ? "exa" : "searxng");
+	return { modulesChanged: changed.length > 0 || searchChanged };
+}
+
+/** The line that says how to finish when searches now go to a SearXNG instance without an address. */
+export function searchNeeds(settings: SettingsManager, before: Answers, after: Answers): string | undefined {
+	const turnedOff =
+		webSearchOn(after) &&
+		((before.privacy as string[] | undefined) ?? []).includes("exa") &&
+		!((after.privacy as string[] | undefined) ?? []).includes("exa");
+	return turnedOff && !settings.getWebSearchUrl()
+		? t("Web search: give your SearXNG instance's address with /web-key searxng.")
+		: undefined;
 }
 
 /**
@@ -589,7 +685,8 @@ export default function onboarding(pi: ExtensionAPI): void {
 		// Esc keeps what was chosen in the steps already passed and the current values for the rest.
 		const answers = result ?? { answers: before, skipped: true };
 		setLanguage(resolveLanguage(answers.answers.language));
-		const { modulesChanged } = applyAnswers(settings, before, answers.answers);
+		const { modulesChanged } = applyAnswers(settings, before, answers.answers, agentDir);
+		const search = answers.skipped ? undefined : searchNeeds(settings, before, answers.answers);
 		await settings.flush();
 		// After the write above, so the interactive mode's own settings save the same theme. An unchanged
 		// theme is only shown again (a preview may still be on screen), not written.
@@ -616,6 +713,7 @@ export default function onboarding(pi: ExtensionAPI): void {
 		const needs = answers.skipped ? [] : computerUseNeeds(before, answers.answers, ctx.cwd);
 		const lines = [
 			...(needs.length ? [t("To finish setting up computer use:"), ...needs] : []),
+			...(search ? [search] : []),
 			refused ? `${t("Unrestricted mode not enabled.")} ${again}` : again,
 			...(needs.length && login && !host?.login ? [t("Connect a model with /login.")] : []),
 			...(needs.length && modulesChanged && !reload ? [t("Module changes apply at the next start.")] : []),

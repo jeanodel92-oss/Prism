@@ -28,13 +28,66 @@ export function applyBrandedEnvAliases(appName: string, env: NodeJS.ProcessEnv =
 	}
 }
 
+/**
+ * Prism's own examples, in place of upstream's, which named providers and models
+ * (the shipped harness names none) and pi's commands. `{0}` is the command name.
+ */
+const BRANDED_EXAMPLES = [
+	"  # Start in this folder (the window: {0} --gui)",
+	"  {0}",
+	"",
+	"  # Start with a first message, and files",
+	'  {0} "Explain this project"',
+	'  {0} @notes.md @screenshot.png "What is wrong here?"',
+	"",
+	"  # Answer once and exit, for scripts",
+	'  {0} -p "List the TODO comments in src/"',
+	"",
+	"  # Continue the last session, or pick one",
+	"  {0} --continue",
+	"  {0} --resume",
+	"",
+	"  # Pick the model (provider/model, then a thinking level)",
+	'  {0} --model <provider>/<model>:high "Solve this problem"',
+	"",
+	"  # Ask before every change, for this run",
+	"  {0} --perm-mode ask",
+	"",
+	"  # Sign in to a provider from the shell, for example over SSH",
+	"  {0} auth login <provider>",
+	"",
+	"  # Update, or go back to the previous version",
+	"  {0} update",
+	"  {0} update --rollback",
+	"",
+];
+
 /** Rewrite upstream's `--help` text for a branded build. Exported for tests. */
 export function brandHelpText(text: string, appName: string): string {
 	const prefix = appName.toUpperCase();
 	const lines = text.split("\n");
 	const out: string[] = [];
 	let inProviderKeys = false;
+	let inExamples = false;
 	for (const line of lines) {
+		// Upstream's sentence names a plan-mode extension that is not Prism's; the flags' own heading says enough.
+		if (line.startsWith("Extensions can register additional flags")) continue;
+		if (line.includes("Extension CLI Flags:")) {
+			out.push(
+				line.replace("Extension CLI Flags:", "Options of Prism's modules and of the extensions you installed:"),
+			);
+			continue;
+		}
+		if (line.includes("Examples:")) {
+			out.push(line);
+			for (const example of BRANDED_EXAMPLES) out.push(example.replaceAll("{0}", appName));
+			inExamples = true;
+			continue;
+		}
+		if (inExamples) {
+			if (!line.includes("Environment Variables:")) continue;
+			inExamples = false;
+		}
 		if (out.length === 0 && line.includes(" - AI coding assistant with read, bash, edit, write tools")) {
 			out.push(line.replace(/ - AI coding assistant with read, bash, edit, write tools/, ` - ${PRODUCT_TAGLINE}`));
 			continue;
